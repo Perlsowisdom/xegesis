@@ -1,10 +1,11 @@
-// Search: words in the installed Bibles. Searching the library's books will join this view once
-// the core has a library search command.
+// Search: tabs for words in the installed Bibles, words in the library's books, and books that
+// cite a passage (views/librarysearch.ts).
 
 import { Message, Module, Ref, paramEnum, run } from "../api";
 import { clear, field, h, select } from "../dom";
 import { markSegments } from "../helpers";
 import { navigate, setModules, setPassage, state } from "../state";
+import { citingPanel, librarySearchPanel } from "./librarysearch";
 
 interface Hit {
   id: number;
@@ -45,10 +46,17 @@ export function searchView() {
     search();
   });
 
-  const el = h("div", { class: "view" },
-    h("h1", {}, "Search"),
-    h("p", { class: "hint" }, "Searches the text of your installed Bibles. Searching your library's books is not available yet."),
+  const bibleTab = h("div", {},
+    h("p", { class: "hint" }, "Searches the text of your installed Bibles."),
     form, msg.el, count, results);
+  const library = librarySearchPanel();
+  const citing = citingPanel();
+  const tabs = searchTabs([
+    { id: "bibles", label: "Bibles", el: bibleTab, focus: () => query.focus() },
+    { id: "library", label: "Library", el: library.el, focus: library.focus },
+    { id: "citing", label: "Books citing a passage", el: citing.el, focus: citing.focus, show: citing.show },
+  ]);
+  const el = h("div", { class: "view" }, h("h1", {}, "Search"), tabs.el);
 
   async function search() {
     const p: Record<string, unknown> = { mode: mode.value || "all", limit: 200 };
@@ -88,5 +96,46 @@ export function searchView() {
         h("input", { type: "checkbox", value: m.id, checked: checked.size ? checked.has(m.id) : true }), " ", m.abbreviation || m.id)));
   }
 
-  return { el, show, focus: () => query.focus() };
+  return { el, show, focus: tabs.focus };
+}
+
+interface Tab {
+  id: string;
+  label: string;
+  el: HTMLElement;
+  focus(): void;
+  show?(): void;
+}
+
+// searchTabs is a tab list (arrow keys move between tabs) over one panel per tab.
+function searchTabs(tabs: Tab[]) {
+  let current = 0;
+  const buttons = tabs.map((t, i) => {
+    const b = h("button", { type: "button", role: "tab", id: `search-tab-${t.id}`, "aria-controls": `search-panel-${t.id}` }, t.label);
+    b.addEventListener("click", () => select(i, true));
+    b.addEventListener("keydown", (e) => {
+      const d = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+      if (!d) return;
+      e.preventDefault();
+      select((current + d + tabs.length) % tabs.length, false);
+      buttons[current].focus();
+    });
+    t.el.id = `search-panel-${t.id}`;
+    t.el.setAttribute("role", "tabpanel");
+    t.el.setAttribute("aria-labelledby", b.id);
+    return b;
+  });
+  function select(i: number, focus: boolean) {
+    current = i;
+    tabs.forEach((t, j) => {
+      t.el.hidden = j !== i;
+      buttons[j].setAttribute("aria-selected", String(j === i));
+      buttons[j].tabIndex = j === i ? 0 : -1;
+    });
+    tabs[i].show?.();
+    if (focus) tabs[i].focus();
+  }
+  select(0, false);
+  const el = h("div", {}, h("div", { class: "tabs", role: "tablist", "aria-label": "What to search" }, buttons), tabs.map((t) => t.el));
+  return { el, focus: () => tabs[current].focus() };
 }

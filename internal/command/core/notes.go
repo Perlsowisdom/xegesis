@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 
 	"github.com/Perlsowisdom/xegesis/internal/command"
 	"github.com/Perlsowisdom/xegesis/internal/store"
@@ -10,18 +11,48 @@ import (
 )
 
 type Note struct {
-	ID        string     `json:"id"`
-	Title     string     `json:"title,omitempty"`
-	Body      string     `json:"body" desc:"Markdown text"`
-	Ref       *RefResult `json:"ref,omitempty" desc:"The verses the note is attached to"`
-	CreatedAt int64      `json:"created_at"`
-	UpdatedAt int64      `json:"updated_at"`
+	ID        string         `json:"id"`
+	Title     string         `json:"title,omitempty"`
+	Body      string         `json:"body" desc:"Markdown text"`
+	Ref       *RefResult     `json:"ref,omitempty" desc:"The verses the note is attached to"`
+	ItemID    string         `json:"item_id,omitempty" desc:"The book the note is attached to"`
+	Locator   map[string]any `json:"locator,omitempty" desc:"Where in the book, as highlight.create's locator"`
+	CreatedAt int64          `json:"created_at"`
+	UpdatedAt int64          `json:"updated_at"`
 }
 
 type NoteCreateParams struct {
 	Title string `json:"title,omitempty"`
 	Body  string `json:"body" desc:"Markdown text"`
 	Ref   string `json:"ref,omitempty" desc:"Bible reference to attach the note to, e.g. \"John 3:16\""`
+	// A book anchor: the same locator highlight.create takes.
+	ItemID  string         `json:"item_id,omitempty" desc:"Library book to attach the note to; give locator too"`
+	Locator map[string]any `json:"locator,omitempty" desc:"Where in the book: {section, para, offset, end_para, end_offset, text} or {section, page, rects, text}"`
+}
+
+// bookAnchor checks a note's book anchor and returns its locator as JSON.
+func bookAnchor(ctx context.Context, env *command.Env, p NoteCreateParams) (string, error) {
+	if p.ItemID == "" || p.Locator == nil {
+		return "", command.Errorf("bad_params", "note.create: give item_id and locator together")
+	}
+	if p.Ref != "" {
+		return "", command.Errorf("bad_params", "note.create: attach a note to a book or to verses, not both")
+	}
+	if n, ok := p.Locator["section"].(float64); !ok || n < 1 {
+		return "", command.Errorf("bad_params", "note.create: the locator needs a section of 1 or more")
+	}
+	raw, err := json.Marshal(p.Locator)
+	if err != nil || len(raw) > 64<<10 {
+		return "", command.Errorf("bad_params", "note.create: the locator is not valid")
+	}
+	var n int
+	if err := env.Store.QueryRow(ctx, `SELECT COUNT(*) FROM items WHERE id = ? AND deleted_at IS NULL`, p.ItemID).Scan(&n); err != nil {
+		return "", err
+	}
+	if n == 0 {
+		return "", command.Errorf("not_found", "no item %s", p.ItemID)
+	}
+	return string(raw), nil
 }
 
 func noteCreate(ctx context.Context, env *command.Env, p NoteCreateParams) (Note, error) {
@@ -33,8 +64,22 @@ func noteCreate(ctx context.Context, env *command.Env, p NoteCreateParams) (Note
 			return Note{}, command.Errorf("bad_params", "%v", err)
 		}
 	}
+	var locator string
+	if p.ItemID != "" || p.Locator != nil {
+		var err error
+		if locator, err = bookAnchor(ctx, env, p); err != nil {
+			return Note{}, err
+		}
+	}
 	id, t := store.NewID(), now()
 	err := env.Store.Write(ctx, "note.create", func(tx *store.Tx) error {
+		if locator != "" {
+			aid := store.NewID()
+			if err := tx.Create("anchors", store.Row{"id": aid, "item_id": p.ItemID, "locator_json": locator}); err != nil {
+				return err
+			}
+			anchor = aid
+		}
 		if p.Ref != "" {
 			aid := store.NewID()
 			if err := tx.Create("anchors", store.Row{"id": aid, "verse_start": int64(r.Start),
@@ -64,8 +109,10 @@ func noteGet(ctx context.Context, env *command.Env, p IDParams) (Note, error) {
 }
 
 type NoteListParams struct {
-	Ref   string `json:"ref,omitempty" desc:"Only notes on verses overlapping this reference"`
-	Limit int    `json:"limit,omitempty" desc:"Most notes to return (default 100)"`
+	Ref     string `json:"ref,omitempty" desc:"Only notes on verses overlapping this reference"`
+	ItemID  string `json:"item_id,omitempty" desc:"Only notes on this book"`
+	Section int    `json:"section,omitempty" desc:"With item_id, only notes on this section or PDF page"`
+	Limit   int    `json:"limit,omitempty" desc:"Most notes to return (default 100)"`
 }
 
 func noteList(ctx context.Context, env *command.Env, p NoteListParams) ([]Note, error) {
@@ -84,6 +131,14 @@ func noteList(ctx context.Context, env *command.Env, p NoteListParams) ([]Note, 
 		}
 		q += ` AND a.verse_start <= ? AND a.verse_end >= ?`
 		args = append(args, int64(r.End), int64(r.Start))
+	}
+	if p.ItemID != "" {
+		q += ` AND a.item_id = ?`
+		args = append(args, p.ItemID)
+		if p.Section > 0 {
+			q += ` AND json_extract(a.locator_json, '$.section') = ?`
+			args = append(args, p.Section)
+		}
 	}
 	q += ` ORDER BY n.updated_at DESC LIMIT ?`
 	rows, err := env.Store.Query(ctx, q, append(args, p.Limit)...)
@@ -142,8 +197,8 @@ func noteDelete(ctx context.Context, env *command.Env, p IDParams) (struct{}, er
 	})
 }
 
-const noteSelect = `SELECT n.id, n.title, n.body_md, n.created_at, n.updated_at, a.verse_start, a.verse_end
-	FROM notes n LEFT JOIN anchors a ON a.id = n.anchor_id`
+const noteSelect = `SELECT n.id, n.title, n.body_md, n.created_at, n.updated_at, a.verse_start, a.verse_end,
+	a.item_id, a.locator_json FROM notes n LEFT JOIN anchors a ON a.id = n.anchor_id`
 
 func getNote(ctx context.Context, env *command.Env, id string) (Note, error) {
 	rows, err := env.Store.Query(ctx, noteSelect+` WHERE n.id = ? AND n.deleted_at IS NULL`, id)
@@ -161,8 +216,13 @@ func scanNote(rows *sql.Rows) (Note, error) {
 	var n Note
 	var title sql.NullString
 	var start, end sql.NullInt64
-	if err := rows.Scan(&n.ID, &title, &n.Body, &n.CreatedAt, &n.UpdatedAt, &start, &end); err != nil {
+	var item, locator sql.NullString
+	if err := rows.Scan(&n.ID, &title, &n.Body, &n.CreatedAt, &n.UpdatedAt, &start, &end, &item, &locator); err != nil {
 		return n, err
+	}
+	n.ItemID = item.String
+	if locator.Valid {
+		json.Unmarshal([]byte(locator.String), &n.Locator)
 	}
 	n.Title = title.String
 	if start.Valid && end.Valid {
