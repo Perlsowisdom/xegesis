@@ -45,6 +45,7 @@ type builder struct {
 	warnings map[string]int
 	order    []string
 	where    string // current location for warnings
+	intro    bool   // reading an introduction entry, whose text outside headings is dropped quietly
 }
 
 func newBuilder() *builder {
@@ -197,7 +198,7 @@ func (b *builder) addText(s string) {
 		return
 	}
 	if b.cur == nil {
-		if strings.TrimSpace(s) != "" {
+		if strings.TrimSpace(s) != "" && !b.intro {
 			b.warn("text outside a verse after %s dropped", b.whereOr("the start"))
 		}
 		return

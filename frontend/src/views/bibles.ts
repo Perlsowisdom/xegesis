@@ -1,24 +1,230 @@
-// Bibles: the installed modules and installing a new one from a file or folder.
+// Bibles: get Bibles from the online catalogues (the default), the installed modules, and
+// installing one from a file or folder. Every action is a bible.* command.
 
-import { Message, Module, paramEnum, pick, run } from "../api";
-import { button, clear, field, h, select } from "../dom";
-import { licenceForm, typeLabel } from "../licence";
+import { CatalogueItem, Message, Module, paramEnum, pick, run } from "../api";
+import { badge, button, clear, field, h, select } from "../dom";
+import { licenceForm, termsText, typeLabel } from "../licence";
+
+type Tab = "get" | "installed" | "file";
 
 export function biblesView() {
-  const msg = new Message();
-  const table = h("div", { class: "table-wrap" });
-  const install = installForm(() => show());
+  const get = getBibles(() => installed.show());
+  const installed = installedList(() => get.show());
+  const file = installForm(() => installed.show());
+  const panels: Record<Tab, { el: HTMLElement; show(): void }> = { get, installed, file };
+  const tabs: Record<Tab, HTMLButtonElement> = {
+    get: button("Get Bibles", () => open("get")),
+    installed: button("Installed", () => open("installed")),
+    file: button("Install from file", () => open("file")),
+  };
+  let current: Tab = "get";
+
+  function open(t: Tab) {
+    current = t;
+    for (const [k, b] of Object.entries(tabs)) b.setAttribute("aria-pressed", String(k === t));
+    for (const [k, p] of Object.entries(panels)) p.el.hidden = k !== t;
+    panels[t].show();
+  }
 
   const el = h("div", { class: "view" },
-    h("h1", {}, "Bibles"),
-    h("section", { "aria-labelledby": "installed-h" },
-      h("h2", { id: "installed-h" }, "Installed"), msg.el, table),
-    install.el);
+    h("div", { class: "row between wrap" }, h("h1", {}, "Bibles"),
+      h("div", { class: "tabs", role: "group", "aria-label": "Bibles sections" }, tabs.get, tabs.installed, tabs.file)),
+    get.el, installed.el, file.el);
+  for (const [k, b] of Object.entries(tabs)) b.setAttribute("aria-pressed", String(k === current));
+  for (const [k, p] of Object.entries(panels)) p.el.hidden = k !== current;
+  return { el, show: () => panels[current].show() };
+}
+
+interface Available {
+  items: CatalogueItem[];
+  total: number;
+  languages: { code: string; name: string; count: number }[];
+  enabled: boolean;
+  cached: boolean;
+}
+
+interface Progress { source: string; item: string; phase: string; done: number; total: number }
+
+function size(n?: number): string {
+  if (!n) return "—";
+  return n >= 1 << 20 ? `${(n / (1 << 20)).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
+}
+
+function licenceText(l: CatalogueItem["licence"]): string {
+  return typeLabel(l?.type) + (l?.spdx ? ` (${l.spdx})` : "");
+}
+
+// getBibles lists what the catalogues offer, with a language picker, search and Install buttons.
+function getBibles(changed: () => void) {
+  const msg = new Message();
+  const off = h("div", { class: "card", hidden: true });
+  const language = select([["", "All languages"]], "", { "aria-label": "Language" });
+  const search = h("input", { type: "search", placeholder: "Search names", "aria-label": "Search Bibles" });
+  const licence = select([["", "Any licence"], ["public_domain", "Public domain"], ["creative_commons", "Creative Commons"],
+    ["open_other", "Other open licence"]], "", { "aria-label": "Licence" });
+  const installable = h("input", { type: "checkbox", checked: true });
+  const status = h("p", { class: "hint", role: "status" });
+  const list = h("div", { class: "table-wrap" });
+  const dialog = h("div");
+  const preferred = (navigator.language || "en").split("-")[0].toLowerCase();
+  let pickedLanguage = false;
+  let timer = 0;
+
+  const toolbar = h("div", { class: "row wrap" },
+    language, h("div", { class: "grow" }, search), licence,
+    h("label", { class: "check" }, installable, " Only ones Xegesis can install"),
+    button("Refresh catalogues", () => refresh()));
+
+  const el = h("section", { "aria-label": "Get Bibles" },
+    h("p", { class: "hint" }, "Bibles from the CrossWire SWORD repositories and eBible.org. Pick a language, then Install."),
+    off, toolbar, status, msg.el, dialog, list);
+
+  language.addEventListener("change", () => { pickedLanguage = true; load(); });
+  for (const c of [licence, installable]) c.addEventListener("change", () => load());
+  search.addEventListener("input", () => { clearTimeout(timer); timer = window.setTimeout(load, 250); });
+
+  async function enable() {
+    if ((await msg.attempt(() => run("bible.sources", { enable: true }))) !== undefined) refresh();
+  }
+
+  async function refresh() {
+    msg.info("Downloading the catalogues…");
+    const r = await msg.attempt(() => run<{ sources: { name: string; error?: string }[] }>("bible.sources", { refresh: true }));
+    if (!r) return;
+    const failed = r.sources.filter((s) => s.error);
+    if (failed.length) msg.info(`Could not refresh ${failed.map((s) => s.name).join(", ")}; their cached lists are used.`);
+    else msg.clear();
+    load();
+  }
+
+  async function load() {
+    const params: Record<string, unknown> = { limit: 500, supported: installable.checked };
+    if (language.value) params.language = language.value;
+    if (search.value.trim()) params.text = search.value.trim();
+    if (licence.value) params.licence = licence.value;
+    const r = await msg.attempt(() => run<Available>("bible.available", params));
+    if (!r) return;
+    off.hidden = r.enabled;
+    clear(off, h("h2", {}, "Bible catalogues are off"),
+      h("p", {}, "When you turn them on, Xegesis downloads the lists of Bibles from CrossWire (crosswire.org) and " +
+        "eBible.org, and the Bibles you choose to install. Only these files are requested; nothing about you or your " +
+        "library is sent. Turn them off again with the bible.sources command."),
+      button("Turn on Bible catalogues", enable, { class: "primary" }));
+    if (fillLanguages(r)) return load();
+    status.textContent = r.cached ? `${r.total.toLocaleString()} Bibles${r.total > r.items.length ? `, showing ${r.items.length}` : ""}.` :
+      r.enabled ? "No catalogue downloaded yet. Choose Refresh catalogues." : "";
+    clear(list, r.items.length === 0 ? (r.cached ? h("p", { class: "empty" }, "Nothing matches.") : null) :
+      h("table", { class: "list" },
+        h("thead", {}, h("tr", {}, ["Name", "Language", "Licence", "Size", ""].map((t) => h("th", { scope: "col" }, t)))),
+        h("tbody", {}, r.items.map(row))));
+  }
+
+  // fillLanguages refreshes the picker; it returns true when it chose the user's own language
+  // for the first time, so the list must be loaded again.
+  function fillLanguages(r: Available): boolean {
+    const want = language.value;
+    language.replaceChildren(h("option", { value: "" }, "All languages"),
+      ...r.languages.map((l) => h("option", { value: l.code }, `${l.name} (${l.count})`)));
+    language.value = want;
+    if (!pickedLanguage && !want && r.languages.some((l) => l.code === preferred)) {
+      pickedLanguage = true;
+      language.value = preferred;
+      return true;
+    }
+    return false;
+  }
+
+  function row(it: CatalogueItem) {
+    const action = h("td", { class: "actions" });
+    if (it.installed && !it.update_available) action.append(badge("Installed", "ok"));
+    else if (it.locked) action.append(badge("Locked", "bad"), " ", h("small", { class: "hint" }, "Needs the publisher's unlock key"));
+    else if (!it.supported) action.append(h("small", { class: "hint" }, `Not available: ${it.reason ?? ""}`));
+    else {
+      const verb = it.update_available ? "Update" : "Install";
+      action.append(button(verb, () => start(it, action), { class: "primary", "aria-label": `${verb} ${it.name}` }));
+    }
+    return h("tr", {},
+      h("td", {}, h("strong", {}, it.name), h("br"),
+        h("small", { class: "hint" }, `${it.abbreviation || it.id} · ${it.source_name}${it.version ? ` · version ${it.version}` : ""}`)),
+      h("td", {}, it.language_name),
+      h("td", {}, licenceText(it.licence), it.licence_clear ? null : h("small", { class: "hint" }, " (to confirm)")),
+      h("td", { class: "num" }, size(it.size)),
+      action);
+  }
+
+  // start shows the size and licence first; the download runs only after the user confirms.
+  async function start(it: CatalogueItem, cell: HTMLElement) {
+    const pre = await msg.attempt(() => run<{ item: CatalogueItem; size: number }>("bible.get", { source: it.source, item: it.id, preview: true }));
+    if (!pre) return;
+    const item = pre.item;
+    const verb = item.update_available ? "Update" : "Install";
+    const form = item.licence_clear ? null : licenceForm("State the licence of this text");
+    if (form) form.set(item.licence);
+    const box = h("div", { class: "card", role: "dialog", "aria-label": `${verb} ${item.name}` },
+      h("h2", {}, `${verb} ${item.name}`),
+      h("p", {}, `Download: ${size(pre.size)} from ${item.source_name}.`),
+      item.licence_clear ? h("p", {}, `Licence: ${licenceText(item.licence)}. ${termsText(item.licence)}`) :
+        h("p", {}, "The catalogue does not say clearly what this licence allows. Please state it below."),
+      h("details", {}, h("summary", {}, "What the source says"), h("pre", { class: "rights" }, item.rights || "Nothing")),
+      form?.el,
+      h("div", { class: "row" },
+        button(verb, () => go(), { class: "primary" }),
+        button("Cancel", () => clear(dialog))));
+    clear(dialog, box);
+    box.querySelector<HTMLButtonElement>(".row button")?.focus();
+
+    async function go() {
+      const params: Record<string, unknown> = { source: item.source, item: item.id, accept_licence: true };
+      if (item.update_available) params.replace = true;
+      if (form) {
+        const l = form.value();
+        params.licence_type = l.type;
+        if (l.spdx) params.spdx = l.spdx;
+        if (l.rights_holder) params.rights_holder = l.rights_holder;
+        if (l.attribution) params.attribution = l.attribution;
+        if (l.url) params.licence_url = l.url;
+      }
+      clear(dialog);
+      const bar = h("progress", { "aria-label": `Installing ${item.name}` });
+      const phase = h("small", { class: "hint", "aria-live": "polite" }, "Starting…");
+      clear(cell, bar, " ", phase);
+      const poll = window.setInterval(async () => {
+        const ps = await run<Progress[]>("bible.progress").catch(() => [] as Progress[]);
+        const p = ps.find((x) => x.source === item.source && x.item === item.id);
+        if (!p) return;
+        if (p.total > 0) { bar.max = p.total; bar.value = Math.min(p.done, p.total); }
+        phase.textContent = p.phase === "downloading" ? `Downloading ${size(p.done)}` : p.phase === "checking" ? "Checking" : "Converting";
+      }, 400);
+      const r = await msg.attempt(() => run<{ module: Module; warnings: string[] }>("bible.get", params));
+      clearInterval(poll);
+      if (r) {
+        msg.ok(`Installed ${r.module.name} (${r.module.verse_count.toLocaleString()} verses).`);
+        changed();
+      }
+      load();
+    }
+  }
+
+  return { el, show: load };
+}
+
+// installedList shows the installed modules and available updates.
+function installedList(changed: () => void) {
+  const msg = new Message();
+  const updates = h("div");
+  const table = h("div", { class: "table-wrap" });
+  const el = h("section", { "aria-label": "Installed Bibles" }, msg.el, updates, table);
 
   async function show() {
-    const ms = await msg.attempt(() => run<Module[]>("bible.modules"));
+    const [ms, ups] = await Promise.all([
+      msg.attempt(() => run<Module[]>("bible.modules")),
+      run<{ module: string; name: string; version: string; installed_version: string }[]>("bible.updates").catch(() => []),
+    ]);
     if (!ms) return;
-    clear(table, ms.length === 0 ? h("p", { class: "empty" }, "No Bibles installed yet. Install one from an OSIS, USFM or USX file below.") :
+    clear(updates, ups.length ? h("p", { class: "msg", role: "status" },
+      `Updates are available for ${ups.map((u) => `${u.name} (${u.installed_version || "?"} → ${u.version})`).join(", ")}. ` +
+      "Update them from Get Bibles.") : null);
+    clear(table, ms.length === 0 ? h("p", { class: "empty" }, "No Bibles installed yet. Get one from the catalogues, or install one from a file.") :
       h("table", { class: "list" },
         h("thead", {}, h("tr", {}, ["Name", "Abbrev.", "Language", "Numbering", "Verses", "Licence", ""].map((t) => h("th", { scope: "col" }, t)))),
         h("tbody", {}, ms.map((m) => h("tr", {},
@@ -36,6 +242,7 @@ export function biblesView() {
     if ((await msg.attempt(() => run("bible.remove", { module: m.id }))) !== undefined) {
       msg.ok(`Removed ${m.name || m.id}.`);
       show();
+      changed();
     }
   }
 
@@ -56,13 +263,14 @@ function installForm(installed: () => void) {
   const licence = licenceForm("Licence of this text");
 
   const browse = async (kind: "file" | "folder") => {
-    const p = await msg.attempt(() => pick(kind, kind === "file" ? "Choose a Bible file" : "Choose a folder of Bible files"));
+    const p = await msg.attempt(() => pick(kind, kind === "file" ? "Choose a Bible file or .zip archive" : "Choose a folder of Bible files"));
     if (p) path.value = p;
   };
 
   const form = h("form", { class: "card", "aria-labelledby": "install-h" },
-    h("h2", { id: "install-h" }, "Install a Bible"),
-    h("p", { class: "hint" }, "Import an OSIS, USFM or USX file, or a folder of USFM or USX books. State the licence so Xegesis knows what you may print, export and share."),
+    h("h2", { id: "install-h" }, "Install a Bible from a file"),
+    h("p", { class: "hint" }, "Import an OSIS, USFM or USX file, a folder of USFM or USX books, or a .zip archive of them. " +
+      "State the licence so Xegesis knows what you may print, export and share."),
     h("div", { class: "field" },
       h("label", { for: "install-path" }, "File or folder"),
       h("div", { class: "row" }, Object.assign(path, { id: "install-path" }),
@@ -101,5 +309,5 @@ function installForm(installed: () => void) {
     installed();
   });
 
-  return { el: form };
+  return { el: form, show() {} };
 }
