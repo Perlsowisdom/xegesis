@@ -3,8 +3,10 @@ module github.com/Perlsowisdom/xegesis
 go 1.27.0
 
 require (
+	github.com/ledongthuc/pdf v0.0.0-20261020125853-5e46805f718e
 	github.com/wailsapp/wails/v2 v2.17.0
 	github.com/zalando/go-keyring v0.2.8
+	golang.org/x/net v0.56.0
 	modernc.org/sqlite v1.61.0
 )
 
@@ -38,7 +40,6 @@ require (
 	github.com/valyala/fasttemplate v1.2.2 // indirect
 	github.com/wailsapp/go-webview2 v1.0.22 // indirect
 	golang.org/x/crypto v0.53.0 // indirect
-	golang.org/x/net v0.56.0 // indirect
 	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/text v0.39.0 // indirect
 	modernc.org/libc v1.79.0 // indirect
