@@ -177,3 +177,9 @@ dl.info dd { margin: 0; }
   .view { padding: 12px 14px 32px; }
 }
 @media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+
+/* Bibles */
+.tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+.tabs button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+pre.rights { white-space: pre-wrap; font-size: .85rem; max-height: 14rem; overflow: auto; }
+td.actions progress { width: 8rem; vertical-align: middle; }

@@ -226,3 +226,28 @@ export interface Item {
   licence?: Licence | null;
   suggested_licence?: Licence | null;
 }
+
+// An item from the Bible catalogues (bible.available).
+export interface CatalogueItem {
+  source: string;
+  source_name: string;
+  id: string;
+  name: string;
+  abbreviation?: string;
+  language: string;
+  language_name: string;
+  kind: string;
+  version?: string;
+  size?: number;
+  licence: Licence;
+  licence_clear: boolean;
+  rights: string;
+  about?: string;
+  locked: boolean;
+  supported: boolean;
+  reason?: string;
+  origin: string;
+  installed: boolean;
+  module?: string;
+  update_available?: boolean;
+}

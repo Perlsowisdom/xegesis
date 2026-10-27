@@ -22,6 +22,7 @@ var osisPass = map[string]bool{
 	"lb": true, "speech": true, "speaker": true, "mentioned": true, "date": true, "index": true,
 	"table": true, "row": true, "cell": true, "figure": true, "transChange": true, "w": true,
 	"q": true, "note": true, "title": true, "reference": true, "p": true, "verse": true,
+	"entry": true, // the wrapper readOSISFragment adds
 }
 
 type osisReader struct {
@@ -31,21 +32,38 @@ type osisReader struct {
 	skip   int      // depth inside elements whose text is dropped
 	title  *strings.Builder
 	doc    Doc
+	// fragment is set when reading one SWORD entry: the verse is already known, so verse and
+	// book elements in the entry are ignored.
+	fragment bool
 }
 
 func readOSIS(r io.Reader, b *builder) (Doc, error) {
 	o := &osisReader{b: b}
+	err := o.decode(r)
+	b.endVerse()
+	b.closeAll()
+	return o.doc, err
+}
+
+// readOSISFragment reads the markup of one verse entry into the verse the builder has open.
+// Elements left open at the end of the entry stay open, as OSIS milestones may continue.
+func readOSISFragment(s string, b *builder) error {
+	o := &osisReader{b: b, fragment: true}
+	return o.decode(strings.NewReader("<entry>" + s + "</entry>"))
+}
+
+func (o *osisReader) decode(r io.Reader) error {
 	d := xml.NewDecoder(r)
 	d.Strict = false
 	d.Entity = xml.HTMLEntity
 	for {
 		tok, err := d.Token()
 		if errors.Is(err, io.EOF) {
-			break
+			return nil
 		}
 		if err != nil {
 			line, _ := d.InputPos()
-			return o.doc, fmt.Errorf("osis: line %d: %w", line, err)
+			return fmt.Errorf("osis: line %d: %w", line, err)
 		}
 		switch t := tok.(type) {
 		case xml.StartElement:
@@ -56,9 +74,6 @@ func readOSIS(r io.Reader, b *builder) (Doc, error) {
 			o.chars(string(t))
 		}
 	}
-	b.endVerse()
-	b.closeAll()
-	return o.doc, nil
 }
 
 func get(t xml.StartElement, name string) string {
@@ -85,6 +100,9 @@ func (o *osisReader) start(t xml.StartElement) string {
 	case "osisText":
 		o.doc.Language = get(t, "lang")
 	case "verse":
+		if o.fragment {
+			return ""
+		}
 		return o.verse(t)
 	case "w":
 		return o.word(t)
@@ -117,8 +135,11 @@ func (o *osisReader) start(t xml.StartElement) string {
 	case "lb":
 		b.addText(" ")
 	case "div":
-		if get(t, "type") == "book" {
+		if get(t, "type") == "book" && !o.fragment {
 			return "div"
+		}
+		if typ := get(t, "type"); (typ == "paragraph" || typ == "x-p") && get(t, "eID") == "" {
+			b.paragraph()
 		}
 	default:
 		if !osisPass[name] {

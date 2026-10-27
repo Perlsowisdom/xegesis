@@ -118,13 +118,27 @@ type InstallOptions struct {
 	Replace       bool
 }
 
-// Install imports source files into a new module and returns its description and any warnings.
+// Install imports source files, a folder of them or a .zip archive of them into a new module and
+// returns its description and any warnings.
 func (l *Library) Install(ctx context.Context, o InstallOptions) (Meta, []string, error) {
+	if strings.EqualFold(filepath.Ext(o.Path), ".zip") {
+		dir, err := unzipTemp(o.Path)
+		if err != nil {
+			return Meta{}, nil, fmt.Errorf("bible: %s: %w", filepath.Base(o.Path), err)
+		}
+		defer os.RemoveAll(dir)
+		o.Path = contentDir(dir)
+	}
 	b := newBuilder()
 	hints, err := importPath(o.Path, o.Format, b)
 	if err != nil {
 		return Meta{}, nil, err
 	}
+	return l.finish(ctx, o, hints, b)
+}
+
+// finish turns what an importer collected into an installed module.
+func (l *Library) finish(ctx context.Context, o InstallOptions, hints Doc, b *builder) (Meta, []string, error) {
 	d := b.doc()
 	if len(d.Verses) == 0 {
 		return Meta{}, d.Warnings, fmt.Errorf("bible: no verses found in %s", o.Path)
