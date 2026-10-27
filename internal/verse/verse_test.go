@@ -102,6 +102,11 @@ func TestConvert(t *testing.T) {
 			t.Errorf("%s to English = %s, want %s", c.heb, back, c.eng)
 		}
 	}
+	joel2, _ := Parse("Joel 2")
+	r, _ := ConvertRange(joel2, English, Hebrew)
+	if r.String() != "Joel 2:1-3:5" {
+		t.Errorf("English Joel 2 in Hebrew = %s, want Joel 2:1-3:5", r)
+	}
 	if _, err := Convert(45008028, English, "latin"); err == nil {
 		t.Error("unknown system should fail")
 	}

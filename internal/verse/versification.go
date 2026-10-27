@@ -71,7 +71,25 @@ func ConvertRange(r Range, from, to System) (Range, error) {
 		return Range{}, err
 	}
 	e, err := Convert(r.End, from, to)
-	return Range{s, e}, err
+	if err != nil || r.End.Verse() != EndOfChapter {
+		return Range{s, e}, err
+	}
+	// A range to the end of a chapter also covers verses of that chapter that move into the next one,
+	// such as English Joel 2:28-32, which is Hebrew Joel 3:1-5.
+	shifts, reverse := englishToHebrew, from == Hebrew
+	for _, sh := range shifts {
+		ch, last := sh.chapter, sh.to
+		if reverse {
+			ch, last = sh.toChapter, sh.toFrom+(sh.to-sh.from)
+		}
+		if sh.book != r.End.Book() || ch != r.End.Chapter() {
+			continue
+		}
+		if moved := apply(ID(sh.book*1_000_000+ch*1_000+last), shifts, reverse); moved > e {
+			e = moved
+		}
+	}
+	return Range{s, e}, nil
 }
 
 func apply(id ID, shifts []shift, reverse bool) ID {
