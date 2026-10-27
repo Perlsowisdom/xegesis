@@ -11,4 +11,4 @@ Each decision is final until a later record replaces it.
 | [0005](0005-pluggable-sync.md) | Sync is a pluggable add-on, not the storage layer | Accepted |
 | [0006](0006-per-folder-indexes.md) | One search index per library folder, merged at query time | Accepted |
 | [0007](0007-clean-room.md) | Clean-room design from public sources | Accepted |
-| [0008: Mobile apps reuse the Go core and the web interface](0008-mobile.md) | Clean-room design from public sources | Accepted |
+| [0008](0008-mobile.md) | Mobile apps reuse the Go core and the web interface | Accepted |
