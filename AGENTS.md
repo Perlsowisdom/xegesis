@@ -41,6 +41,8 @@ Xegesis is designed from public sources and open data only.
   `internal/store`.
 - **Verse IDs** are integers `BBCCCVVV` (`internal/verse`). Never store references as free text.
 - **Secrets** (API keys) go in the operating system keychain, never in a database or config file.
+- **Privacy** (ADR 0009): no telemetry or analytics. Only the features listed in ADR 0009 may use the
+  network, each off until the user enables it. Crash reports are sent only after the user reviews them.
 - Decisions are recorded in `docs/adr/`. Changing one needs a new ADR.
 
 ## Layout
