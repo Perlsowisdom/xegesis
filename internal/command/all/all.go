@@ -5,6 +5,7 @@ package all
 import (
 	"path/filepath"
 
+	"github.com/Perlsowisdom/xegesis/internal/backup"
 	"github.com/Perlsowisdom/xegesis/internal/bible"
 	"github.com/Perlsowisdom/xegesis/internal/command"
 	"github.com/Perlsowisdom/xegesis/internal/command/core"
@@ -25,5 +26,6 @@ func Registry(dataDir string, s secrets.Store) *command.Registry {
 	apibible.Register(r, s)
 	dbl.Register(r, s)
 	search.Register(r, dataDir)
+	backup.Register(r, dataDir)
 	return r
 }
