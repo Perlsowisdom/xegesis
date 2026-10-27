@@ -59,6 +59,8 @@ func main() {
 		Title:       "Xegesis",
 		Width:       1200,
 		Height:      800,
+		MinWidth:    420,
+		MinHeight:   360,
 		AssetServer: &assetserver.Options{Assets: frontend.Dist},
 		OnStartup:   app.startup,
 		Bind:        []any{app},
