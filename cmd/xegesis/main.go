@@ -21,7 +21,9 @@ import (
 	"strings"
 
 	"github.com/Perlsowisdom/xegesis/internal/command"
+	"github.com/Perlsowisdom/xegesis/internal/command/all"
 	"github.com/Perlsowisdom/xegesis/internal/command/core"
+	"github.com/Perlsowisdom/xegesis/internal/integrations/secrets"
 	"github.com/Perlsowisdom/xegesis/internal/mcp"
 	"github.com/Perlsowisdom/xegesis/internal/store"
 )
@@ -50,8 +52,7 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	reg := command.NewRegistry()
-	core.Register(reg)
+	reg := all.Registry(filepath.Dir(*lib), secrets.OS())
 	out := json.NewEncoder(stdout)
 	out.SetIndent("", "  ")
 

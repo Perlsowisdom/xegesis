@@ -15,7 +15,8 @@ import (
 
 	"github.com/Perlsowisdom/xegesis/frontend"
 	"github.com/Perlsowisdom/xegesis/internal/command"
-	"github.com/Perlsowisdom/xegesis/internal/command/core"
+	"github.com/Perlsowisdom/xegesis/internal/command/all"
+	"github.com/Perlsowisdom/xegesis/internal/integrations/secrets"
 	"github.com/Perlsowisdom/xegesis/internal/store"
 )
 
@@ -51,8 +52,7 @@ func main() {
 		log.Fatal(err)
 	}
 	defer s.Close()
-	reg := command.NewRegistry()
-	core.Register(reg)
+	reg := all.Registry(filepath.Join(dir, "Xegesis"), secrets.OS())
 	app := &App{reg: reg, env: &command.Env{Store: s}}
 
 	err = wails.Run(&options.App{
