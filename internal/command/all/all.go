@@ -12,10 +12,11 @@ import (
 	"github.com/Perlsowisdom/xegesis/internal/integrations/dbl"
 	"github.com/Perlsowisdom/xegesis/internal/integrations/secrets"
 	"github.com/Perlsowisdom/xegesis/internal/library"
+	"github.com/Perlsowisdom/xegesis/internal/search"
 )
 
 // Registry returns every command. dataDir is the folder holding library.db; Bible modules live in
-// its modules subfolder.
+// its modules subfolder and search indexes in its index subfolder.
 func Registry(dataDir string, s secrets.Store) *command.Registry {
 	r := command.NewRegistry()
 	core.Register(r)
@@ -23,5 +24,6 @@ func Registry(dataDir string, s secrets.Store) *command.Registry {
 	bible.Register(r, filepath.Join(dataDir, "modules"))
 	apibible.Register(r, s)
 	dbl.Register(r, s)
+	search.Register(r, dataDir)
 	return r
 }
