@@ -1,0 +1,8 @@
+/xegesis
+/xegesis.exe
+/xegesis-desktop
+/xegesis-desktop.exe
+/build/bin/
+*.db
+*.db-wal
+*.db-shm
