@@ -8,7 +8,7 @@ const TYPES: [string, string][] = [
   ["reading_plan", "Reading plans"], ["document", "Documents and sermons"],
 ];
 
-interface BackupInfo { path: string; bytes: number; scheduled?: boolean; time?: { $date: string } }
+interface BackupInfo { path: string; bytes: number; scheduled?: boolean; time?: string }
 interface Schedule { every: string; keep: number; dir?: string }
 
 function counts(c: Record<string, number> | undefined): string {
@@ -23,7 +23,8 @@ function size(bytes: number): string {
 export function dataSection(): { el: HTMLElement; show: () => void } {
   const msg = new Message();
   const boxes = TYPES.map(([value, label]) => {
-    const box = h("input", { type: "checkbox", value, checked: "" }) as HTMLInputElement;
+    const box = h("input", { type: "checkbox", value }) as HTMLInputElement;
+    box.checked = true;
     return h("label", { class: "check" }, box, " ", label);
   });
   const history = h("input", { type: "checkbox" }) as HTMLInputElement;
@@ -80,7 +81,7 @@ export function dataSection(): { el: HTMLElement; show: () => void } {
     if (!copies) return;
     clear(list, ...(copies.length ? copies.slice(0, 10).map((c) => h("li", {},
       h("code", {}, c.path), " ", h("span", { class: "hint" },
-        `${size(c.bytes)}${c.time ? ", " + new Date(c.time.$date).toLocaleString() : ""}${c.scheduled ? ", scheduled" : ""}`)))
+        `${size(c.bytes)}${c.time ? ", " + new Date(c.time).toLocaleString() : ""}${c.scheduled ? ", scheduled" : ""}`)))
       : [h("li", { class: "hint" }, "No backups yet.")]));
   }
 
