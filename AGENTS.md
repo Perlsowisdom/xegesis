@@ -13,8 +13,10 @@ Xegesis is designed from public sources and open data only.
 
 - Do not use, run, study, screenshot or copy the Logos Bible Software app, its files, file formats,
   databases, network traffic or content. Do not decompile any commercial Bible software.
-- Design from: the Phase 1 functional survey, open-source projects listed there (AndBible, BibleTime,
-  STEPBible, SWORD, Calibre), published specifications, and open datasets.
+- Design from: the Phase 1 functional survey, open-source projects (AndBible, BibleTime, Xiphos,
+  Ezra Bible App, STEPBible, the CrossWire SWORD Project, Calibre, KOReader), published specifications
+  such as CrossWire's SWORD module documentation, and open datasets. Take ideas and workflows from
+  these projects, never their code: most are GPL, and translating GPL code into Go is still copying it.
 - Describe features in generic terms. Do not reuse another product's screen names, layouts or wording.
 - When you add a feature, note its source (Phase 1 row, specification or open project) in the pull request.
 - The only code that may read Logos data is the separate own-data importer (task T22), which reads the
