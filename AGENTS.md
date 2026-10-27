@@ -65,6 +65,8 @@ Xegesis is designed from public sources and open data only.
 - Work only in the directories your brief assigns. Changes to shared contracts (`internal/command`,
   `internal/store` schema, `internal/verse`) go through the coordinator.
 - Every change has tests. Run `go vet ./...` and `go test ./...` before reporting done.
+- Code that starts goroutines has a leak test (`go.uber.org/goleak`), and every database row set,
+  file and connection is closed. Xegesis also runs on phones (ADR 0008), so watch memory.
 - Format with `gofmt`. Keep functions small and comments sparse and useful.
 - Commit on your own branch; never push to `main` or rewrite history.
 - End commit messages with the attribution line you are given.
