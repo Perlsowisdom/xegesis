@@ -6,7 +6,8 @@ Status: foundation (milestone M0). The Phase 1 functional survey and the Phase 2
 
 ## Building
 
-Needs Go (see `go.mod`). On Linux, also `libgtk-3-dev` and `libwebkit2gtk-4.1-dev`.
+Needs Go (see `go.mod`). On Linux, also `libgtk-3-dev` and `libwebkit2gtk-4.1-dev`. On macOS, build the
+desktop app with `CGO_LDFLAGS="-framework UniformTypeIdentifiers"`.
 
 ```sh
 go test ./...

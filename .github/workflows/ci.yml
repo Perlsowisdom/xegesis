@@ -32,4 +32,5 @@ jobs:
         run: |
           tags=desktop,production
           if [ "$RUNNER_OS" = Linux ]; then tags=$tags,webkit2_41; fi
+          if [ "$RUNNER_OS" = macOS ]; then export CGO_LDFLAGS="-framework UniformTypeIdentifiers"; fi
           go build -tags "$tags" -o xegesis-desktop ./app
