@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -22,12 +23,41 @@ import (
 
 // App is bound to the interface. The interface reaches every feature through Commands and Run.
 type App struct {
-	ctx context.Context
-	reg *command.Registry
-	env *command.Env
+	ctx  context.Context
+	reg  *command.Registry
+	env  *command.Env
+	stop context.CancelFunc
+	done chan struct{}
 }
 
-func (a *App) startup(ctx context.Context) { a.ctx = ctx }
+func (a *App) startup(ctx context.Context) {
+	a.ctx = ctx
+	bg, stop := context.WithCancel(context.Background())
+	a.stop, a.done = stop, make(chan struct{})
+	go a.autoBackup(bg)
+}
+
+func (a *App) shutdown(context.Context) {
+	a.stop()
+	<-a.done
+}
+
+// autoBackup runs the scheduled backup at start-up and then hourly; the command decides whether one is due.
+func (a *App) autoBackup(ctx context.Context) {
+	defer close(a.done)
+	tick := time.NewTicker(time.Hour)
+	defer tick.Stop()
+	for {
+		if _, err := a.reg.Run(ctx, a.env, "backup.auto", nil); err != nil && ctx.Err() == nil {
+			log.Printf("automatic backup: %v", err)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+		}
+	}
+}
 
 // Commands describes every command.
 func (a *App) Commands() []command.Description { return a.reg.List() }
@@ -63,6 +93,7 @@ func main() {
 		MinHeight:   360,
 		AssetServer: &assetserver.Options{Assets: frontend.Dist},
 		OnStartup:   app.startup,
+		OnShutdown:  app.shutdown,
 		Bind:        []any{app},
 	})
 	if err != nil {

@@ -1,7 +1,9 @@
-// Settings: the API.Bible key (kept in the system keychain and never shown back) and app details.
+// Settings: the API.Bible key (kept in the system keychain and never shown back), your data and backups,
+// and app details.
 
 import { Message, run } from "../api";
 import { badge, button, clear, field, h } from "../dom";
+import { dataSection } from "./data";
 
 interface KeyStatus {
   key_set: boolean;
@@ -16,6 +18,7 @@ export function settingsView() {
   const status = h("div", { "aria-live": "polite" });
   const key = h("input", { type: "password", autocomplete: "off", spellcheck: "false", placeholder: "Paste your key" });
   const info = h("dl", { class: "info" });
+  const data = dataSection();
 
   const form = h("form", { class: "card", "aria-labelledby": "apibible-h" },
     h("h2", { id: "apibible-h" }, "API.Bible"),
@@ -57,10 +60,12 @@ export function settingsView() {
   const el = h("div", { class: "view" },
     h("h1", {}, "Settings"),
     form,
+    data.el,
     h("section", { class: "card", "aria-labelledby": "about-h" }, h("h2", { id: "about-h" }, "About"), info));
 
   async function show() {
     check(false);
+    data.show();
     const a = await msg.attempt(() => run<{ version: string; schema_version: number; device: string }>("app.info"));
     if (a) clear(info, h("dt", {}, "Version"), h("dd", {}, a.version), h("dt", {}, "Library schema"), h("dd", {}, String(a.schema_version)),
       h("dt", {}, "This device"), h("dd", {}, h("code", {}, a.device)),
