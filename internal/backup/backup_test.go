@@ -344,7 +344,8 @@ func TestBackupOfOpenDatabase(t *testing.T) {
 	close(stop)
 	wg.Wait()
 
-	if last.Bytes == 0 || last.SchemaVersion != 1 {
+	want, _ := s.SchemaVersion()
+	if last.Bytes == 0 || last.SchemaVersion != want {
 		t.Fatalf("%+v", last)
 	}
 	copyDB, err := store.Open(last.Path)
