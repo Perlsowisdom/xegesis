@@ -2,7 +2,31 @@
 
 A free, open-source Bible study app for Windows, macOS and Linux: fast, offline-first, and drivable by both people and AI agents.
 
-Status: planning. The Phase 1 functional survey and the Phase 2 implementation plan are kept in the project's planning document.
+Status: foundation (milestone M0). The Phase 1 functional survey and the Phase 2 implementation plan are kept in the project's planning document.
+
+## Building
+
+Needs Go (see `go.mod`). On Linux, also `libgtk-3-dev` and `libwebkit2gtk-4.1-dev`.
+
+```sh
+go test ./...
+go build ./cmd/xegesis                                       # CLI
+go build -tags desktop,production -o xegesis-desktop ./app   # desktop app (add ,webkit2_41 on Linux)
+```
+
+## Using the CLI
+
+Everything Xegesis does is a command. The CLI, the desktop app and the JSON channel all run the same ones.
+
+```sh
+xegesis commands                                    # list commands with their parameters
+xegesis run verse.parse '{"ref":"Rom 8:28-30"}'
+xegesis run note.create '{"body":"All things work together","ref":"Rom 8:28"}'
+xegesis run history.list '{"object_type":"notes","object_id":"<id>"}'
+xegesis serve                                       # one JSON request per line on stdin
+```
+
+The library lives in your user config folder (`Xegesis/library.db`); set `XEGESIS_LIBRARY` or `-library` to use another.
 
 ## Licence
 
