@@ -3,6 +3,8 @@ package bible
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -41,7 +43,7 @@ func (c cmds) module(id string) (*Module, error) {
 func (c cmds) modules(context.Context, *command.Env, struct{}) ([]Meta, error) { return c.l.List() }
 
 type InstallParams struct {
-	Path          string `json:"path" required:"true" desc:"An OSIS, USFM or USX file, or a folder of them"`
+	Path          string `json:"path" required:"true" desc:"An OSIS, USFM or USX file, a folder of them, or a .zip archive of them"`
 	Format        string `json:"format,omitempty" enum:"osis,usfm,usx" desc:"Source format; detected from the file when omitted"`
 	ID            string `json:"id,omitempty" desc:"Module ID (lowercase letters, digits, - and _); made from the abbreviation when omitted"`
 	Name          string `json:"name,omitempty" desc:"Full name; taken from the source when omitted"`
@@ -71,6 +73,14 @@ func (c cmds) install(ctx context.Context, _ *command.Env, p InstallParams) (Ins
 		return InstallResult{}, command.Errorf("bad_params", "%v", err)
 	}
 	lic.RightsHolder, lic.URL, lic.Attribution, lic.Confirmed = p.RightsHolder, p.LicenceURL, p.Attribution, true
+	if strings.EqualFold(filepath.Ext(p.Path), ".zip") {
+		dir, err := unzipTemp(p.Path)
+		if err != nil {
+			return InstallResult{}, command.Errorf("bad_params", "%s: %v", p.Path, err)
+		}
+		defer os.RemoveAll(dir)
+		p.Path = contentDir(dir)
+	}
 	m, warnings, err := c.l.Install(ctx, InstallOptions{Path: p.Path, Format: p.Format, ID: p.ID, Name: p.Name,
 		Abbreviation: p.Abbreviation, Language: p.Language, Versification: p.Versification, Source: p.Source,
 		Version: p.Version, Licence: lic, MappingFile: p.MappingFile, Replace: p.Replace})
