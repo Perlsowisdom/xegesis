@@ -1,11 +1,12 @@
-// Reader: a passage box, the Bible text (one Bible or parallel columns) and the notes on that
-// passage side by side.
+// Reader: a passage box, the Bible text (one Bible or parallel columns), an optional library book
+// (views/book.ts) and the notes on that passage side by side.
 
 import { Message, Module, Ref, run } from "../api";
 import { button, clear, h } from "../dom";
 import { Book, Column, Verse, alignColumns, neighbourChapters, verseParts } from "../helpers";
 import { notesPanel } from "../notes";
 import { lastRef, onPassage, setModules, setPassage, state } from "../state";
+import { bookPane } from "./book";
 
 export function readerView() {
   const msg = new Message();
@@ -21,7 +22,8 @@ export function readerView() {
     heading: "Notes on this passage",
     scope: () => (state.parsed ? { ref: state.parsed.osis, display: state.parsed.display } : null),
   });
-  const panes = h("div", { class: "panes" }, h("section", { class: "pane", "aria-label": "Text" }, text), h("aside", { class: "pane" }, notes.el));
+  const book = bookPane((open) => panes.classList.toggle("with-book", open));
+  const panes = h("div", { class: "panes" }, h("section", { class: "pane", "aria-label": "Text" }, text), book.el, h("aside", { class: "pane" }, notes.el));
   let modules: Module[] = [];
   let books: Book[] = [];
   let neighbours: { prev: string | null; next: string | null } = { prev: null, next: null };
@@ -38,7 +40,8 @@ export function readerView() {
     h("h1", {}, "Reader"),
     form,
     h("div", { class: "row wrap" }, picker, h("span", { class: "spacer" }),
-      h("label", { class: "check" }, showNotes, " Notes beside the text"), prev, next),
+      h("label", { class: "check" }, showNotes, " Notes beside the text"),
+      button("Open a book", () => book.choose(), { title: "Read a library book beside the Bible" }), prev, next),
     msg.el, panes);
 
   async function go(ref: string) {

@@ -4,6 +4,8 @@ import { Facet, Folder, Item, ItemSummary, Licence, Message, pick, run } from ".
 import { badge, button, clear, field, h, select } from "../dom";
 import { changedFields, formatTime, pageLabel } from "../helpers";
 import { licenceForm, termsText, typeLabel } from "../licence";
+import { navigate } from "../state";
+import { openBook } from "./book";
 
 const PAGE = 50;
 
@@ -275,6 +277,8 @@ const LABELS: Record<string, string> = {
   series: "Series", series_no: "Number in series", isbn: "ISBN",
 };
 
+const READABLE = new Set(["epub", "pdf", "docx", "html", "md", "txt"]);
+
 function itemDetail(it: Item, folders: Folder[], close: () => void, saved: (it: Item) => void) {
   const msg = new Message();
   const inputs: Record<string, HTMLInputElement> = {};
@@ -340,5 +344,9 @@ function itemDetail(it: Item, folders: Folder[], close: () => void, saved: (it: 
     h("ul", { class: "files" }, (it.files ?? []).map((f) => h("li", {},
       h("code", {}, f.rel_path || f.path), " ", badge(f.format || "file"), " ",
       f.online ? badge("Online", "ok") : badge("Offline", "warn"),
-      f.folder_id && folderName(f.folder_id) ? h("small", { class: "hint" }, ` in ${folderName(f.folder_id)}`) : null))));
+      f.folder_id && folderName(f.folder_id) ? h("small", { class: "hint" }, ` in ${folderName(f.folder_id)}`) : null,
+      f.online && READABLE.has(f.format) ? [" ", button("Read", () => {
+        navigate("reader");
+        openBook({ itemId: it.id, fileId: f.id });
+      }, { "aria-label": `Read ${f.rel_path || it.title}` })] : null))));
 }

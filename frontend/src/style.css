@@ -162,9 +162,86 @@ dl.info dd { margin: 0; }
 .console pre { white-space: pre-wrap; word-break: break-word; border: 1px solid var(--line); border-radius: 6px; padding: 10px; background: var(--panel); }
 .console pre.out:empty { display: none; }
 
+/* Book pane */
+.panes.with-book { grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) minmax(220px, .8fr); }
+.panes.with-book.single { grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); }
+@media (max-width: 1200px) {
+  .panes.with-book { grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); }
+  .panes.with-book > aside { grid-column: 1 / -1; }
+}
+.book-pane { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; min-width: 0; }
+.book-pane .book-title { margin: 4px 0 0; }
+.book-pane .book-title:focus { outline: none; }
+.book-pane > .hint { margin-bottom: 4px; }
+.book-nav { margin: 4px 0; }
+.book-nav .book-toc { max-width: 100%; flex: 1 1 10rem; min-width: 0; }
+.book-where { margin: 0; white-space: nowrap; }
+.book-settings { margin: 4px 0; font-size: .9rem; }
+.book-settings summary { cursor: pointer; color: var(--muted); }
+.book-settings .row { margin-top: 6px; align-items: flex-end; }
+.book-settings .label { font-size: .85rem; font-weight: 600; }
+.book-actions { margin: 4px 0; font-size: .9rem; }
+.book-actions .hint { margin: 0; }
+.book-pane select { width: auto; max-width: 100%; }
+.book-picker { background: var(--bg); }
+.book-body { --book-bg: var(--bg); --book-fg: var(--fg); --book-link: var(--accent);
+  background: var(--book-bg); color: var(--book-fg); border: 1px solid var(--line); border-radius: 8px;
+  max-height: calc(100vh - 260px); min-height: 240px; overflow: auto; padding: 12px 18px; }
+.book-body[data-theme="light"] { --book-bg: #fffefb; --book-fg: #1f1d1a; --book-link: #7a4b1e; }
+.book-body[data-theme="sepia"] { --book-bg: #f4ecd8; --book-fg: #3b2f20; --book-link: #7a4b1e; }
+.book-body[data-theme="dark"] { --book-bg: #161514; --book-fg: #e6e1d8; --book-link: #e0a868; }
+.book-body:focus-visible { outline: 2px solid var(--focus); }
+.book-text { font-family: var(--reading); max-width: 42rem; margin: 0 auto; overflow-wrap: break-word; }
+.book-text[data-font="sans"] { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+.book-text[data-font="mono"] { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; }
+.book-text a { color: var(--book-link); }
+.book-text a.external { text-decoration: underline dotted; cursor: help; }
+.book-text a.vref { text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 2px; }
+.book-text img { max-width: 100%; height: auto; }
+.book-text pre { white-space: pre-wrap; }
+.book-text table { border-collapse: collapse; max-width: 100%; }
+.book-text td, .book-text th { border: 1px solid var(--line); padding: 2px 6px; vertical-align: top; }
+.book-text .flash { background: var(--mark); transition: background 1s; }
+mark.hl { color: inherit; border-radius: 2px; }
+.hl-yellow { background: rgb(250 204 21 / .45); }
+.hl-green { background: rgb(74 222 128 / .4); }
+.hl-blue { background: rgb(96 165 250 / .4); }
+.hl-pink { background: rgb(244 114 182 / .4); }
+.hl-purple { background: rgb(167 139 250 / .45); }
+.hl-underline { background: none; text-decoration: underline 2px var(--accent); }
+.hl-note { background: none; border-bottom: 2px dotted var(--accent); }
+.swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; border: 1px solid var(--line); flex: none; }
+.book-marks { list-style: none; padding: 0; margin: 6px 0; }
+.book-marks li { border-top: 1px solid var(--line); padding: 4px 0; }
+.book-marks-box summary { cursor: pointer; font-size: .9rem; margin-top: 8px; }
+.pdf-box { display: flex; justify-content: center; }
+.pdf-page { position: relative; background: #fff; box-shadow: 0 1px 4px rgb(0 0 0 / .25); }
+.pdf-page canvas { display: block; }
+.pdf-marks { position: absolute; inset: 0; pointer-events: none; }
+.pdf-hl { position: absolute; mix-blend-mode: multiply; }
+.pdf-hl.hl-underline { border-bottom: 2px solid var(--accent); }
+.pdf-hl.hl-note { border-bottom: 2px dotted var(--accent); }
+/* The selectable text over a PDF page: transparent glyphs placed by pdf.js's TextLayer. */
+.textLayer { position: absolute; inset: 0; overflow: clip; line-height: 1; text-align: initial; opacity: 1;
+  text-size-adjust: none; forced-color-adjust: none; transform-origin: 0 0; z-index: 0;
+  --min-font-size: 1; --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size)); --min-font-size-inv: calc(1 / var(--min-font-size)); }
+.textLayer :is(span, br) { color: transparent; position: absolute; white-space: pre; cursor: text; transform-origin: 0% 0%; }
+.textLayer > :not(.markedContent), .textLayer .markedContent span:not(.markedContent) { z-index: 1; --font-height: 0;
+  font-size: calc(var(--text-scale-factor) * var(--font-height)); --scale-x: 1; --rotate: 0deg;
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv)); }
+.textLayer .markedContent { display: contents; }
+.textLayer ::selection { background: rgb(0 0 255 / .25); }
+.textLayer br::selection { background: transparent; }
+.textLayer .endOfContent { display: block; position: absolute; inset: 100% 0 0; z-index: 0; cursor: default; user-select: none; }
+
+/* Tabs */
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 8px; flex-wrap: wrap; }
+.tabs [role="tab"] { border: 1px solid transparent; border-bottom: 0; border-radius: 6px 6px 0 0; background: none; margin-bottom: -1px; }
+.tabs [role="tab"][aria-selected="true"] { background: var(--bg); border-color: var(--line); font-weight: 600; }
+
 /* Small windows */
 @media (max-width: 820px) {
-  .panes, .panes.commands { grid-template-columns: minmax(0, 1fr); }
+  .panes, .panes.commands, .panes.with-book, .panes.with-book.single { grid-template-columns: minmax(0, 1fr); }
   .pane.detail { position: static; max-height: none; }
 }
 @media (max-width: 640px) {
