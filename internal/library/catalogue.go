@@ -11,9 +11,11 @@ import (
 )
 
 type Facet struct {
-	Facet  string `json:"facet" required:"true" desc:"e.g. subject, type, tradition"`
-	Value  string `json:"value" required:"true"`
-	Origin string `json:"origin,omitempty" enum:"metadata,bisac,user"`
+	Facet      string  `json:"facet" required:"true" desc:"e.g. subject, type, tradition"`
+	Value      string  `json:"value" required:"true"`
+	Origin     string  `json:"origin,omitempty" enum:"metadata,bisac,user"`
+	Reason     string  `json:"reason,omitempty" desc:"For a value set automatically, why, in plain words"`
+	Confidence float64 `json:"confidence,omitempty" desc:"For a value set automatically, how sure the guess is, 0 to 1"`
 }
 
 type ItemsParams struct {
@@ -26,23 +28,32 @@ type ItemsParams struct {
 	NeedsLicence bool   `json:"needs_licence,omitempty" desc:"Only items with no licence recorded yet (older libraries)"`
 	AddedSince   int64  `json:"added_since,omitempty" desc:"Only items added at or after this time (Unix milliseconds), e.g. the since of library.add"`
 	LicenceType  string `json:"licence_type,omitempty" desc:"Only items with this licence type"`
+	Type         string `json:"type,omitempty" desc:"Only books of this type (see facet.vocabulary), or none for books with no type yet"`
+	Tradition    string `json:"tradition,omitempty" desc:"Only books in this tradition, or none for books with no tradition yet"`
+	SetBy        string `json:"set_by,omitempty" enum:"auto,user" desc:"Only books whose type or tradition was set automatically (auto) or by the user"`
 	Limit        int    `json:"limit,omitempty" desc:"Most items to return (default 100, at most 1000)"`
 	Offset       int    `json:"offset,omitempty"`
 }
 
 type ItemSummary struct {
-	ID            string           `json:"id"`
-	Kind          string           `json:"kind"`
-	Title         string           `json:"title"`
-	Subtitle      string           `json:"subtitle,omitempty"`
-	Year          int              `json:"year,omitempty"`
-	Language      string           `json:"language,omitempty"`
-	Authors       []string         `json:"authors"`
-	Status        string           `json:"status" enum:"online,offline,missing" desc:"online: a file can be opened now; offline: its folder's drive is not mounted; missing: its files are gone"`
-	Licence       string           `json:"licence" desc:"Licence type"`
-	LicenceName   string           `json:"licence_name" desc:"The licence in plain words: Public domain, Free to share, Personal copy or My own work"`
-	LicenceOrigin string           `json:"licence_origin" enum:"file,default,user" desc:"file: from the book's own details; default: none stated; user: set by the user"`
-	Suggested     *licence.Licence `json:"suggested_licence,omitempty" desc:"When no licence is recorded yet, the one the item will get"`
+	ID              string           `json:"id"`
+	Kind            string           `json:"kind"`
+	Title           string           `json:"title"`
+	Subtitle        string           `json:"subtitle,omitempty"`
+	Year            int              `json:"year,omitempty"`
+	Language        string           `json:"language,omitempty"`
+	Authors         []string         `json:"authors"`
+	Status          string           `json:"status" enum:"online,offline,missing" desc:"online: a file can be opened now; offline: its folder's drive is not mounted; missing: its files are gone"`
+	Licence         string           `json:"licence" desc:"Licence type"`
+	LicenceName     string           `json:"licence_name" desc:"The licence in plain words: Public domain, Free to share, Personal copy or My own work"`
+	LicenceOrigin   string           `json:"licence_origin" enum:"file,default,user" desc:"file: from the book's own details; default: none stated; user: set by the user"`
+	Suggested       *licence.Licence `json:"suggested_licence,omitempty" desc:"When no licence is recorded yet, the one the item will get"`
+	Type            string           `json:"type,omitempty" desc:"The book type in plain words, such as Commentary (New Testament)"`
+	TypeBy          string           `json:"type_by,omitempty" enum:"auto,user" desc:"auto: set from the book details; user: chosen by the user"`
+	TypeReason      string           `json:"type_reason,omitempty" desc:"Why the type was set automatically"`
+	Tradition       string           `json:"tradition,omitempty"`
+	TraditionBy     string           `json:"tradition_by,omitempty" enum:"auto,user"`
+	TraditionReason string           `json:"tradition_reason,omitempty" desc:"Why the tradition was set automatically"`
 }
 
 type ItemsResult struct {
@@ -90,6 +101,14 @@ func listItems(ctx context.Context, env *command.Env, p ItemsParams) (ItemsResul
 	if err != nil {
 		return res, err
 	}
+	types, err := currentFacets(ctx, env.Store, facetType, ids)
+	if err != nil {
+		return res, err
+	}
+	trads, err := currentFacets(ctx, env.Store, facetTradition, ids)
+	if err != nil {
+		return res, err
+	}
 	for _, r := range rows {
 		id := str(r["id"])
 		it := ItemSummary{ID: id, Kind: str(r["kind"]), Title: str(r["title"]), Subtitle: str(r["subtitle"]),
@@ -105,6 +124,8 @@ func listItems(ctx context.Context, env *command.Env, p ItemsParams) (ItemsResul
 			it.Licence, it.LicenceOrigin = string(l.Type), l.Origin
 		}
 		it.LicenceName = l.Plain()
+		it.Type, it.TypeBy, it.TypeReason = chosen(types[id])
+		it.Tradition, it.TraditionBy, it.TraditionReason = chosen(trads[id])
 		res.Items = append(res.Items, it)
 	}
 	return res, nil
@@ -147,6 +168,7 @@ func itemsWhere(p ItemsParams) (string, []any) {
 	if p.LicenceType != "" {
 		add("l.type = ?", p.LicenceType)
 	}
+	facetFilter(p, add)
 	return "WHERE " + strings.Join(conds, " AND "), args
 }
 
@@ -335,10 +357,10 @@ func (it *Item) loadPeople(ctx context.Context, s *store.Store) error {
 }
 
 func (it *Item) loadFacets(ctx context.Context, s *store.Store) error {
-	rows, err := queryRows(ctx, s, `SELECT facet, value, origin FROM item_facets WHERE item_id = ?
+	rows, err := queryRows(ctx, s, `SELECT facet, value, origin, reason, confidence FROM item_facets WHERE item_id = ?
 		ORDER BY facet, value`, it.ID)
 	for _, r := range rows {
-		it.Facets = append(it.Facets, Facet{Facet: str(r["facet"]), Value: str(r["value"]), Origin: str(r["origin"])})
+		it.Facets = append(it.Facets, Facet{Facet: str(r["facet"]), Value: str(r["value"]), Origin: str(r["origin"]), Reason: str(r["reason"]), Confidence: flt(r["confidence"])})
 	}
 	return err
 }

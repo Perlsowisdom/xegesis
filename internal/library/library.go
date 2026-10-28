@@ -33,6 +33,12 @@ func Register(r *command.Registry) {
 		command.Define("library.set_search_roots", "Set the extra paths searched for library folders that have moved.", true, setSearchRoots),
 		command.Define("library.scan", "Find new, changed and removed book files in a folder and update the catalogue.", true, scan),
 		command.Define("library.set_licence", "Set the licence of one or many items. A licence set here is never replaced by a scan.", true, setLicence),
+		command.Define("facet.vocabulary", "List the types a book can have and the traditions on your list.", false, vocabulary),
+		command.Define("facet.traditions", "Show or edit your list of traditions: add a name or remove one.", true, editTraditions),
+		command.Define("facet.suggest", "Set the type of books automatically from their title, subjects, series and folder, and their tradition from your rules. "+
+			"Types and traditions you chose yourself are never changed.", true, suggestFacets),
+		command.Define("facet.set", "Set the type, the tradition or both for one or many books. What you set is never replaced by a scan.", true, setFacets),
+		command.Define("facet.rules", "List, add, remove or apply tradition rules: books by an author, publisher or series, or in a folder, belong to a tradition.", true, editRules),
 		command.Define("library.items", "List catalogue items, filtered and paged.", false, listItems),
 		command.Define("library.item", "Show one item with its files, people, facets and licence.", false, getItem),
 		command.Define("library.update_item", "Edit an item's catalogue details, authors and facets.", true, updateItem),
