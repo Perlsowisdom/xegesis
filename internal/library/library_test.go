@@ -98,7 +98,7 @@ func TestCommandsDescribeThemselves(t *testing.T) {
 		}
 		n++
 	}
-	if n != 13 {
+	if n != 16 {
 		t.Errorf("%d commands", n)
 	}
 	d, _ := r.Describe("library.set_licence")
@@ -187,8 +187,11 @@ func TestSuggestedLicences(t *testing.T) {
 		"Licensed CC BY-SA 4.0":                             "creative_commons/CC-BY-SA-4.0",
 		"https://creativecommons.org/licenses/by-nc/3.0/":   "creative_commons/CC-BY-NC-3.0",
 		"https://creativecommons.org/publicdomain/zero/1.0": "creative_commons/CC0-1.0",
-		"© 2020 Some Publisher. All rights reserved.":       "unknown",
-		"": "unknown",
+		"https://creativecommons.org/publicdomain/mark/1.0": "public_domain",
+		"Creative Commons: BY-SA 4.0":                       "creative_commons/CC-BY-SA-4.0",
+		"This text is not in the public domain.":            "personal_purchase",
+		"© 2020 Some Publisher. All rights reserved.":       "personal_purchase",
+		"": "personal_purchase",
 	}
 	for rights, want := range cases {
 		l := suggest(rights)
@@ -196,8 +199,12 @@ func TestSuggestedLicences(t *testing.T) {
 		if l.SPDX != "" {
 			got += "/" + l.SPDX
 		}
-		if got != want || l.Confirmed {
-			t.Errorf("suggest(%q) = %s (confirmed %v), want %s", rights, got, l.Confirmed, want)
+		origin := licence.FromFile
+		if want == "personal_purchase" {
+			origin = licence.ByDefault
+		}
+		if got != want || l.Confirmed || l.Origin != origin {
+			t.Errorf("suggest(%q) = %s (confirmed %v, origin %s), want %s", rights, got, l.Confirmed, l.Origin, want)
 		}
 	}
 }
@@ -207,23 +214,25 @@ func TestScanImportsAndIsIdempotent(t *testing.T) {
 	dir := t.TempDir()
 	books(t, dir)
 	f, res := addAndScan(t, r, env, dir)
-	if res.Added != 6 || len(res.Errors) != 0 || res.NeedsLicenceTotal != 6 || len(res.NeedsLicence) != 6 {
+	if res.Added != 6 || len(res.Errors) != 0 || res.Licensed != 6 {
 		t.Fatalf("first scan: %+v", res)
 	}
 	if _, err := os.Stat(filepath.Join(dir, MarkerName)); err != nil {
 		t.Fatalf("no marker: %v", err)
 	}
-	for _, q := range res.NeedsLicence {
-		want := licence.Unknown
-		if q.Title == "Institutes of the Christian Religion" {
-			want = licence.PublicDomain
+	var all ItemsResult
+	must(t, r, env, "library.items", obj{}, &all)
+	for _, it := range all.Items {
+		want, origin, name := licence.PersonalPurchase, licence.ByDefault, "Personal copy"
+		if it.Title == "Institutes of the Christian Religion" {
+			want, origin, name = licence.PublicDomain, licence.FromFile, "Public domain"
 		}
-		if q.Suggested.Type != want || q.Suggested.Confirmed {
-			t.Errorf("%s: suggested %+v", q.Title, q.Suggested)
+		if it.Licence != string(want) || it.LicenceOrigin != origin || it.LicenceName != name || it.Suggested != nil {
+			t.Errorf("%s: licence %+v", it.Title, it)
 		}
 	}
 	must(t, r, env, "library.scan", obj{"folder_id": f.ID}, &res)
-	if res.Added != 0 || res.Unchanged != 6 || res.Changed+res.Removed+res.Moved != 0 || res.NeedsLicenceTotal != 6 {
+	if res.Added != 0 || res.Unchanged != 6 || res.Changed+res.Removed+res.Moved != 0 || res.Licensed != 0 {
 		t.Fatalf("rescan: %+v", res)
 	}
 	must(t, r, env, "library.scan", obj{"folder_id": f.ID, "verify": true}, &res)
@@ -434,16 +443,8 @@ func TestLicenceFlow(t *testing.T) {
 	r, env := setup(t)
 	dir := t.TempDir()
 	books(t, dir)
-	f, res := addAndScan(t, r, env, dir)
-	var epub, docx string
-	for _, q := range res.NeedsLicence {
-		switch q.Title {
-		case "Institutes of the Christian Religion":
-			epub = q.ItemID
-		case "Sermon on Romans 8":
-			docx = q.ItemID
-		}
-	}
+	f, _ := addAndScan(t, r, env, dir)
+	epub, docx := itemID(t, r, env, "Institutes of the Christian Religion"), itemID(t, r, env, "Sermon on Romans 8")
 	for _, bad := range []obj{
 		{"type": "own_work"},
 		{"item_ids": []string{docx}, "pending": true, "type": "own_work"},
@@ -464,33 +465,71 @@ func TestLicenceFlow(t *testing.T) {
 	var it Item
 	must(t, r, env, "library.item", obj{"id": docx}, &it)
 	if it.Licence == nil || it.Licence.Type != licence.PersonalPurchase || !it.Licence.Confirmed ||
-		it.Licence.Print.Pages != 20 || it.Licence.Export.Percent != 10 || it.Licence.RightsHolder != "Jane Doe" {
+		it.Licence.Print.Pages != 20 || it.Licence.Export.Percent != 10 || it.Licence.RightsHolder != "Jane Doe" ||
+		it.Licence.Origin != licence.ByUser {
 		t.Fatalf("licence: %+v", it.Licence)
 	}
 	var pending ItemsResult
 	must(t, r, env, "library.items", obj{"needs_licence": true}, &pending)
-	if pending.Total != 5 || pending.Items[0].Suggested == nil {
-		t.Fatalf("pending: %+v", pending)
+	if pending.Total != 0 {
+		t.Fatalf("pending after scan: %+v", pending)
+	}
+
+	// Several at once, and the user's choice survives a rescan, even of a changed file.
+	must(t, r, env, "library.set_licence", obj{"item_ids": []string{epub, docx}, "type": "own_work"}, &out)
+	if out.Updated != 2 {
+		t.Fatalf("updated %d", out.Updated)
+	}
+	writeEPUB(t, filepath.Join(dir, "calvin", "institutes.epub"), strings.Replace(epubOPF, "Volume One", "Volume 1", 1))
+	var res ScanResult
+	must(t, r, env, "library.scan", obj{"folder_id": f.ID, "verify": true}, &res)
+	if res.Changed != 1 {
+		t.Fatalf("rescan: %+v", res)
+	}
+	for _, id := range []string{epub, docx} {
+		must(t, r, env, "library.item", obj{"id": id}, &it)
+		if it.Licence.Type != licence.OwnWork || it.Licence.Origin != licence.ByUser || it.LicenceName != "My own work" {
+			t.Fatalf("after rescan: %+v", it.Licence)
+		}
+	}
+	var own ItemsResult
+	must(t, r, env, "library.items", obj{"licence_type": "own_work"}, &own)
+	if own.Total != 2 {
+		t.Fatalf("own work filter: %d", own.Total)
+	}
+
+	// Items from before licences were automatic get theirs at the next scan.
+	var lid string
+	env.Store.QueryRow(context.Background(), `SELECT id FROM licences WHERE item_id = ?`, epub).Scan(&lid)
+	env.Store.Write(context.Background(), "test", func(tx *store.Tx) error { return tx.Delete("licences", store.ByID(lid)) })
+	must(t, r, env, "library.items", obj{"needs_licence": true}, &pending)
+	if pending.Total != 1 || pending.Items[0].Licence != "public_domain" || pending.Items[0].LicenceOrigin != licence.FromFile {
+		t.Fatalf("legacy item: %+v", pending)
+	}
+	must(t, r, env, "library.scan", obj{"folder_id": f.ID}, &res)
+	if res.Licensed != 1 {
+		t.Fatalf("filled %d", res.Licensed)
 	}
 	must(t, r, env, "library.set_licence", obj{"pending": true, "folder_id": f.ID, "use_suggested": true}, &out)
-	if out.Updated != 5 {
+	if out.Updated != 0 {
 		t.Fatalf("bulk updated %d", out.Updated)
 	}
-	must(t, r, env, "library.item", obj{"id": epub}, &it)
-	if it.Licence == nil || it.Licence.Type != licence.PublicDomain || !it.Licence.Confirmed || it.Suggested != nil {
-		t.Fatalf("epub licence: %+v", it.Licence)
-	}
-	must(t, r, env, "library.items", obj{"needs_licence": true}, &pending)
-	if pending.Total != 0 {
-		t.Fatalf("still pending: %d", pending.Total)
-	}
 	must(t, r, env, "library.set_licence", obj{"item_ids": []string{epub}, "type": "own_work"}, &out)
-	var lid string
 	env.Store.QueryRow(context.Background(), `SELECT id FROM licences WHERE item_id = ?`, epub).Scan(&lid)
 	h, _ := env.Store.History(context.Background(), "licences", lid)
 	if len(h) < 2 || h[0].Op != "create" || h[len(h)-1].Command != "library.set_licence" {
 		t.Fatalf("licence history: %+v", h)
 	}
+}
+
+func itemID(t *testing.T, r *command.Registry, env *command.Env, title string) string {
+	t.Helper()
+	var res ItemsResult
+	must(t, r, env, "library.items", obj{"text": title}, &res)
+	if len(res.Items) != 1 {
+		t.Fatalf("items titled %q: %+v", title, res.Items)
+	}
+	return res.Items[0].ID
 }
 
 func TestItemQueriesAndUpdates(t *testing.T) {
@@ -573,8 +612,8 @@ func TestScanManyFiles(t *testing.T) {
 			fmt.Sprintf("Title: Book %d\nAuthor: Author %d\n", i, i%50))
 	}
 	f, res := addAndScan(t, r, env, dir)
-	if res.Added != n || res.NeedsLicenceTotal != n || len(res.NeedsLicence) != maxQuestions {
-		t.Fatalf("scan: added %d, pending %d, questions %d", res.Added, res.NeedsLicenceTotal, len(res.NeedsLicence))
+	if res.Added != n || res.Licensed != n {
+		t.Fatalf("scan: added %d, licensed %d", res.Added, res.Licensed)
 	}
 	var people int
 	env.Store.QueryRow(context.Background(), `SELECT COUNT(*) FROM people`).Scan(&people)
@@ -585,8 +624,9 @@ func TestScanManyFiles(t *testing.T) {
 	if res.Unchanged != n {
 		t.Fatalf("rescan: %+v", res.Unchanged)
 	}
+	ids, _ := queryStrings(context.Background(), env.Store, `SELECT id FROM items`)
 	var out SetLicenceResult
-	must(t, r, env, "library.set_licence", obj{"pending": true, "type": "personal_purchase"}, &out)
+	must(t, r, env, "library.set_licence", obj{"item_ids": ids, "type": "public_domain"}, &out)
 	if out.Updated != n {
 		t.Fatalf("bulk licence: %d", out.Updated)
 	}

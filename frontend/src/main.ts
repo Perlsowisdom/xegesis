@@ -1,7 +1,7 @@
 // The interface shell: sidebar navigation, sections and keyboard shortcuts. Every action in the
 // sections calls a registered command (api.ts); the shell itself only switches views.
 
-import { bound } from "./api";
+import { bound, onEvent } from "./api";
 import { button, h } from "./dom";
 import { notesPanel } from "./notes";
 import { setNavigator } from "./state";
@@ -16,6 +16,8 @@ interface View {
   el: HTMLElement;
   show(): void | Promise<void>;
   focus?(): void;
+  drop?(paths: string[]): void;
+  changed?(): void;
 }
 
 function notesView(): View {
@@ -37,7 +39,7 @@ const views = new Map<string, View>();
 const main = h("main", { id: "main", tabindex: "-1" });
 const links = new Map<string, HTMLAnchorElement>();
 
-function show(id: string, focus = false) {
+function view(id: string): View {
   const s = sections.find((x) => x.id === id) ?? sections[0];
   let v = views.get(s.id);
   if (!v) {
@@ -45,6 +47,12 @@ function show(id: string, focus = false) {
     views.set(s.id, v);
     main.append(v.el);
   }
+  return v;
+}
+
+function show(id: string, focus = false) {
+  const s = sections.find((x) => x.id === id) ?? sections[0];
+  const v = view(s.id);
   for (const [vid, view] of views) view.el.hidden = vid !== s.id;
   for (const [lid, a] of links) {
     if (lid === s.id) a.setAttribute("aria-current", "page");
@@ -99,6 +107,13 @@ function boot(tries = 10) {
     }
   });
   window.addEventListener("hashchange", () => show(location.hash.slice(1)));
+  // Files and folders dropped on the window are added to the library.
+  onEvent("files:dropped", (paths) => {
+    if (!Array.isArray(paths) || paths.length === 0) return;
+    show("library");
+    view("library").drop?.(paths as string[]);
+  });
+  onEvent("library:changed", () => views.get("library")?.changed?.());
   show(location.hash.slice(1) || "reader");
 }
 

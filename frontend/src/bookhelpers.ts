@@ -93,8 +93,7 @@ export interface CopyResult {
 export function copyMessage(r: CopyResult): string {
   if (!r.allowed) return `Not copied: ${r.reason ?? "the licence does not allow it"}.`;
   const left = r.daily_limit ? ` About ${Math.max(0, r.daily_limit - r.copied_today).toLocaleString()} more characters can be copied from this book today.` : "";
-  const confirm = r.confirm ? " This book's licence has not been confirmed yet; check it in the Library." : "";
-  return `Copied ${r.chars.toLocaleString()} characters${r.text && r.text.length > r.chars ? " with the attribution" : ""}.${left}${confirm}`;
+  return `Copied ${r.chars.toLocaleString()} characters${r.text && r.text.length > r.chars ? " with the attribution" : ""}.${left}`;
 }
 
 export interface OutlineItem {

@@ -20,7 +20,7 @@ const (
 	Unknown          Type = "unknown"
 )
 
-// Types lists every licence type in the order the import prompt offers them.
+// Types lists every licence type. The interface offers four of them in plain words (Plain).
 var Types = []Type{PublicDomain, CreativeCommons, OpenOther, PersonalPurchase, OwnWork, Unknown}
 
 // Limit caps how much of an item one print or export may include. A zero field is not a limit; a
@@ -45,6 +45,7 @@ type Licence struct {
 	Share        bool   `json:"share_allowed"` // may a copy of the file be given to others
 	Store        bool   `json:"store_allowed"` // may the file be kept in the library
 	Confirmed    bool   `json:"confirmed_by_user"`
+	Origin       string `json:"origin,omitempty"` // FromFile, ByDefault or ByUser
 }
 
 // Defaults returns the starting licence the import prompt shows for a type. The user confirms or

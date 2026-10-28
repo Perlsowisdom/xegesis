@@ -22,7 +22,8 @@ func RegisterLibrary(r *command.Registry, l *Library) {
 	r.Add(
 		command.Define("bible.modules", "List the installed Bibles with their licences.", false, c.modules),
 		command.Define("bible.install", "Import an OSIS, USFM or USX file or folder as a new Bible module. "+
-			"The licence the user states is recorded with it.", false, c.install),
+			"Its licence is the one the file states, or Personal copy; give licence_type to set another.", false, c.install),
+		command.Define("bible.set_licence", "Change the licence recorded for an installed Bible.", false, c.setLicence),
 		command.Define("bible.remove", "Delete an installed Bible module.", false, c.remove),
 		command.Define("bible.read", "Read a passage from one Bible.", false, c.read),
 		command.Define("bible.parallel", "Read the same passage from several Bibles, matching verse numbering.", false, c.parallel),
@@ -55,7 +56,7 @@ type InstallParams struct {
 	MappingFile   string `json:"mapping_file,omitempty" desc:"Optional versification table: lines \"system<TAB>module OSIS ref<TAB>system OSIS ref\""`
 	Replace       bool   `json:"replace,omitempty" desc:"Replace a module with the same ID"`
 
-	LicenceType  string `json:"licence_type" required:"true" enum:"public_domain,creative_commons,open_other,personal_purchase,own_work,unknown" desc:"The licence the user states for this text"`
+	LicenceType  string `json:"licence_type,omitempty" enum:"public_domain,creative_commons,open_other,personal_purchase,own_work,unknown" desc:"Leave out to use the licence the file states, or Personal copy when it states none"`
 	SPDX         string `json:"spdx,omitempty" desc:"SPDX or Creative Commons ID, e.g. CC-BY-SA-4.0"`
 	RightsHolder string `json:"rights_holder,omitempty"`
 	LicenceURL   string `json:"licence_url,omitempty"`
@@ -68,11 +69,14 @@ type InstallResult struct {
 }
 
 func (c cmds) install(ctx context.Context, _ *command.Env, p InstallParams) (InstallResult, error) {
-	lic, err := licence.Defaults(licence.Type(p.LicenceType), p.SPDX)
-	if err != nil {
-		return InstallResult{}, command.Errorf("bad_params", "%v", err)
+	var lic licence.Licence
+	if p.LicenceType != "" {
+		var err error
+		if lic, err = userLicence(LicenceParams{Type: p.LicenceType, SPDX: p.SPDX, RightsHolder: p.RightsHolder,
+			URL: p.LicenceURL, Attribution: p.Attribution}); err != nil {
+			return InstallResult{}, err
+		}
 	}
-	lic.RightsHolder, lic.URL, lic.Attribution, lic.Confirmed = p.RightsHolder, p.LicenceURL, p.Attribution, true
 	if strings.EqualFold(filepath.Ext(p.Path), ".zip") {
 		dir, err := unzipTemp(p.Path)
 		if err != nil {
@@ -80,6 +84,9 @@ func (c cmds) install(ctx context.Context, _ *command.Env, p InstallParams) (Ins
 		}
 		defer os.RemoveAll(dir)
 		p.Path = contentDir(dir)
+	}
+	if p.LicenceType == "" {
+		lic = DetectLicence(p.Path)
 	}
 	m, warnings, err := c.l.Install(ctx, InstallOptions{Path: p.Path, Format: p.Format, ID: p.ID, Name: p.Name,
 		Abbreviation: p.Abbreviation, Language: p.Language, Versification: p.Versification, Source: p.Source,
@@ -91,6 +98,48 @@ func (c cmds) install(ctx context.Context, _ *command.Env, p InstallParams) (Ins
 		return InstallResult{}, command.Errorf("failed", "%v", err)
 	}
 	return InstallResult{Module: m, Warnings: warnings}, nil
+}
+
+type LicenceParams struct {
+	Type         string `json:"type" required:"true" enum:"public_domain,creative_commons,open_other,personal_purchase,own_work,unknown"`
+	SPDX         string `json:"spdx,omitempty" desc:"SPDX or Creative Commons ID, e.g. CC-BY-SA-4.0"`
+	RightsHolder string `json:"rights_holder,omitempty"`
+	URL          string `json:"licence_url,omitempty"`
+	Attribution  string `json:"attribution,omitempty" desc:"Credit line to show with copies"`
+	Share        *bool  `json:"share_allowed,omitempty" desc:"Override whether copies may be given to others"`
+}
+
+type SetLicenceParams struct {
+	Module string `json:"module" required:"true" desc:"Module ID from bible.modules"`
+	LicenceParams
+}
+
+func userLicence(p LicenceParams) (licence.Licence, error) {
+	l, err := licence.Defaults(licence.Type(p.Type), p.SPDX)
+	if err != nil {
+		return l, command.Errorf("bad_params", "%v; for other open licences use type open_other", err)
+	}
+	l.RightsHolder, l.URL, l.Attribution = p.RightsHolder, p.URL, p.Attribution
+	if p.Share != nil {
+		l.Share = *p.Share
+	}
+	l.Confirmed, l.Origin = true, licence.ByUser
+	return l, nil
+}
+
+func (c cmds) setLicence(ctx context.Context, _ *command.Env, p SetLicenceParams) (Meta, error) {
+	if _, err := c.module(p.Module); err != nil {
+		return Meta{}, err
+	}
+	l, err := userLicence(p.LicenceParams)
+	if err != nil {
+		return Meta{}, err
+	}
+	m, err := c.l.SetLicence(ctx, p.Module, l)
+	if err != nil {
+		return Meta{}, command.Errorf("failed", "%v", err)
+	}
+	return m, nil
 }
 
 type ModuleParams struct {

@@ -269,7 +269,11 @@ func opfMeta(b []byte) (Meta, error) {
 		case "subject":
 			m.Subjects = append(m.Subjects, v)
 		case "rights":
-			m.Rights = v
+			addRights(&m, v)
+		case "link":
+			if strings.Contains(e.attr("rel"), "license") {
+				addRights(&m, e.attr("href"))
+			}
 		case "meta":
 			opfExtra(&m, e, refines)
 		}
@@ -287,7 +291,23 @@ func opfExtra(m *Meta, e xmlElem, refines map[string]map[string]string) {
 		m.Series = e.attr("content")
 	case e.attr("name") == "calibre:series_index":
 		m.SeriesNo = strings.TrimSuffix(e.attr("content"), ".0")
+	case e.attr("refines") == "" && licenceProps[e.attr("property")+e.attr("name")]:
+		addRights(m, strings.TrimSpace(e.Value)+e.attr("content"))
 	}
+}
+
+// licenceProps are EPUB meta properties and names that state a licence.
+var licenceProps = map[string]bool{"dcterms:license": true, "dcterms:rights": true, "cc:license": true,
+	"xmp:rights": true}
+
+func addRights(m *Meta, v string) {
+	if v = strings.TrimSpace(v); v == "" || strings.Contains(m.Rights, v) {
+		return
+	}
+	if m.Rights != "" {
+		m.Rights += "; "
+	}
+	m.Rights += v
 }
 
 // DOCX (OOXML core properties) -------------------------------------------------------------

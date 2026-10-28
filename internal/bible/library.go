@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -90,6 +92,42 @@ func (l *Library) Remove(id string) error {
 		delete(l.open, id)
 	}
 	return os.Remove(l.path(id))
+}
+
+// SetLicence records a new licence in an installed module.
+func (l *Library) SetLicence(ctx context.Context, id string, lic licence.Licence) (Meta, error) {
+	if _, err := l.Get(id); err != nil {
+		return Meta{}, err
+	}
+	b, err := json.Marshal(lic)
+	if err != nil {
+		return Meta{}, err
+	}
+	l.mu.Lock()
+	if m, ok := l.open[id]; ok {
+		m.Close()
+		delete(l.open, id)
+	}
+	err = updateLicence(ctx, l.path(id), string(b))
+	l.mu.Unlock()
+	if err != nil {
+		return Meta{}, err
+	}
+	m, err := l.Get(id)
+	if err != nil {
+		return Meta{}, err
+	}
+	return m.Meta, nil
+}
+
+func updateLicence(ctx context.Context, path, lic string) error {
+	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(path))
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	_, err = db.ExecContext(ctx, `UPDATE module SET licence = ?`, lic)
+	return err
 }
 
 // Close closes every open module.

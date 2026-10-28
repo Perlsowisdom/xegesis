@@ -3,6 +3,7 @@
 package library
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 )
@@ -39,4 +40,10 @@ var mountedRoots = func() []string {
 		out = append(out, matches...)
 	}
 	return out
+}
+
+// documentsDir is ~/Documents.
+func documentsDir() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, "Documents")
 }

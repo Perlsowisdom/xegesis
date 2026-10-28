@@ -3,7 +3,7 @@
 
 import { CatalogueItem, Message, Module, paramEnum, pick, run } from "../api";
 import { badge, button, clear, field, h, select } from "../dom";
-import { licenceForm, termsText, typeLabel } from "../licence";
+import { licenceChooser, licenceLine, plainName, termsText } from "../licence";
 
 type Tab = "get" | "installed" | "file";
 
@@ -51,7 +51,7 @@ function size(n?: number): string {
 }
 
 function licenceText(l: CatalogueItem["licence"]): string {
-  return typeLabel(l?.type) + (l?.spdx ? ` (${l.spdx})` : "");
+  return plainName(l) + (l?.spdx ? ` (${l.spdx})` : "");
 }
 
 // getBibles lists what the catalogues offer, with a language picker, search and Install buttons.
@@ -60,8 +60,8 @@ function getBibles(changed: () => void) {
   const off = h("div", { class: "card", hidden: true });
   const language = select([["", "All languages"]], "", { "aria-label": "Language" });
   const search = h("input", { type: "search", placeholder: "Search names", "aria-label": "Search Bibles" });
-  const licence = select([["", "Any licence"], ["public_domain", "Public domain"], ["creative_commons", "Creative Commons"],
-    ["open_other", "Other open licence"]], "", { "aria-label": "Licence" });
+  const licence = select([["", "Any licence"], ["public_domain", "Public domain"], ["creative_commons", "Free to share"],
+    ["open_other", "Other licences"]], "", { "aria-label": "Licence" });
   const installable = h("input", { type: "checkbox", checked: true });
   const status = h("p", { class: "hint", role: "status" });
   const list = h("div", { class: "table-wrap" });
@@ -169,13 +169,13 @@ function getBibles(changed: () => void) {
     if (!pre) return;
     const item = pre.item;
     const verb = item.update_available ? "Update" : "Install";
-    const form = item.licence_clear ? null : licenceForm("State the licence of this text");
+    const form = item.licence_clear ? null : licenceChooser("What may you do with this text?", false);
     if (form) form.set(item.licence);
     const box = h("div", { class: "card", role: "dialog", "aria-label": `${verb} ${item.name}` },
       h("h2", {}, `${verb} ${item.name}`),
       h("p", {}, `Download: ${size(pre.size)} from ${item.source_name}.`),
       item.licence_clear ? h("p", {}, `Licence: ${licenceText(item.licence)}. ${termsText(item.licence)}`) :
-        h("p", {}, "The catalogue does not say clearly what this licence allows. Please state it below."),
+        h("p", {}, "The catalogue does not say clearly what this licence allows. Choose the nearest below; you can change it later."),
       h("details", {}, h("summary", {}, "What the source says"), h("pre", { class: "rights" }, item.rights || "Nothing")),
       form?.el,
       h("div", { class: "row" },
@@ -187,14 +187,7 @@ function getBibles(changed: () => void) {
     async function go() {
       const params: Record<string, unknown> = { source: item.source, item: item.id, accept_licence: true };
       if (item.update_available) params.replace = true;
-      if (form) {
-        const l = form.value();
-        params.licence_type = l.type;
-        if (l.spdx) params.spdx = l.spdx;
-        if (l.rights_holder) params.rights_holder = l.rights_holder;
-        if (l.attribution) params.attribution = l.attribution;
-        if (l.url) params.licence_url = l.url;
-      }
+      if (form) Object.assign(params, bibleLicenceParams(form.value(), "licence_type"));
       clear(dialog);
       const bar = h("progress", { "aria-label": `Installing ${item.name}` });
       const phase = h("small", { class: "hint", "aria-live": "polite" }, "Starting…");
@@ -223,8 +216,9 @@ function getBibles(changed: () => void) {
 function installedList(changed: () => void) {
   const msg = new Message();
   const updates = h("div");
+  const editor = h("div");
   const table = h("div", { class: "table-wrap" });
-  const el = h("section", { "aria-label": "Installed Bibles" }, msg.el, updates, table);
+  const el = h("section", { "aria-label": "Installed Bibles" }, msg.el, updates, editor, table);
 
   async function show() {
     const [ms, ups] = await Promise.all([
@@ -244,7 +238,7 @@ function installedList(changed: () => void) {
           h("td", {}, m.language),
           h("td", {}, m.versification),
           h("td", { class: "num" }, (m.verse_count ?? 0).toLocaleString()),
-          h("td", {}, typeLabel(m.licence?.type), m.licence?.spdx ? h("small", { class: "hint" }, ` ${m.licence.spdx}`) : null),
+          h("td", {}, licenceLine(m.licence, "Bible", () => clear(editor, bibleLicenceEditor(m, () => { clear(editor); show(); })))),
           h("td", {}, button("Remove", () => remove(m), { class: "danger", "aria-label": `Remove ${m.name || m.id}` })))))));
   }
 
@@ -260,18 +254,20 @@ function installedList(changed: () => void) {
   return { el, show };
 }
 
+// installForm asks only for the file. The licence is the one the file states, or Personal copy, and
+// can be changed afterwards; the module's names and numbering are under More options.
 function installForm(installed: () => void) {
   const msg = new Message();
+  const result = h("div");
   const path = h("input", { type: "text", required: true, spellcheck: "false", placeholder: "Choose a file or folder" });
   const format = select([["", "Detect from file"]], "");
   paramEnum("bible.install", "format").then((fs) => fs.forEach((f) => format.append(h("option", { value: f }, f.toUpperCase()))));
   const text = (placeholder = "") => h("input", { type: "text", placeholder, autocomplete: "off" });
   const fields = {
     id: text("e.g. web"), name: text("e.g. World English Bible"), abbreviation: text("e.g. WEB"),
-    language: text("e.g. eng"), version: text(), versification: text("e.g. KJV"), source: text("Where it came from"),
+    language: text("e.g. eng"), version: text(), versification: text("english or hebrew"), source: text("Where it came from"),
   };
   const replace = h("input", { type: "checkbox" });
-  const licence = licenceForm("Licence of this text");
 
   const browse = async (kind: "file" | "folder") => {
     const p = await msg.attempt(() => pick(kind, kind === "file" ? "Choose a Bible file or .zip archive" : "Choose a folder of Bible files"));
@@ -280,45 +276,72 @@ function installForm(installed: () => void) {
 
   const form = h("form", { class: "card", "aria-labelledby": "install-h" },
     h("h2", { id: "install-h" }, "Install a Bible from a file"),
-    h("p", { class: "hint" }, "Import an OSIS, USFM or USX file, a folder of USFM or USX books, or a .zip archive of them. " +
-      "State the licence so Xegesis knows what you may print, export and share."),
+    h("p", { class: "hint" }, "An OSIS, USFM or USX file, a folder of USFM or USX books, or a .zip archive of them. " +
+      "Its licence is read from the file; if the file names none, it is a personal copy. You can change it afterwards."),
     h("div", { class: "field" },
       h("label", { for: "install-path" }, "File or folder"),
       h("div", { class: "row" }, Object.assign(path, { id: "install-path" }),
         button("Choose file…", () => browse("file")), button("Choose folder…", () => browse("folder")))),
-    h("div", { class: "grid3" },
-      field("Format", format),
-      field("Module ID", fields.id, "Optional"),
-      field("Name", fields.name, "Optional; read from the file if blank"),
-      field("Abbreviation", fields.abbreviation),
-      field("Language", fields.language, "ISO 639 code"),
-      field("Version", fields.version),
-      field("Verse numbering", fields.versification),
-      field("Source", fields.source)),
-    licence.el,
-    h("label", { class: "check" }, replace, " Replace a module with the same ID"),
+    h("details", { class: "more" }, h("summary", {}, "More options"),
+      h("div", { class: "grid3" },
+        field("Format", format),
+        field("Module ID", fields.id, "Made from the abbreviation if blank"),
+        field("Name", fields.name, "Read from the file if blank"),
+        field("Abbreviation", fields.abbreviation),
+        field("Language", fields.language, "Read from the file if blank"),
+        field("Version", fields.version),
+        field("Verse numbering", fields.versification),
+        field("Source", fields.source)),
+      h("label", { class: "check" }, replace, " Replace a Bible with the same module ID")),
     h("div", { class: "row" }, h("button", { type: "submit", class: "primary" }, "Install")),
-    msg.el);
+    msg.el, result);
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
-    const l = licence.value();
-    const params: Record<string, unknown> = { path: path.value.trim(), licence_type: l.type };
+    const params: Record<string, unknown> = { path: path.value.trim() };
     if (format.value) params.format = format.value;
     for (const [k, input] of Object.entries(fields)) if (input.value.trim()) params[k] = input.value.trim();
-    if (l.spdx) params.spdx = l.spdx;
-    if (l.rights_holder) params.rights_holder = l.rights_holder;
-    if (l.attribution) params.attribution = l.attribution;
-    if (l.url) params.licence_url = l.url;
     if (replace.checked) params.replace = true;
     msg.info("Installing… large files can take a minute.");
+    clear(result);
     const r = await msg.attempt(() => run<{ module: Module; warnings: string[] }>("bible.install", params));
     if (!r) return;
-    clear(msg.el, `Installed ${r.module.name || r.module.id} (${r.module.verse_count.toLocaleString()} verses).`,
+    msg.ok(`Installed ${r.module.name || r.module.id} (${r.module.verse_count.toLocaleString()} verses).`);
+    const showResult = (m: Module) => clear(result,
+      h("p", {}, licenceLine(m.licence, "Bible", () => clear(result, bibleLicenceEditor(m, (fresh) => showResult(fresh ?? m))))),
       r.warnings?.length ? h("details", {}, h("summary", {}, `${r.warnings.length} warnings`), h("ul", {}, r.warnings.map((w) => h("li", {}, w)))) : null);
-    msg.el.className = "msg ok";
+    showResult(r.module);
     installed();
   });
 
   return { el: form, show() {} };
+}
+
+// bibleLicenceParams turns chooser values into bible.* licence parameters; typeKey is the name of
+// the type parameter ("type" for bible.set_licence, "licence_type" for bible.get).
+function bibleLicenceParams(v: Record<string, unknown>, typeKey: string): Record<string, unknown> {
+  const p: Record<string, unknown> = { [typeKey]: v.type };
+  for (const k of ["spdx", "rights_holder", "attribution", "share_allowed"]) if (v[k] !== undefined) p[k] = v[k];
+  if (v.url) p.licence_url = v.url;
+  if (typeKey === "licence_type") delete p.share_allowed;
+  return p;
+}
+
+// bibleLicenceEditor changes an installed Bible's licence; done gets the updated module, or null
+// when cancelled.
+function bibleLicenceEditor(m: Module, done: (m: Module | null) => void): HTMLElement {
+  const msg = new Message();
+  const chooser = licenceChooser(`Licence of ${m.name || m.id}`, false);
+  chooser.set(m.licence);
+  const box = h("div", { class: "card" }, chooser.el,
+    h("p", { class: "hint" }, termsText(m.licence)),
+    h("div", { class: "row" },
+      button("Save licence", async () => {
+        const r = await msg.attempt(() => run<Module>("bible.set_licence", { module: m.id, ...bibleLicenceParams(chooser.value(), "type") }));
+        if (r) done(r);
+      }, { class: "primary" }),
+      button("Cancel", () => done(null))),
+    msg.el);
+  setTimeout(() => box.querySelector<HTMLInputElement>("input:checked")?.focus());
+  return box;
 }
