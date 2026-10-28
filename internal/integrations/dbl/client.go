@@ -29,7 +29,7 @@ import (
 const DefaultBaseURL = "https://thedigitalbiblelibrary.org/api"
 
 var (
-	ErrNoCredentials = errors.New("this needs a DBL organisation API token and secret; run dbl.set_credentials")
+	ErrNoCredentials = errors.New("this needs a DBL organisation API token and secret: add them with the dbl.set_credentials command")
 	ErrUnauthorized  = errors.New("the Digital Bible Library refused the request: check the token, secret and licence")
 	ErrNotFound      = errors.New("not found in the Digital Bible Library")
 	ErrRateLimit     = errors.New("Digital Bible Library rate limit reached")

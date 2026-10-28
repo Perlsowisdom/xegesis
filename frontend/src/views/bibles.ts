@@ -70,10 +70,12 @@ function getBibles(changed: () => void) {
   let pickedLanguage = false;
   let timer = 0;
 
+  const disableButton = button("Turn off catalogues", () => disable(), { hidden: true });
   const toolbar = h("div", { class: "row wrap" },
     language, h("div", { class: "grow" }, search), licence,
     h("label", { class: "check" }, installable, " Only ones Xegesis can install"),
-    button("Refresh catalogues", () => refresh()));
+    button("Refresh catalogues", () => refresh()),
+    disableButton);
 
   const el = h("section", { "aria-label": "Get Bibles" },
     h("p", { class: "hint" }, "Bibles from the CrossWire SWORD repositories and eBible.org. Pick a language, then Install."),
@@ -82,6 +84,14 @@ function getBibles(changed: () => void) {
   language.addEventListener("change", () => { pickedLanguage = true; load(); });
   for (const c of [licence, installable]) c.addEventListener("change", () => load());
   search.addEventListener("input", () => { clearTimeout(timer); timer = window.setTimeout(load, 250); });
+
+  async function disable() {
+    if (!confirm("Turn off the Bible catalogues? Installed Bibles stay; Xegesis stops downloading the lists.")) return;
+    if ((await msg.attempt(() => run("bible.sources", { enable: false }))) !== undefined) {
+      msg.ok("Bible catalogues are off.");
+      load();
+    }
+  }
 
   async function enable() {
     if ((await msg.attempt(() => run("bible.sources", { enable: true }))) !== undefined) refresh();
@@ -105,10 +115,11 @@ function getBibles(changed: () => void) {
     const r = await msg.attempt(() => run<Available>("bible.available", params));
     if (!r) return;
     off.hidden = r.enabled;
+    disableButton.hidden = !r.enabled;
     clear(off, h("h2", {}, "Bible catalogues are off"),
       h("p", {}, "When you turn them on, Xegesis downloads the lists of Bibles from CrossWire (crosswire.org) and " +
         "eBible.org, and the Bibles you choose to install. Only these files are requested; nothing about you or your " +
-        "library is sent. Turn them off again with the bible.sources command."),
+        "library is sent. You can turn them off again here at any time."),
       button("Turn on Bible catalogues", enable, { class: "primary" }));
     if (fillLanguages(r)) return load();
     status.textContent = r.cached ? `${r.total.toLocaleString()} Bibles${r.total > r.items.length ? `, showing ${r.items.length}` : ""}.` :

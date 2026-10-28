@@ -117,18 +117,20 @@ function licenceQuestions(changed: () => void) {
   let offset = 0;
   let rows: ItemSummary[] = [];
 
-  const el = h("section", { class: "card", "aria-labelledby": "lq-h", hidden: true },
-    h("div", { class: "row between" }, title, button("Close", () => { el.hidden = true; })),
-    h("p", { class: "hint" }, "Tell Xegesis what you may do with each book. A suggestion is shown where the book's own details name a licence."),
-    msg.el, list, pager,
+  const own = h("details", {}, h("summary", {}, "Choose a licence myself"),
+    form.el,
+    h("div", { class: "row wrap" },
+      button("Apply to selected", () => apply("selected", false), { class: "primary" }),
+      button("Apply to all undecided", () => apply("all", false))));
+  const actions = h("div", {},
     h("div", { class: "row wrap" },
       button("Use the suggestion for selected", () => apply("selected", true), { class: "primary" }),
       button("Use the suggestion for all undecided", () => apply("all", true))),
-    h("details", {}, h("summary", {}, "Choose a licence myself"),
-      form.el,
-      h("div", { class: "row wrap" },
-        button("Apply to selected", () => apply("selected", false), { class: "primary" }),
-        button("Apply to all undecided", () => apply("all", false)))));
+    own);
+  const el = h("section", { class: "card", "aria-labelledby": "lq-h", hidden: true },
+    h("div", { class: "row between" }, title, button("Close", () => { el.hidden = true; })),
+    h("p", { class: "hint" }, "Tell Xegesis what you may do with each book. A suggestion is shown where the book's own details name a licence."),
+    msg.el, list, pager, actions);
 
   async function load() {
     const p: Record<string, unknown> = { needs_licence: true, limit: PAGE, offset };
@@ -136,6 +138,9 @@ function licenceQuestions(changed: () => void) {
     const r = await msg.attempt(() => run<{ items: ItemSummary[]; total: number }>("library.items", p));
     if (!r) return;
     rows = r.items;
+    if (r.total === 0) own.open = false;
+    actions.hidden = r.total === 0;
+    pager.hidden = r.total === 0;
     title.textContent = `Licence questions${folder ? ` · ${folder.label || folder.path}` : ""} (${r.total})`;
     const all = h("input", { type: "checkbox", "aria-label": "Select all on this page" });
     all.addEventListener("change", () => list.querySelectorAll<HTMLInputElement>("tbody input").forEach((b) => { b.checked = all.checked; }));
@@ -248,7 +253,8 @@ function catalogue(getFolders: () => Folder[]) {
     if (!it) return;
     detail.hidden = false;
     clear(detail, itemDetail(it, getFolders(), () => { detail.hidden = true; }, (updated) => { refresh(); open(updated.id); }));
-    detail.querySelector<HTMLElement>("h3")?.focus();
+    detail.scrollIntoView({ block: "start" });
+    detail.querySelector<HTMLElement>("h3")?.focus({ preventScroll: true });
   }
 
   return {

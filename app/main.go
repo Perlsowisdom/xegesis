@@ -72,17 +72,26 @@ func (a *App) Run(id, params string) (string, error) {
 	return string(b), err
 }
 
-func main() {
+// libraryPath is library.db in the user's config folder, or XEGESIS_LIBRARY when set, as for the CLI.
+func libraryPath() string {
+	if p := os.Getenv("XEGESIS_LIBRARY"); p != "" {
+		return p
+	}
 	dir, err := os.UserConfigDir()
 	if err != nil {
 		log.Fatal(err)
 	}
-	s, err := store.Open(filepath.Join(dir, "Xegesis", "library.db"))
+	return filepath.Join(dir, "Xegesis", "library.db")
+}
+
+func main() {
+	lib := libraryPath()
+	s, err := store.Open(lib)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer s.Close()
-	reg := all.Registry(filepath.Join(dir, "Xegesis"), secrets.OS())
+	reg := all.Registry(filepath.Dir(lib), secrets.OS())
 	app := &App{reg: reg, env: &command.Env{Store: s}}
 
 	err = wails.Run(&options.App{

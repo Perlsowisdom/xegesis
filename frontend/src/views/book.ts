@@ -327,6 +327,31 @@ export function bookPane(onState: (open: boolean) => void) {
     page = r;
     clear(pdfBox, r.page);
     body.scrollTop = 0;
+    linkPdfRefs(r.page);
+  }
+
+  // linkPdfRefs turns Bible references in a PDF page's text layer into the same links EPUB chapters
+  // get, so clicking one opens it in the Bible pane. A reference split across lines stays plain.
+  async function linkPdfRefs(pageEl: HTMLElement) {
+    const spans = [...pageEl.querySelectorAll<HTMLElement>(".textLayer span")]
+      .filter((sp) => sp.childElementCount === 0 && /\d/.test(sp.textContent ?? ""));
+    if (spans.length === 0) return;
+    const found = await run<{ start: number; end: number; ref: string }[][]>("book.refs",
+      { texts: spans.map((sp) => sp.textContent ?? "") }).catch(() => null);
+    if (!found || !pageEl.isConnected) return;
+    spans.forEach((sp, i) => {
+      const refs = found[i];
+      if (!refs?.length) return;
+      const t = sp.textContent ?? "";
+      const parts: (string | Node)[] = [];
+      let pos = 0;
+      for (const f of refs) {
+        parts.push(t.slice(pos, f.start), h("a", { href: "#", class: "vref", "data-ref": f.ref }, t.slice(f.start, f.end)));
+        pos = f.end;
+      }
+      parts.push(t.slice(pos));
+      sp.replaceChildren(...parts);
+    });
   }
 
   function scrollTo(t: Target) {
@@ -456,8 +481,18 @@ export function bookPane(onState: (open: boolean) => void) {
   function selection(): Range | null {
     const sel = document.getSelection();
     if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return null;
-    const r = sel.getRangeAt(0);
-    return body.contains(r.commonAncestorContainer) ? r : null;
+    const r = sel.getRangeAt(0).cloneRange();
+    if (!r.intersectsNode(body)) return null;
+    // A triple-click selects to the start of whatever follows the paragraph, which may lie outside
+    // the book text; trim the range back to the text inside it.
+    const nodes = textNodes(body).filter((t) => r.intersectsNode(t) && t.data.trim());
+    if (nodes.length === 0) return null;
+    if (!body.contains(r.startContainer)) r.setStart(nodes[0], 0);
+    if (!body.contains(r.endContainer) || (r.endContainer.nodeType !== Node.TEXT_NODE && r.endOffset === 0)) {
+      const last = nodes[nodes.length - 1];
+      r.setEnd(last, last.length);
+    }
+    return r.collapsed || !r.toString().trim() ? null : r;
   }
 
   document.addEventListener("selectionchange", () => {

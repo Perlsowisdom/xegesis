@@ -53,7 +53,7 @@ export function settingsView() {
     clear(status, h("p", {},
       s.key_set ? badge("Key set", "ok") : badge("No key", "warn"), " ",
       verify && s.key_set ? (s.valid ? badge("Works", "ok") : badge("Not accepted", "bad")) : null, " ",
-      s.message ? h("span", { class: "hint" }, s.message) : null,
+      s.message && s.key_set ? h("span", { class: "hint" }, s.message) : null,
       s.cached_items ? h("span", { class: "hint" }, ` ${s.cached_items} passages cached.`) : null));
   }
 

@@ -12,7 +12,7 @@ var (
 	ErrNotFound   = errors.New("not found on API.Bible")
 	ErrRateLimit  = errors.New("API.Bible rate limit reached")
 	ErrBadRequest = errors.New("API.Bible rejected the request")
-	ErrNoKey      = errors.New("no API.Bible key is set; run apibible.set_key")
+	ErrNoKey      = errors.New("no API.Bible key is set: add your key in Settings, or with the apibible.set_key command")
 )
 
 // APIError is a failed API.Bible response. It unwraps to one of the Err values above, so callers
