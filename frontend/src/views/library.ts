@@ -2,9 +2,11 @@
 // and the catalogue, where licences are shown in plain words and can be changed for one book or a
 // selection. Every action is a library.* command.
 
-import { AddResult, Facet, Folder, Item, ItemSummary, Message, pick, pickFiles, run } from "../api";
+import { AddResult, Facet, Folder, Item, ItemSummary, Message, Vocabulary, pick, pickFiles, run } from "../api";
 import { badge, button, clear, field, h, select } from "../dom";
 import { changedFields, formatTime, pageLabel } from "../helpers";
+import { facetChooser, traditionsPanel } from "../facets";
+import { NOT_SET, countText, facetValue, reasonText } from "../facetwords";
 import { licenceChooser, licenceLine, originText, plainName, termsText } from "../licence";
 import { navigate } from "../state";
 import { openBook } from "./book";
@@ -144,6 +146,10 @@ function catalogue(getFolders: () => Folder[]) {
   const author = h("input", { type: "search", autocomplete: "off" });
   const kind = h("input", { type: "text", autocomplete: "off", placeholder: "e.g. book, commentary", list: "kinds" });
   const folder = select([["", "All folders"]], "");
+  const typeSel = select([["", "Any type"]], "");
+  const tradSel = select([["", "Any tradition"]], "");
+  const bySel = select([["", "Anyone"], ["auto", "Set automatically"], ["user", "Set by you"]], "");
+  let vocab: Vocabulary = { types: [], traditions: [] };
   const table = h("div", { class: "table-wrap", "aria-live": "polite" });
   const pager = h("div", { class: "row" });
   const detail = h("aside", { class: "pane detail", "aria-label": "Book details", hidden: true });
@@ -155,6 +161,7 @@ function catalogue(getFolders: () => Folder[]) {
 
   const filters = h("form", { class: "filters", role: "search", "aria-label": "Filter books" },
     field("Title", text), field("Author", author), field("Kind", kind), field("Folder", folder),
+    field("Type", typeSel), field("Tradition", tradSel), field("Chosen", bySel),
     h("button", { type: "submit", class: "primary" }, "Filter"),
     h("datalist", { id: "kinds" }, ["book", "bible", "commentary", "dictionary", "journal"].map((k) => h("option", { value: k }))));
   filters.addEventListener("submit", (e) => {
@@ -162,11 +169,13 @@ function catalogue(getFolders: () => Folder[]) {
     offset = 0;
     refresh();
   });
-  folder.addEventListener("change", () => { offset = 0; refresh(); });
+  for (const s of [folder, typeSel, tradSel, bySel]) s.addEventListener("change", () => { offset = 0; refresh(); });
+  const rules = traditionsPanel(() => { loadVocab().then(refresh); });
 
   const el = h("section", { "aria-labelledby": "books-h" },
-    h("h2", { id: "books-h" }, "Books"),
-    filters, reviewing, msg.el, selection, bulk,
+    h("div", { class: "row between wrap" }, h("h2", { id: "books-h" }, "Books"),
+      button("Set types and traditions automatically", suggestAll)),
+    filters, rules.el, reviewing, msg.el, selection, bulk,
     h("div", { class: "panes" }, h("div", { class: "pane" }, table, pager), detail));
 
   const checked = () => [...table.querySelectorAll<HTMLInputElement>("tbody input[type=checkbox]:checked")].map((b) => b.value);
@@ -175,7 +184,8 @@ function catalogue(getFolders: () => Folder[]) {
     const ids = checked();
     selection.hidden = ids.length === 0;
     clear(selection, h("span", {}, `${ids.length} selected`),
-      button("Set licence for selected", () => openBulk(), { class: "primary" }));
+      button("Set licence for selected", () => openBulk(), { class: "primary" }),
+      button("Set type/tradition for selected", () => openBulkFacets()));
     if (!ids.length) bulk.hidden = true;
   }
 
@@ -196,13 +206,57 @@ function catalogue(getFolders: () => Folder[]) {
     bulk.querySelector<HTMLInputElement>("input")?.focus();
   }
 
+  function openBulkFacets() {
+    const ids = checked();
+    const chooser = facetChooser(vocab, true);
+    const bmsg = new Message();
+    clear(bulk, h("fieldset", {}, h("legend", {}, `Type and tradition for ${countText(ids.length)}`), chooser.el),
+      h("div", { class: "row" },
+        button("Set", async () => {
+          const p = chooser.value(ids);
+          if (!p) return bmsg.info("Choose a type or a tradition first.");
+          const r = await bmsg.attempt(() => run<{ updated: number }>("facet.set", p));
+          if (!r) return;
+          bulk.hidden = true;
+          msg.ok(`Changed ${countText(r.updated)}.`);
+          loadVocab().then(refresh);
+        }, { class: "primary" }),
+        button("Cancel", () => { bulk.hidden = true; })), bmsg.el);
+    bulk.hidden = false;
+    bulk.querySelector<HTMLElement>("select")?.focus();
+  }
+
+  // loadVocab fetches the types and traditions for the pickers and filters.
+  async function loadVocab() {
+    const v = await msg.attempt(() => run<Vocabulary>("facet.vocabulary"));
+    if (!v) return;
+    vocab = v;
+    for (const [sel, any, vals] of [[typeSel, "Any type", v.types], [tradSel, "Any tradition", v.traditions]] as const) {
+      const keep = sel.value;
+      clear(sel, h("option", { value: "" }, any), h("option", { value: "none" }, NOT_SET), vals.map((x) => h("option", { value: x }, x)));
+      sel.value = keep;
+    }
+    rules.reload();
+  }
+
+  async function suggestAll() {
+    const r = await msg.attempt(() => run<{ typed: number; traditions: number; unsure: number }>("facet.suggest", { redo: true }));
+    if (!r) return;
+    msg.ok(`Set ${countText(r.typed)} automatically (${r.unsure} had nothing to go on). Anything you chose yourself was left alone.`);
+    refresh();
+  }
+
   async function refresh() {
+    if (!vocab.types.length) await loadVocab();
     const p: Record<string, unknown> = { limit: PAGE, offset };
     if (text.value.trim()) p.text = text.value.trim();
     if (author.value.trim()) p.author = author.value.trim();
     if (kind.value.trim()) p.kind = kind.value.trim();
     if (folder.value) p.folder_id = folder.value;
     if (since) p.added_since = since;
+    if (typeSel.value) p.type = typeSel.value;
+    if (tradSel.value) p.tradition = tradSel.value;
+    if (bySel.value) p.set_by = bySel.value;
     const r = await msg.attempt(() => run<{ items: ItemSummary[]; total: number }>("library.items", p));
     if (!r) return;
     reviewing.hidden = !since;
@@ -216,14 +270,15 @@ function catalogue(getFolders: () => Folder[]) {
     clear(table, r.items.length === 0 ? h("p", { class: "empty" }, since ? "No books match." : "No books yet. Choose Add books, or drop files on the window.") :
       h("table", { class: "list" },
         h("thead", {}, h("tr", {}, h("th", { scope: "col" }, all),
-          ["Title", "Authors", "Year", "Kind", "Status", "Licence"].map((t) => h("th", { scope: "col" }, t)))),
+          ["Title", "Authors", "Year", "Type", "Tradition", "Status", "Licence"].map((t) => h("th", { scope: "col" }, t)))),
         h("tbody", { onchange: updateSelection }, r.items.map((it) => h("tr", {},
           h("td", {}, h("input", { type: "checkbox", value: it.id, "aria-label": `Select ${it.title || "Untitled"}` })),
           h("td", {}, button(it.title || "Untitled", () => open(it.id), { class: "link" }),
             it.subtitle ? h("small", { class: "hint" }, h("br"), it.subtitle) : null),
           h("td", {}, (it.authors ?? []).join(", ")),
           h("td", { class: "num" }, it.year || ""),
-          h("td", {}, it.kind),
+          h("td", {}, facetCell(it.type, it.type_by, it.type_reason, "type", it)),
+          h("td", {}, facetCell(it.tradition, it.tradition_by, it.tradition_reason, "tradition", it)),
           h("td", {}, statusBadge(it.status)),
           h("td", {}, it.licence_name || plainName(it.licence), " · ",
             button("change", () => open(it.id, true), { class: "link", "aria-label": `Change the licence of ${it.title || "this book"}` }),
@@ -235,13 +290,20 @@ function catalogue(getFolders: () => Folder[]) {
       button("Next", () => { offset += PAGE; refresh(); }, { disabled: offset + PAGE >= r.total }));
   }
 
-  async function open(id: string, editLicence = false) {
+  // facetCell shows a type or tradition, why it was set, and a change link.
+  function facetCell(value: string | undefined, by: string | undefined, reason: string | undefined, what: string, it: ItemSummary) {
+    return [facetValue(value), " · ",
+      button("change", () => open(it.id, false, true), { class: "link", "aria-label": `Change the ${what} of ${it.title || "this book"}` }),
+      value ? h("small", { class: "hint" }, h("br"), reasonText(by as "auto" | "user", reason)) : null];
+  }
+
+  async function open(id: string, editLicence = false, editFacets = false) {
     const it = await msg.attempt(() => run<Item>("library.item", { id }));
     if (!it) return;
     detail.hidden = false;
-    clear(detail, itemDetail(it, getFolders(), editLicence, () => { detail.hidden = true; }, (updated) => { refresh(); open(updated.id); }));
+    clear(detail, itemDetail(it, getFolders(), vocab, editLicence, editFacets, () => { detail.hidden = true; }, (updated) => { refresh(); open(updated.id); }));
     detail.scrollIntoView({ block: "start" });
-    const target = editLicence ? detail.querySelector<HTMLElement>(".licence input:checked") : detail.querySelector<HTMLElement>("h3");
+    const target = editFacets ? detail.querySelector<HTMLElement>(".facet-edit select") : editLicence ? detail.querySelector<HTMLElement>(".licence input:checked") : detail.querySelector<HTMLElement>("h3");
     target?.focus({ preventScroll: true });
   }
 
@@ -263,7 +325,7 @@ function catalogue(getFolders: () => Folder[]) {
     review(t: number) {
       since = t;
       offset = 0;
-      text.value = author.value = kind.value = folder.value = "";
+      text.value = author.value = kind.value = folder.value = typeSel.value = tradSel.value = bySel.value = "";
       refresh();
       el.scrollIntoView({ block: "start" });
     },
@@ -282,7 +344,7 @@ const LABELS: Record<string, string> = {
 
 const READABLE = new Set(["epub", "pdf", "docx", "html", "md", "txt"]);
 
-function itemDetail(it: Item, folders: Folder[], editLicence: boolean, close: () => void, saved: (it: Item) => void) {
+function itemDetail(it: Item, folders: Folder[], vocab: Vocabulary, editLicence: boolean, editFacets: boolean, close: () => void, saved: (it: Item) => void) {
   const msg = new Message();
   const inputs: Record<string, HTMLInputElement> = {};
   for (const k of EDITABLE) {
@@ -309,6 +371,23 @@ function itemDetail(it: Item, folders: Folder[], editLicence: boolean, close: ()
         if (fresh) saved(fresh);
       }, { class: "primary" }),
       button("Cancel", () => { editor.hidden = true; })));
+
+  const facetOf = (name: string) => it.facets.find((f) => f.facet === name);
+  const typeNow = facetOf("type"), tradNow = facetOf("tradition");
+  const by = (f?: Facet) => (f ? (f.origin === "user" ? "user" : "auto") : undefined);
+  const facetChoice = facetChooser(vocab, false, { type: typeNow?.value, typeBy: by(typeNow), tradition: tradNow?.value, traditionBy: by(tradNow) });
+  const facetEditor = h("div", { class: "facet-edit", hidden: !editFacets }, facetChoice.el,
+    h("div", { class: "row" },
+      button("Save", async () => {
+        const p = facetChoice.value([it.id]);
+        if (!p) { facetEditor.hidden = true; return; }
+        if (!(await msg.attempt(() => run("facet.set", p)))) return;
+        const fresh = await msg.attempt(() => run<Item>("library.item", { id: it.id }));
+        if (fresh) saved(fresh);
+      }, { class: "primary" }),
+      button("Cancel", () => { facetEditor.hidden = true; })));
+  const facetLine = (label: string, f?: Facet) => h("p", {}, `${label}: `, h("strong", {}, facetValue(f?.value)),
+    f ? h("small", { class: "hint" }, ` · ${reasonText(by(f), f.reason)}`) : null);
 
   const form = h("form", { "aria-label": "Edit book details" },
     h("div", { class: "grid2" }, EDITABLE.map((k) => field(LABELS[k], inputs[k]))),
@@ -345,6 +424,9 @@ function itemDetail(it: Item, folders: Folder[], editLicence: boolean, close: ()
       editor.querySelector<HTMLInputElement>("input:checked")?.focus();
     }), it.licence ? h("small", { class: "hint" }, h("br"), termsText(it.licence)) : null),
     editor,
+    facetLine("Type", typeNow), facetLine("Tradition", tradNow),
+    button("change", () => { facetEditor.hidden = false; facetEditor.querySelector<HTMLElement>("select")?.focus(); }, { class: "link", "aria-label": "Change the type and tradition of this book" }),
+    facetEditor,
     msg.el,
     h("h4", {}, "Files"),
     h("ul", { class: "files" }, (it.files ?? []).map((f) => h("li", {},

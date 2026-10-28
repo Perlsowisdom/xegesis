@@ -208,6 +208,8 @@ export interface Facet {
   facet: string;
   value: string;
   origin?: string;
+  reason?: string;
+  confidence?: number;
 }
 
 export interface ItemSummary {
@@ -223,6 +225,24 @@ export interface ItemSummary {
   licence_name?: string;
   licence_origin?: string;
   suggested_licence?: Licence | null;
+  type?: string;
+  type_by?: "auto" | "user";
+  type_reason?: string;
+  tradition?: string;
+  tradition_by?: "auto" | "user";
+  tradition_reason?: string;
+}
+
+export interface Vocabulary {
+  types: string[];
+  traditions: string[];
+}
+
+export interface Rule {
+  id: string;
+  field: "author" | "publisher" | "series" | "folder";
+  text: string;
+  value: string;
 }
 
 // The result of library.add and library.add_files.
