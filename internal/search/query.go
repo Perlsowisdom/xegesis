@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"sort"
 	"strings"
 	"sync"
@@ -189,37 +190,133 @@ func (s *service) running(folderID string) bool {
 	return j != nil && j.progress().Running
 }
 
-const itemFilter = ` AND p.item_id IN (SELECT value FROM json_each(?))`
+// Ranking cost grows with the number of matching passages, since FTS5 scores every match before
+// it can sort. So each index is searched in slices of its passage IDs, and each slice stops after
+// sliceRows matches. A search with fewer matches than that in every slice is ranked exactly; a
+// broader one (a very common word) is ranked among the first sliceRows matches of every slice,
+// which spreads the hits across the whole library and keeps the search under a second.
+const slices = 8
+
+// Variables so tests can change them.
+var (
+	sliceRows  = 2500
+	itemRanges = 256 // the most items whose passages are searched range by range under a filter
+)
+
+// idRange is a span of passage IDs.
+type idRange struct{ lo, hi int64 }
+
+const itemFilter = ` AND p.file IN (SELECT num FROM indexed WHERE item_id IN (SELECT value FROM json_each(?)))`
 
 // search ranks the passages matching an FTS5 query and returns the best n with snippets. Ranking
 // happens first, on the full-text index alone, so snippets are built only for the passages kept.
 func (ix *index) search(ctx context.Context, match string, items []string, n int) ([]rawHit, error) {
-	top := `SELECT rowid FROM passages_fts WHERE passages_fts MATCH ? ORDER BY bm25(passages_fts, 2.0, 1.0) LIMIT ?`
-	args := []any{match, match, n}
-	if items != nil {
-		top = `SELECT passages_fts.rowid FROM passages_fts JOIN passages p ON p.id = passages_fts.rowid
-			WHERE passages_fts MATCH ?` + itemFilter + ` ORDER BY bm25(passages_fts, 2.0, 1.0) LIMIT ?`
-		args = []any{match, match, jsonList(items), n}
+	ranges, filtered, err := ix.ranges(ctx, items)
+	if err != nil || len(ranges) == 0 {
+		return nil, err
 	}
-	rows, err := ix.db.QueryContext(ctx, `SELECT p.id, p.item_id, p.file_id, p.heading, p.locator,
-		snippet(passages_fts, 1, '<mark>', '</mark>', '…', 24), bm25(passages_fts, 2.0, 1.0) AS rank
-		FROM passages_fts JOIN passages p ON p.id = passages_fts.rowid
-		WHERE passages_fts MATCH ? AND passages_fts.rowid IN (`+top+`) ORDER BY rank`, args...)
+	q := `SELECT rowid, bm25(passages_fts, 2.0, 1.0) FROM passages_fts
+		WHERE passages_fts MATCH ? AND rowid BETWEEN ? AND ? LIMIT ?`
+	if filtered {
+		q = `SELECT passages_fts.rowid, bm25(passages_fts, 2.0, 1.0) FROM passages_fts
+			JOIN passages p ON p.id = passages_fts.rowid
+			WHERE passages_fts MATCH ? AND passages_fts.rowid BETWEEN ? AND ?` + itemFilter + ` LIMIT ?`
+	}
+	per := max(n, slices*sliceRows/len(ranges))
+	type ranked struct {
+		id   int64
+		rank float64
+	}
+	var all []ranked
+	for _, r := range ranges {
+		args := []any{match, r.lo, r.hi}
+		if filtered {
+			args = append(args, jsonList(items))
+		}
+		rows, err := ix.rd.QueryContext(ctx, q, append(args, per)...)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var h ranked
+			if err := rows.Scan(&h.id, &h.rank); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			all = append(all, h)
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+	}
+	sort.Slice(all, func(i, j int) bool {
+		if all[i].rank != all[j].rank {
+			return all[i].rank < all[j].rank
+		}
+		return all[i].id < all[j].id
+	})
+	all = all[:min(n, len(all))]
+	snip, err := ix.rd.PrepareContext(ctx, `SELECT i.item_id, i.file_id, p.heading, p.locator,
+		snippet(passages_fts, 1, '<mark>', '</mark>', '…', 24)
+		FROM passages_fts JOIN passages p ON p.id = passages_fts.rowid JOIN indexed i ON i.num = p.file
+		WHERE passages_fts MATCH ? AND passages_fts.rowid = ?`)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var out []rawHit
-	for rows.Next() {
-		var h rawHit
-		var rank float64
-		if err := rows.Scan(&h.PassageID, &h.ItemID, &h.FileID, &h.Heading, &h.locator, &h.Snippet, &rank); err != nil {
+	defer snip.Close()
+	out := make([]rawHit, 0, len(all))
+	for _, a := range all {
+		h := rawHit{}
+		h.PassageID, h.Score = a.id, -a.rank
+		err := snip.QueryRowContext(ctx, match, a.id).Scan(&h.ItemID, &h.FileID, &h.Heading, &h.locator, &h.Snippet)
+		if errors.Is(err, sql.ErrNoRows) {
+			continue // the book was re-indexed meanwhile
+		}
+		if err != nil {
 			return nil, err
 		}
-		h.Score = -rank
 		out = append(out, h)
 	}
-	return out, rows.Err()
+	return out, nil
+}
+
+// ranges returns the passage ID ranges to search: slices of the whole index, or, under an item
+// filter, the items' own ranges when there are few of them. filtered says the ranges still need
+// the item filter.
+func (ix *index) ranges(ctx context.Context, items []string) (rs []idRange, filtered bool, err error) {
+	if items != nil {
+		rows, err := ix.rd.QueryContext(ctx, `SELECT first_id, first_id + passages - 1 FROM indexed
+			WHERE passages > 0 AND item_id IN (SELECT value FROM json_each(?)) ORDER BY first_id LIMIT ?`,
+			jsonList(items), itemRanges+1)
+		if err != nil {
+			return nil, false, err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var r idRange
+			if err := rows.Scan(&r.lo, &r.hi); err != nil {
+				return nil, false, err
+			}
+			rs = append(rs, r)
+		}
+		if err := rows.Err(); err != nil || len(rs) <= itemRanges {
+			return rs, false, err
+		}
+	}
+	var top int64
+	if err := ix.rd.QueryRowContext(ctx, `SELECT COALESCE(MAX(id), 0) FROM passages`).Scan(&top); err != nil {
+		return nil, false, err
+	}
+	if top == 0 {
+		return nil, false, nil
+	}
+	rs = rs[:0]
+	step := (top + slices - 1) / slices
+	for lo := int64(1); lo <= top; lo += step {
+		rs = append(rs, idRange{lo, min(lo+step-1, top)})
+	}
+	return rs, items != nil, nil
 }
 
 // refs finds passages citing a range that overlaps r. Citations never cross books, so the scan
@@ -233,9 +330,9 @@ func (ix *index) refs(ctx context.Context, r verse.Range, items []string, n int)
 		args = append(args, jsonList(items))
 	}
 	top += ` GROUP BY x.passage_id ORDER BY width, x.passage_id LIMIT ?`
-	rows, err := ix.db.QueryContext(ctx, `SELECT p.id, p.item_id, p.file_id, p.heading, p.locator, p.text,
+	rows, err := ix.rd.QueryContext(ctx, `SELECT p.id, i.item_id, i.file_id, p.heading, p.locator, p.text_z,
 		t.width, t.verse_start, t.verse_end FROM (`+top+`) t JOIN passages p ON p.id = t.passage_id
-		ORDER BY t.width, p.id`, append(args, n)...)
+		JOIN indexed i ON i.num = p.file ORDER BY t.width, p.id`, append(args, n)...)
 	if err != nil {
 		return nil, err
 	}
@@ -244,8 +341,12 @@ func (ix *index) refs(ctx context.Context, r verse.Range, items []string, n int)
 	for rows.Next() {
 		var h rawHit
 		var start, end int64
-		if err := rows.Scan(&h.PassageID, &h.ItemID, &h.FileID, &h.Heading, &h.locator, &h.text, &h.width,
+		var z []byte
+		if err := rows.Scan(&h.PassageID, &h.ItemID, &h.FileID, &h.Heading, &h.locator, &z, &h.width,
 			&start, &end); err != nil {
+			return nil, err
+		}
+		if h.text, err = unpackText(z); err != nil {
 			return nil, err
 		}
 		cited := verse.Range{Start: verse.ID(start), End: verse.ID(end)}

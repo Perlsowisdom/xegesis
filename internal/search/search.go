@@ -106,13 +106,7 @@ func (s *service) drop(folderID string) error {
 		ix.close()
 		delete(s.indexes, folderID)
 	}
-	p := s.path(folderID)
-	for _, f := range []string{p, p + "-wal", p + "-shm"} {
-		if err := os.Remove(f); err != nil && !errors.Is(err, fs.ErrNotExist) {
-			return err
-		}
-	}
-	return nil
+	return removeIndexFiles(s.path(folderID))
 }
 
 // folders lists the live library folders and whether each is online.
