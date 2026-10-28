@@ -288,7 +288,7 @@ func write(path string, b book, seed uint64) (int64, error) {
 	case "epub":
 		body, err = epub(b, chs)
 	case "pdf":
-		body = pdf(chs)
+		body = pdf(b, chs)
 	default:
 		body, err = docx(b, chs)
 	}
@@ -399,7 +399,7 @@ xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>` + esc(b.title) + `</dc:t
 
 // pdf lays the text out in lines of about 90 characters, 40 lines to a page, with compressed
 // content streams.
-func pdf(chs [][]para) []byte {
+func pdf(bk book, chs [][]para) []byte {
 	var pages []string
 	var page strings.Builder
 	lines := 0
@@ -457,12 +457,14 @@ func pdf(chs [][]para) []byte {
 		w.Close()
 		obj(fmt.Sprintf("<< /Length %d /Filter /FlateDecode >>\nstream\n%s\nendstream", z.Len(), z.String()))
 	}
+	obj(fmt.Sprintf("<< /Title (%s) /Author (%s) >>", pdfEsc(bk.title), pdfEsc(bk.author)))
 	xref := b.Len()
 	fmt.Fprintf(&b, "xref\n0 %d\n0000000000 65535 f \n", len(offsets)+1)
 	for _, o := range offsets {
 		fmt.Fprintf(&b, "%010d 00000 n \n", o)
 	}
-	fmt.Fprintf(&b, "trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n", len(offsets)+1, xref)
+	fmt.Fprintf(&b, "trailer\n<< /Size %d /Root 1 0 R /Info %d 0 R >>\nstartxref\n%d\n%%%%EOF\n", len(offsets)+1,
+		len(offsets), xref)
 	return b.Bytes()
 }
 
