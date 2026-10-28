@@ -8,16 +8,19 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"github.com/Perlsowisdom/xegesis/frontend"
 	"github.com/Perlsowisdom/xegesis/internal/command"
 	"github.com/Perlsowisdom/xegesis/internal/command/all"
 	"github.com/Perlsowisdom/xegesis/internal/integrations/secrets"
+	"github.com/Perlsowisdom/xegesis/internal/library"
 	"github.com/Perlsowisdom/xegesis/internal/store"
 )
 
@@ -27,36 +30,54 @@ type App struct {
 	reg  *command.Registry
 	env  *command.Env
 	stop context.CancelFunc
-	done chan struct{}
+	wg   sync.WaitGroup
 }
+
+// rescanEvery is how often library folders are rescanned. Unchanged files are skipped, so it is cheap.
+const rescanEvery = 10 * time.Minute
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	bg, stop := context.WithCancel(context.Background())
-	a.stop, a.done = stop, make(chan struct{})
-	go a.autoBackup(bg)
+	a.stop = stop
+	a.every(bg, time.Hour, "backup.auto", nil)
+	a.every(bg, rescanEvery, "library.rescan", func(res any) {
+		if r, ok := res.(library.RescanResult); ok && r.Added+r.Changed+r.Removed > 0 {
+			runtime.EventsEmit(ctx, "library:changed")
+		}
+	})
+	// Files and folders dropped on the window are added to the library by the interface.
+	runtime.OnFileDrop(ctx, func(_, _ int, paths []string) { runtime.EventsEmit(ctx, "files:dropped", paths) })
 }
 
 func (a *App) shutdown(context.Context) {
 	a.stop()
-	<-a.done
+	a.wg.Wait()
 }
 
-// autoBackup runs the scheduled backup at start-up and then hourly; the command decides whether one is due.
-func (a *App) autoBackup(ctx context.Context) {
-	defer close(a.done)
-	tick := time.NewTicker(time.Hour)
-	defer tick.Stop()
-	for {
-		if _, err := a.reg.Run(ctx, a.env, "backup.auto", nil); err != nil && ctx.Err() == nil {
-			log.Printf("automatic backup: %v", err)
+// every runs a command at start-up and then at each interval until ctx ends: the scheduled backup
+// (the command decides whether one is due) and the library rescan.
+func (a *App) every(ctx context.Context, interval time.Duration, id string, done func(any)) {
+	a.wg.Add(1)
+	go func() {
+		defer a.wg.Done()
+		tick := time.NewTicker(interval)
+		defer tick.Stop()
+		for {
+			res, err := a.reg.Run(ctx, a.env, id, nil)
+			if err != nil && ctx.Err() == nil {
+				log.Printf("%s: %v", id, err)
+			}
+			if err == nil && done != nil {
+				done(res)
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-tick.C:
+			}
 		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-tick.C:
-		}
-	}
+	}()
 }
 
 // Commands describes every command.
@@ -104,6 +125,7 @@ func main() {
 		OnStartup:   app.startup,
 		OnShutdown:  app.shutdown,
 		Bind:        []any{app},
+		DragAndDrop: &options.DragAndDrop{EnableFileDrop: true, DisableWebViewDrop: true},
 	})
 	if err != nil {
 		log.Fatal(err)

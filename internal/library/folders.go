@@ -167,6 +167,9 @@ func searchUnder(dir, id string, depth int) string {
 }
 
 func absDir(path string) (string, error) {
+	if strings.TrimSpace(path) == "" {
+		return "", command.Errorf("bad_params", "give the path of a folder")
+	}
 	p, err := filepath.Abs(path)
 	if err != nil {
 		return "", command.Errorf("bad_params", "%v", err)

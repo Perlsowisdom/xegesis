@@ -16,6 +16,7 @@ interface Bound {
   Commands(): Promise<CommandInfo[]>;
   Run(id: string, params: string): Promise<string>;
   PickFile?(title: string): Promise<string>;
+  PickFiles?(title: string): Promise<string[] | null>;
   PickFolder?(title: string): Promise<string>;
 }
 
@@ -88,6 +89,19 @@ export async function pick(kind: "file" | "folder", title: string): Promise<stri
   return (await fn.call(app, title)) ?? "";
 }
 
+// pickFiles opens a native dialog for several files; it returns [] when cancelled.
+export async function pickFiles(title: string): Promise<string[]> {
+  const app = bound();
+  if (!app?.PickFiles) throw new RunError({ code: "unavailable", message: "file dialogs need the desktop app" });
+  return (await app.PickFiles(title)) ?? [];
+}
+
+// onEvent listens to an event the desktop app emits, such as files dropped on the window.
+export function onEvent(name: string, fn: (...data: unknown[]) => void): void {
+  const rt = (window as unknown as { runtime?: { EventsOn?(n: string, f: (...d: unknown[]) => void): void } }).runtime;
+  rt?.EventsOn?.(name, fn);
+}
+
 // Message is a status line under a form: errors are announced assertively, other news politely.
 export class Message {
   el = h("p", { class: "msg", "aria-live": "polite" });
@@ -138,6 +152,7 @@ export interface Licence {
   share_allowed?: boolean;
   store_allowed?: boolean;
   confirmed_by_user?: boolean;
+  origin?: string;
   print_limit?: { pages?: number; percent?: number } | null;
   export_limit?: { pages?: number; percent?: number } | null;
 }
@@ -204,8 +219,20 @@ export interface ItemSummary {
   language?: string;
   authors: string[];
   status: string;
-  licence?: string;
+  licence: string;
+  licence_name?: string;
+  licence_origin?: string;
   suggested_licence?: Licence | null;
+}
+
+// The result of library.add and library.add_files.
+export interface AddResult {
+  added: number;
+  copied: number;
+  folders: Folder[];
+  since: number;
+  errors: { rel_path: string; error: string }[];
+  summary: string;
 }
 
 export interface Item {
@@ -224,6 +251,7 @@ export interface Item {
   facets: Facet[];
   files: { id: string; folder_id: string; path: string; rel_path: string; format: string; size: number; online: boolean }[];
   licence?: Licence | null;
+  licence_name?: string;
   suggested_licence?: Licence | null;
 }
 

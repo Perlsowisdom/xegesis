@@ -90,7 +90,7 @@ func TestOpenEachFormat(t *testing.T) {
 	if b.Format != "epub" || !b.Reflowable || b.Sections != 2 || len(b.TOC) != 2 || b.TOC[0] != want[0] || b.TOC[1] != want[1] {
 		t.Errorf("epub %+v", b)
 	}
-	if b.Licence != "unknown" || b.Position != nil || len(b.Authors) != 1 {
+	if b.Licence != "personal_purchase" || b.Position != nil || len(b.Authors) != 1 {
 		t.Errorf("epub licence/position/authors %+v", b)
 	}
 

@@ -3,6 +3,8 @@ package library
 import (
 	"os"
 	"path/filepath"
+
+	"golang.org/x/sys/windows"
 )
 
 // volumeOf returns the root of the volume holding path, such as a drive letter or a network share.
@@ -18,4 +20,13 @@ var mountedRoots = func() []string {
 		}
 	}
 	return out
+}
+
+// documentsDir is the user's Documents folder, wherever Windows has it (it may be redirected).
+func documentsDir() string {
+	if p, err := windows.KnownFolderPath(windows.FOLDERID_Documents, 0); err == nil && p != "" {
+		return p
+	}
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, "Documents")
 }

@@ -1,95 +1,76 @@
-// A licence form used wherever the user states the terms of a text: installing a Bible and
-// answering licence questions after a library scan. Licence types and their default terms come
-// from the core (licence.defaults).
+// Choosing a licence in plain words: four choices, with the exact terms under More options. Used for
+// books in the Library and for installed Bibles. Nothing asks for a licence up front; the core gives
+// each book or Bible the licence it states, or Personal copy, and this is how the user changes it.
 
-import { Licence, Message, paramEnum, run } from "./api";
-import { field, h, id, select } from "./dom";
+import { Licence } from "./api";
+import { button, field, h, id } from "./dom";
+import { CHOICES, Choice, choiceOf, licenceParams, originText, plainName } from "./licencewords";
 
-export const TYPE_LABELS: Record<string, string> = {
-  public_domain: "Public domain",
-  creative_commons: "Creative Commons",
-  open_other: "Other open licence",
-  personal_purchase: "Bought for personal use",
-  own_work: "My own work",
-  unknown: "Not sure",
-};
+export { originText, plainName } from "./licencewords";
 
-export function typeLabel(t: string | undefined): string {
-  return t ? TYPE_LABELS[t] ?? t : "Undecided";
-}
-
-export interface LicenceValue {
-  type: string;
-  spdx?: string;
-  rights_holder?: string;
-  attribution?: string;
-  url?: string;
-}
-
-export interface LicenceForm {
+export interface LicenceChooser {
   el: HTMLElement;
-  value(): LicenceValue;
-  set(l: Partial<Licence>): void;
+  // value is the parameters for library.set_licence.
+  value(): Record<string, unknown>;
+  set(l?: Partial<Licence> | null): void;
 }
 
-// licenceForm builds the fields. withUrl adds a web address field.
-export function licenceForm(legend: string, withUrl = true): LicenceForm {
-  const type = select([], "", { required: true });
-  const spdx = h("input", { type: "text", placeholder: "e.g. CC-BY-SA-4.0", autocomplete: "off", spellcheck: "false" });
-  const holder = h("input", { type: "text", autocomplete: "off" });
-  const attribution = h("textarea", { rows: 2 });
-  const url = h("input", { type: "url", placeholder: "https://", autocomplete: "off" });
-  const terms = h("p", { class: "hint", id: id("terms"), "aria-live": "polite" });
-  const msg = new Message();
-  type.setAttribute("aria-describedby", terms.id);
-
-  paramEnum("licence.defaults", "type").then((types) => {
-    const current = type.value;
-    type.replaceChildren(...types.map((t) => h("option", { value: t }, typeLabel(t))));
-    type.value = types.includes(current) ? current : types.includes("unknown") ? "unknown" : types[0] ?? "";
-    describe();
+// licenceChooser builds the four choices. limits adds print and export limits to More options.
+export function licenceChooser(legend: string, limits = true): LicenceChooser {
+  const name = id("licence");
+  const radios = CHOICES.map(([value, label, hint]) => {
+    const r = h("input", { type: "radio", name, value });
+    return { r, el: h("label", { class: "choice" }, r, h("span", {}, h("strong", {}, label), h("small", { class: "hint" }, ` ${hint}`))) };
   });
+  const text = (placeholder = "", type = "text") => h("input", { type, placeholder, autocomplete: "off", spellcheck: "false" });
+  const spdx = text("e.g. CC-BY-SA-4.0");
+  const holder = text();
+  const url = text("https://", "url");
+  const credit = h("textarea", { rows: 2 });
+  const num = () => h("input", { type: "number", min: "0", step: "1", inputmode: "numeric" });
+  const printPages = num(), printPercent = num(), exportPages = num(), exportPercent = num();
 
-  async function describe() {
-    if (!type.value) return;
-    const d = await msg.attempt(() => run<Licence>("licence.defaults", { type: type.value, spdx: spdx.value.trim() }));
-    if (d) terms.textContent = termsText(d);
-  }
-  type.addEventListener("change", describe);
-  spdx.addEventListener("change", describe);
-
-  const el = h("fieldset", { class: "licence" },
-    h("legend", {}, legend),
+  const more = h("details", { class: "more" }, h("summary", {}, "More options"),
     h("div", { class: "grid2" },
-      field("Licence type", type),
-      field("SPDX or Creative Commons ID", spdx, "Optional")),
-    terms,
-    h("div", { class: "grid2" },
+      field("Licence ID", spdx, "Optional, for Free to share"),
       field("Rights holder", holder),
-      withUrl ? field("Licence web address", url) : null),
-    field("Attribution to show with quotations", attribution),
-    msg.el);
+      field("Licence web address", url)),
+    field("Credit line to show with quotations", credit),
+    limits ? h("div", { class: "grid2" },
+      field("Print at most (pages)", printPages), field("Print at most (% of the book)", printPercent),
+      field("Copy or export at most (pages)", exportPages), field("Copy or export at most (% of the book)", exportPercent)) : null,
+    limits ? h("p", { class: "hint" }, "Leave the limits empty to use the usual ones for the licence.") : null);
+
+  const el = h("fieldset", { class: "licence" }, h("legend", {}, legend),
+    h("div", { class: "choices" }, radios.map((x) => x.el)), more);
+
+  const chosen = (): Choice => (radios.find((x) => x.r.checked)?.r.value as Choice) ?? "personal";
+  const n = (i: HTMLInputElement) => Number(i.value) || undefined;
 
   return {
     el,
-    value() {
-      const v: LicenceValue = { type: type.value };
-      const put = (k: keyof LicenceValue, s: string) => { if (s.trim()) v[k] = s.trim(); };
-      put("spdx", spdx.value);
-      put("rights_holder", holder.value);
-      put("attribution", attribution.value);
-      if (withUrl) put("url", url.value);
-      return v;
-    },
+    value: () => licenceParams(chosen(), {
+      spdx: spdx.value, rights_holder: holder.value, url: url.value, attribution: credit.value,
+      print_pages: n(printPages), print_percent: n(printPercent), export_pages: n(exportPages), export_percent: n(exportPercent),
+    }),
     set(l) {
-      if (l.type) type.value = l.type;
-      spdx.value = l.spdx ?? "";
-      holder.value = l.rights_holder ?? "";
-      attribution.value = l.attribution ?? "";
-      url.value = l.url ?? "";
-      describe();
+      const c = choiceOf(l);
+      radios.forEach((x) => { x.r.checked = x.r.value === c; });
+      spdx.value = l?.spdx ?? "";
+      holder.value = l?.rights_holder ?? "";
+      url.value = l?.url ?? "";
+      credit.value = l?.attribution ?? "";
     },
   };
+}
+
+// licenceLine shows "Licence: Personal copy · no licence stated in the book · change". change opens
+// the caller's editor.
+export function licenceLine(l: Partial<Licence> | null | undefined, what: string, change: () => void): HTMLElement {
+  const from = originText(l?.origin, what);
+  return h("span", { class: "licence-line" }, "Licence: ", h("strong", {}, plainName(l)),
+    l?.spdx ? ` (${l.spdx})` : "", from ? h("small", { class: "hint" }, ` · ${from}`) : null, " · ",
+    button("change", change, { class: "link", "aria-label": `Change the licence of this ${what}` }));
 }
 
 function limit(l: Licence["print_limit"]): string {

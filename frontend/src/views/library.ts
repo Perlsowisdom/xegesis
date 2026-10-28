@@ -1,9 +1,11 @@
-// Library: folders of books, scanning them, answering licence questions, and the catalogue.
+// Library: adding books in one step (files, folders or drag and drop), the folders being watched,
+// and the catalogue, where licences are shown in plain words and can be changed for one book or a
+// selection. Every action is a library.* command.
 
-import { Facet, Folder, Item, ItemSummary, Licence, Message, pick, run } from "../api";
+import { AddResult, Facet, Folder, Item, ItemSummary, Message, pick, pickFiles, run } from "../api";
 import { badge, button, clear, field, h, select } from "../dom";
 import { changedFields, formatTime, pageLabel } from "../helpers";
-import { licenceForm, termsText, typeLabel } from "../licence";
+import { licenceChooser, licenceLine, originText, plainName, termsText } from "../licence";
 import { navigate } from "../state";
 import { openBook } from "./book";
 
@@ -12,56 +14,85 @@ const PAGE = 50;
 interface ScanResult {
   added: number; changed: number; removed: number; moved: number; restored: number; unchanged: number;
   errors: { rel_path: string; error: string }[];
-  needs_licence_total: number;
 }
 
 export function libraryView() {
   let folders: Folder[] = [];
+  const addMsg = new Message();
   const folderMsg = new Message();
   const folderList = h("div", { class: "table-wrap" });
-  const questions = licenceQuestions(() => items.refresh());
   const items = catalogue(() => folders);
 
-  // Adding a folder
-  const path = h("input", { type: "text", id: "folder-path", spellcheck: "false", placeholder: "Choose a folder", required: true });
-  const label = h("input", { type: "text", autocomplete: "off", placeholder: "Optional" });
-  const addForm = h("form", { class: "row wrap end", "aria-label": "Add a library folder" },
-    h("div", { class: "field grow" }, h("label", { for: "folder-path" }, "Folder"),
-      h("div", { class: "row" }, path, button("Choose…", async () => {
-        const p = await folderMsg.attempt(() => pick("folder", "Choose a folder of books"));
-        if (p) path.value = p;
-      }))),
-    field("Name", label),
-    h("button", { type: "submit", class: "primary" }, "Add folder"));
-  addForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const f = await folderMsg.attempt(() => run<Folder>("library.add_folder", { path: path.value.trim(), ...(label.value.trim() ? { label: label.value.trim() } : {}) }));
-    if (!f) return;
-    path.value = label.value = "";
-    folderMsg.ok(`Added ${f.label || f.path}. Scan it to find its books.`);
-    showFolders();
+  // Adding books: one button, two ways.
+  const menu = h("div", { class: "menu", role: "menu", hidden: true },
+    button("Choose files…", () => { closeMenu(); chooseFiles(); }, { role: "menuitem" }),
+    button("Choose a folder…", () => { closeMenu(); chooseFolder(); }, { role: "menuitem" }));
+  const addButton = button("Add books", () => (menu.hidden ? openMenu() : closeMenu()),
+    { class: "primary", "aria-haspopup": "menu", "aria-expanded": "false" });
+  const menuWrap = h("div", { class: "menu-wrap" }, addButton, menu);
+  function openMenu() {
+    menu.hidden = false;
+    addButton.setAttribute("aria-expanded", "true");
+    menu.querySelector("button")?.focus();
+  }
+  function closeMenu() {
+    menu.hidden = true;
+    addButton.setAttribute("aria-expanded", "false");
+  }
+  menu.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") { closeMenu(); addButton.focus(); }
+  });
+  document.addEventListener("click", (e) => {
+    if (!menu.hidden && !menuWrap.contains(e.target as Node)) closeMenu();
   });
 
+  async function chooseFiles() {
+    const files = await addMsg.attempt(() => pickFiles("Choose books to add"));
+    if (files?.length) add(files);
+  }
+  async function chooseFolder() {
+    const dir = await addMsg.attempt(() => pick("folder", "Choose a folder of books"));
+    if (dir) add([dir]);
+  }
+
+  // add adds files and folders; a dropped mix goes through here too.
+  async function add(paths: string[]) {
+    addMsg.info(paths.length === 1 ? "Adding books… a large folder can take a while." : `Adding ${paths.length} items…`);
+    const r = await addMsg.attempt(() => run<AddResult>("library.add", { paths }));
+    if (!r) return;
+    clear(addMsg.el, r.summary,
+      r.added ? [" ", button("Review", () => items.review(r.since), { class: "link" })] : null,
+      r.errors.length ? h("details", {}, h("summary", {}, "Why some files were not added"),
+        h("ul", {}, r.errors.map((e) => h("li", {}, h("code", {}, e.rel_path), ` ${e.error}`)))) : null);
+    addMsg.el.className = "msg ok";
+    addMsg.el.setAttribute("role", "status");
+    showFolders();
+    items.refresh();
+  }
+
   const el = h("div", { class: "view" },
-    h("h1", {}, "Library"),
+    h("div", { class: "row between wrap" }, h("h1", {}, "Library"), menuWrap),
+    h("p", { class: "hint" }, "Add EPUB, PDF, Word, HTML, Markdown or text files, or a whole folder. " +
+      "You can also drop them on the window. Files you choose are copied into Documents/Xegesis Library; " +
+      "folders stay where they are and are checked for new books every few minutes."),
+    addMsg.el,
+    items.el,
     h("section", { "aria-labelledby": "folders-h" },
       h("div", { class: "row between" }, h("h2", { id: "folders-h" }, "Folders"),
         button("Look for moved drives", async () => {
           if (await folderMsg.attempt(() => run("library.locate"))) {
-            folderMsg.ok("Checked mounted drives.");
+            folderMsg.ok("Checked connected drives.");
             showFolders();
           }
         })),
-      folderList, addForm, folderMsg.el),
-    questions.el,
-    items.el);
+      folderMsg.el, folderList));
 
   async function showFolders() {
     const fs = await folderMsg.attempt(() => run<Folder[]>("library.folders"));
     if (!fs) return;
     folders = fs;
     items.setFolders(fs);
-    clear(folderList, fs.length === 0 ? h("p", { class: "empty" }, "No folders yet. Add a folder of PDF, EPUB or other book files.") :
+    clear(folderList, fs.length === 0 ? h("p", { class: "empty" }, "No folders yet. Choose Add books to start.") :
       h("table", { class: "list" },
         h("thead", {}, h("tr", {}, ["Name", "Where", "Status", ""].map((t) => h("th", { scope: "col" }, t)))),
         h("tbody", {}, fs.map((f) => h("tr", {},
@@ -70,23 +101,20 @@ export function libraryView() {
           h("td", {}, f.online ? badge("Online", "ok") : badge("Offline", "warn"),
             !f.online && f.last_seen_at ? h("small", { class: "hint" }, ` last seen ${formatTime(f.last_seen_at)}`) : null),
           h("td", { class: "actions" },
-            button("Scan", () => scan(f), { disabled: !f.online, "aria-label": `Scan ${f.label || f.path}` }),
+            button("Check now", () => scan(f), { disabled: !f.online, "aria-label": `Check ${f.label || f.path} for new books` }),
             button("Books", () => items.filterFolder(f.id), { "aria-label": `Show books in ${f.label || f.path}` }),
-            button("Licences", () => questions.open(f), { "aria-label": `Licence questions for ${f.label || f.path}` }),
             button("Remove", () => removeFolder(f), { class: "danger", "aria-label": `Remove ${f.label || f.path}` })))))));
   }
 
   async function scan(f: Folder) {
-    folderMsg.info(`Scanning ${f.label || f.path}… this can take a while for large folders.`);
+    folderMsg.info(`Checking ${f.label || f.path}…`);
     const r = await folderMsg.attempt(() => run<ScanResult>("library.scan", { folder_id: f.id }));
     if (!r) return;
     clear(folderMsg.el,
-      `Scanned ${f.label || f.path}: ${r.added} added, ${r.changed} changed, ${r.moved} moved, ${r.restored} restored, ${r.removed} removed, ${r.unchanged} unchanged.`,
+      `Checked ${f.label || f.path}: ${r.added} added, ${r.changed} changed, ${r.moved} moved, ${r.restored} back, ${r.removed} gone.`,
       r.errors.length ? h("details", {}, h("summary", {}, `${r.errors.length} files could not be read`),
-        h("ul", {}, r.errors.map((e) => h("li", {}, h("code", {}, e.rel_path), ` ${e.error}`)))) : null,
-      r.needs_licence_total ? h("span", {}, ` ${r.needs_licence_total} books need a licence decision.`) : null);
+        h("ul", {}, r.errors.map((e) => h("li", {}, h("code", {}, e.rel_path), ` ${e.error}`)))) : null);
     folderMsg.el.className = "msg ok";
-    if (r.needs_licence_total) questions.open(f);
     items.refresh();
   }
 
@@ -103,111 +131,27 @@ export function libraryView() {
     await showFolders();
     items.refresh();
   }
-  return { el, show };
+  return { el, show, drop: add, changed: () => { showFolders(); items.refresh(); } };
 }
 
-// licenceQuestions lists books whose licence is undecided and records the user's answers.
-function licenceQuestions(changed: () => void) {
-  const msg = new Message();
-  const list = h("div", {});
-  const pager = h("div", { class: "row" });
-  const title = h("h2", { id: "lq-h" }, "Licence questions");
-  const form = licenceForm("Licence to record", true);
-  let folder: Folder | null = null;
-  let offset = 0;
-  let rows: ItemSummary[] = [];
-
-  const own = h("details", {}, h("summary", {}, "Choose a licence myself"),
-    form.el,
-    h("div", { class: "row wrap" },
-      button("Apply to selected", () => apply("selected", false), { class: "primary" }),
-      button("Apply to all undecided", () => apply("all", false))));
-  const actions = h("div", {},
-    h("div", { class: "row wrap" },
-      button("Use the suggestion for selected", () => apply("selected", true), { class: "primary" }),
-      button("Use the suggestion for all undecided", () => apply("all", true))),
-    own);
-  const el = h("section", { class: "card", "aria-labelledby": "lq-h", hidden: true },
-    h("div", { class: "row between" }, title, button("Close", () => { el.hidden = true; })),
-    h("p", { class: "hint" }, "Tell Xegesis what you may do with each book. A suggestion is shown where the book's own details name a licence."),
-    msg.el, list, pager, actions);
-
-  async function load() {
-    const p: Record<string, unknown> = { needs_licence: true, limit: PAGE, offset };
-    if (folder) p.folder_id = folder.id;
-    const r = await msg.attempt(() => run<{ items: ItemSummary[]; total: number }>("library.items", p));
-    if (!r) return;
-    rows = r.items;
-    if (r.total === 0) own.open = false;
-    actions.hidden = r.total === 0;
-    pager.hidden = r.total === 0;
-    title.textContent = `Licence questions${folder ? ` · ${folder.label || folder.path}` : ""} (${r.total})`;
-    const all = h("input", { type: "checkbox", "aria-label": "Select all on this page" });
-    all.addEventListener("change", () => list.querySelectorAll<HTMLInputElement>("tbody input").forEach((b) => { b.checked = all.checked; }));
-    clear(list, rows.length === 0 ? h("p", { class: "empty" }, "Every book has a licence. Nothing to answer.") :
-      h("div", { class: "table-wrap" }, h("table", { class: "list" },
-        h("thead", {}, h("tr", {}, h("th", { scope: "col" }, all), ["Book", "Suggested licence"].map((t) => h("th", { scope: "col" }, t)))),
-        h("tbody", {}, rows.map((it) => h("tr", {},
-          h("td", {}, h("input", { type: "checkbox", value: it.id, "aria-label": `Select ${it.title}` })),
-          h("td", {}, h("strong", {}, it.title || "Untitled"), it.authors?.length ? h("small", { class: "hint" }, ` ${it.authors.join(", ")}`) : null),
-          h("td", {}, it.suggested_licence ? suggestion(it.suggested_licence) : h("span", { class: "hint" }, "None"))))))));
-    clear(pager, h("span", { class: "hint" }, pageLabel(offset, rows.length, r.total)),
-      button("Previous", () => { offset = Math.max(0, offset - PAGE); load(); }, { disabled: offset === 0 }),
-      button("Next", () => { offset += PAGE; load(); }, { disabled: offset + PAGE >= r.total }));
-  }
-
-  async function apply(which: "selected" | "all", suggested: boolean) {
-    const p: Record<string, unknown> = {};
-    if (which === "selected") {
-      const ids = [...list.querySelectorAll<HTMLInputElement>("tbody input:checked")].map((b) => b.value);
-      if (!ids.length) return msg.info("Select at least one book first.");
-      p.item_ids = ids;
-    } else {
-      p.pending = true;
-      if (folder) p.folder_id = folder.id;
-    }
-    if (suggested) p.use_suggested = true;
-    else Object.assign(p, form.value());
-    const r = await msg.attempt(() => run<{ updated: number }>("library.set_licence", p));
-    if (!r) return;
-    msg.ok(`Recorded a licence for ${r.updated} books.`);
-    offset = 0;
-    load();
-    changed();
-  }
-
-  return {
-    el,
-    open(f: Folder | null) {
-      folder = f;
-      offset = 0;
-      el.hidden = false;
-      load();
-      el.scrollIntoView({ block: "start" });
-    },
-  };
-}
-
-function suggestion(l: Licence) {
-  return h("span", {}, typeLabel(l.type), l.spdx ? h("small", { class: "hint" }, ` ${l.spdx}`) : null);
-}
-
-// catalogue is the filtered, paged list of items with an editable detail pane.
+// catalogue is the filtered, paged list of items with a detail pane and licence changes.
 function catalogue(getFolders: () => Folder[]) {
   const msg = new Message();
   const text = h("input", { type: "search", autocomplete: "off" });
   const author = h("input", { type: "search", autocomplete: "off" });
   const kind = h("input", { type: "text", autocomplete: "off", placeholder: "e.g. book, commentary", list: "kinds" });
   const folder = select([["", "All folders"]], "");
-  const needs = h("input", { type: "checkbox" });
   const table = h("div", { class: "table-wrap", "aria-live": "polite" });
   const pager = h("div", { class: "row" });
   const detail = h("aside", { class: "pane detail", "aria-label": "Book details", hidden: true });
+  const reviewing = h("p", { class: "msg", role: "status", hidden: true });
+  const selection = h("div", { class: "row wrap", hidden: true });
+  const bulk = h("div", { class: "card", hidden: true });
   let offset = 0;
+  let since = 0;
 
   const filters = h("form", { class: "filters", role: "search", "aria-label": "Filter books" },
     field("Title", text), field("Author", author), field("Kind", kind), field("Folder", folder),
-    h("label", { class: "check" }, needs, " Licence undecided"),
     h("button", { type: "submit", class: "primary" }, "Filter"),
     h("datalist", { id: "kinds" }, ["book", "bible", "commentary", "dictionary", "journal"].map((k) => h("option", { value: k }))));
   filters.addEventListener("submit", (e) => {
@@ -216,12 +160,38 @@ function catalogue(getFolders: () => Folder[]) {
     refresh();
   });
   folder.addEventListener("change", () => { offset = 0; refresh(); });
-  needs.addEventListener("change", () => { offset = 0; refresh(); });
 
   const el = h("section", { "aria-labelledby": "books-h" },
     h("h2", { id: "books-h" }, "Books"),
-    filters, msg.el,
+    filters, reviewing, msg.el, selection, bulk,
     h("div", { class: "panes" }, h("div", { class: "pane" }, table, pager), detail));
+
+  const checked = () => [...table.querySelectorAll<HTMLInputElement>("tbody input[type=checkbox]:checked")].map((b) => b.value);
+
+  function updateSelection() {
+    const ids = checked();
+    selection.hidden = ids.length === 0;
+    clear(selection, h("span", {}, `${ids.length} selected`),
+      button("Set licence for selected", () => openBulk(), { class: "primary" }));
+    if (!ids.length) bulk.hidden = true;
+  }
+
+  function openBulk() {
+    const ids = checked();
+    const chooser = licenceChooser(`Licence for ${ids.length} ${ids.length === 1 ? "book" : "books"}`);
+    const bmsg = new Message();
+    clear(bulk, chooser.el, h("div", { class: "row" },
+      button("Set licence", async () => {
+        const r = await bmsg.attempt(() => run<{ updated: number }>("library.set_licence", { item_ids: ids, ...chooser.value() }));
+        if (!r) return;
+        bulk.hidden = true;
+        msg.ok(`Licence set for ${r.updated} ${r.updated === 1 ? "book" : "books"}.`);
+        refresh();
+      }, { class: "primary" }),
+      button("Cancel", () => { bulk.hidden = true; })), bmsg.el);
+    bulk.hidden = false;
+    bulk.querySelector<HTMLInputElement>("input")?.focus();
+  }
 
   async function refresh() {
     const p: Record<string, unknown> = { limit: PAGE, offset };
@@ -229,32 +199,47 @@ function catalogue(getFolders: () => Folder[]) {
     if (author.value.trim()) p.author = author.value.trim();
     if (kind.value.trim()) p.kind = kind.value.trim();
     if (folder.value) p.folder_id = folder.value;
-    if (needs.checked) p.needs_licence = true;
+    if (since) p.added_since = since;
     const r = await msg.attempt(() => run<{ items: ItemSummary[]; total: number }>("library.items", p));
     if (!r) return;
-    clear(table, r.items.length === 0 ? h("p", { class: "empty" }, "No books match.") :
+    reviewing.hidden = !since;
+    clear(reviewing, since ? [`Showing the ${r.total} ${r.total === 1 ? "book" : "books"} just added. `,
+      button("Show all books", () => { since = 0; offset = 0; refresh(); }, { class: "link" })] : null);
+    const all = h("input", { type: "checkbox", "aria-label": "Select all books on this page" });
+    all.addEventListener("change", () => {
+      table.querySelectorAll<HTMLInputElement>("tbody input[type=checkbox]").forEach((b) => { b.checked = all.checked; });
+      updateSelection();
+    });
+    clear(table, r.items.length === 0 ? h("p", { class: "empty" }, since ? "No books match." : "No books yet. Choose Add books, or drop files on the window.") :
       h("table", { class: "list" },
-        h("thead", {}, h("tr", {}, ["Title", "Authors", "Year", "Kind", "Status", "Licence"].map((t) => h("th", { scope: "col" }, t)))),
-        h("tbody", {}, r.items.map((it) => h("tr", {},
+        h("thead", {}, h("tr", {}, h("th", { scope: "col" }, all),
+          ["Title", "Authors", "Year", "Kind", "Status", "Licence"].map((t) => h("th", { scope: "col" }, t)))),
+        h("tbody", { onchange: updateSelection }, r.items.map((it) => h("tr", {},
+          h("td", {}, h("input", { type: "checkbox", value: it.id, "aria-label": `Select ${it.title || "Untitled"}` })),
           h("td", {}, button(it.title || "Untitled", () => open(it.id), { class: "link" }),
             it.subtitle ? h("small", { class: "hint" }, h("br"), it.subtitle) : null),
           h("td", {}, (it.authors ?? []).join(", ")),
           h("td", { class: "num" }, it.year || ""),
           h("td", {}, it.kind),
           h("td", {}, statusBadge(it.status)),
-          h("td", {}, it.licence ? typeLabel(it.licence) : h("span", { class: "hint" }, "Undecided")))))));
+          h("td", {}, it.licence_name || plainName(it.licence), " · ",
+            button("change", () => open(it.id, true), { class: "link", "aria-label": `Change the licence of ${it.title || "this book"}` }),
+            it.licence_origin && it.licence_origin !== "default"
+              ? h("small", { class: "hint" }, h("br"), originText(it.licence_origin)) : null))))));
+    updateSelection();
     clear(pager, h("span", { class: "hint" }, pageLabel(offset, r.items.length, r.total)),
       button("Previous", () => { offset = Math.max(0, offset - PAGE); refresh(); }, { disabled: offset === 0 }),
       button("Next", () => { offset += PAGE; refresh(); }, { disabled: offset + PAGE >= r.total }));
   }
 
-  async function open(id: string) {
+  async function open(id: string, editLicence = false) {
     const it = await msg.attempt(() => run<Item>("library.item", { id }));
     if (!it) return;
     detail.hidden = false;
-    clear(detail, itemDetail(it, getFolders(), () => { detail.hidden = true; }, (updated) => { refresh(); open(updated.id); }));
+    clear(detail, itemDetail(it, getFolders(), editLicence, () => { detail.hidden = true; }, (updated) => { refresh(); open(updated.id); }));
     detail.scrollIntoView({ block: "start" });
-    detail.querySelector<HTMLElement>("h3")?.focus({ preventScroll: true });
+    const target = editLicence ? detail.querySelector<HTMLElement>(".licence input:checked") : detail.querySelector<HTMLElement>("h3");
+    target?.focus({ preventScroll: true });
   }
 
   return {
@@ -266,7 +251,16 @@ function catalogue(getFolders: () => Folder[]) {
     },
     filterFolder(id: string) {
       folder.value = id;
+      since = 0;
       offset = 0;
+      refresh();
+      el.scrollIntoView({ block: "start" });
+    },
+    // review lists only the books added since t.
+    review(t: number) {
+      since = t;
+      offset = 0;
+      text.value = author.value = kind.value = folder.value = "";
       refresh();
       el.scrollIntoView({ block: "start" });
     },
@@ -285,7 +279,7 @@ const LABELS: Record<string, string> = {
 
 const READABLE = new Set(["epub", "pdf", "docx", "html", "md", "txt"]);
 
-function itemDetail(it: Item, folders: Folder[], close: () => void, saved: (it: Item) => void) {
+function itemDetail(it: Item, folders: Folder[], editLicence: boolean, close: () => void, saved: (it: Item) => void) {
   const msg = new Message();
   const inputs: Record<string, HTMLInputElement> = {};
   for (const k of EDITABLE) {
@@ -300,8 +294,18 @@ function itemDetail(it: Item, folders: Folder[], close: () => void, saved: (it: 
   renderFacets();
   const newFacet = h("input", { type: "text", placeholder: "subject", autocomplete: "off" });
   const newValue = h("input", { type: "text", placeholder: "e.g. Christology", autocomplete: "off" });
-  const licence = licenceForm("Change licence");
-  if (it.licence) licence.set(it.licence);
+
+  const chooser = licenceChooser("Change licence");
+  chooser.set(it.licence);
+  const editor = h("div", { hidden: !editLicence }, chooser.el,
+    h("div", { class: "row" },
+      button("Save licence", async () => {
+        const r = await msg.attempt(() => run("library.set_licence", { item_ids: [it.id], ...chooser.value() }));
+        if (!r) return;
+        const fresh = await msg.attempt(() => run<Item>("library.item", { id: it.id }));
+        if (fresh) saved(fresh);
+      }, { class: "primary" }),
+      button("Cancel", () => { editor.hidden = true; })));
 
   const form = h("form", { "aria-label": "Edit book details" },
     h("div", { class: "grid2" }, EDITABLE.map((k) => field(LABELS[k], inputs[k]))),
@@ -332,20 +336,13 @@ function itemDetail(it: Item, folders: Folder[], close: () => void, saved: (it: 
 
   return h("div", {},
     h("div", { class: "row between" }, h("h3", { tabindex: "-1" }, it.title || "Untitled"), button("Close", close, { "aria-label": "Close book details" })),
-    h("p", {}, statusBadge(it.status), " ", h("span", { class: "hint" }, it.id)),
-    msg.el, form,
-    h("h4", {}, "Licence"),
-    h("p", {}, it.licence ? [typeLabel(it.licence.type), it.licence.spdx ? ` (${it.licence.spdx})` : "", h("br"), h("small", { class: "hint" }, termsText(it.licence))]
-      : h("span", { class: "hint" }, it.suggested_licence ? `Undecided. Suggested: ${typeLabel(it.suggested_licence.type)}` : "Undecided")),
-    h("details", {}, h("summary", {}, "Change licence"), licence.el,
-      button("Record licence", async () => {
-        const r = await msg.attempt(() => run("library.set_licence", { item_ids: [it.id], ...licence.value() }));
-        if (r) {
-          msg.ok("Licence recorded.");
-          const fresh = await msg.attempt(() => run<Item>("library.item", { id: it.id }));
-          if (fresh) saved(fresh);
-        }
-      }, { class: "primary" })),
+    h("p", {}, statusBadge(it.status)),
+    h("p", {}, licenceLine(it.licence, "book", () => {
+      editor.hidden = false;
+      editor.querySelector<HTMLInputElement>("input:checked")?.focus();
+    }), it.licence ? h("small", { class: "hint" }, h("br"), termsText(it.licence)) : null),
+    editor,
+    msg.el,
     h("h4", {}, "Files"),
     h("ul", { class: "files" }, (it.files ?? []).map((f) => h("li", {},
       h("code", {}, f.rel_path || f.path), " ", badge(f.format || "file"), " ",
@@ -354,5 +351,6 @@ function itemDetail(it: Item, folders: Folder[], close: () => void, saved: (it: 
       f.online && READABLE.has(f.format) ? [" ", button("Read", () => {
         navigate("reader");
         openBook({ itemId: it.id, fileId: f.id });
-      }, { "aria-label": `Read ${f.rel_path || it.title}` })] : null))));
+      }, { "aria-label": `Read ${f.rel_path || it.title}` })] : null))),
+    h("details", {}, h("summary", {}, "Edit details"), form));
 }

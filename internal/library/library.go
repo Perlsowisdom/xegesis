@@ -18,6 +18,11 @@ const batchSize = 500
 // Register adds the library commands to r.
 func Register(r *command.Registry) {
 	r.Add(
+		command.Define("library.add", "Add book files and folders in one step. Folders are scanned and watched; "+
+			"files are copied into the library folder (Documents/Xegesis Library) and scanned. "+
+			"Each book gets the licence its own details name, or Personal copy.", true, add),
+		command.Define("library.add_files", "Copy book files into the library folder (Documents/Xegesis Library) and scan them.", true, addFiles),
+		command.Define("library.rescan", "Scan every connected library folder for new, changed and removed books.", true, rescan),
 		command.Define("library.add_folder", "Add a folder of books to the library. The folder may be on an external drive.", true, addFolder),
 		command.Define("library.folders", "List library folders, where each is and whether it is online.", false, listFolders),
 		command.Define("library.rename_folder", "Change the name a library folder is shown under.", true, renameFolder),
@@ -27,7 +32,7 @@ func Register(r *command.Registry) {
 		command.Define("library.search_roots", "Show the extra paths searched for library folders that have moved.", false, searchRoots),
 		command.Define("library.set_search_roots", "Set the extra paths searched for library folders that have moved.", true, setSearchRoots),
 		command.Define("library.scan", "Find new, changed and removed book files in a folder and update the catalogue.", true, scan),
-		command.Define("library.set_licence", "Record the licence the user chose for one or many items.", true, setLicence),
+		command.Define("library.set_licence", "Set the licence of one or many items. A licence set here is never replaced by a scan.", true, setLicence),
 		command.Define("library.items", "List catalogue items, filtered and paged.", false, listItems),
 		command.Define("library.item", "Show one item with its files, people, facets and licence.", false, getItem),
 		command.Define("library.update_item", "Edit an item's catalogue details, authors and facets.", true, updateItem),

@@ -340,8 +340,8 @@ func TestModulesInstallRemove(t *testing.T) {
 		t.Errorf("duplicate install: %v", err)
 	}
 	e.install(kjv, map[string]any{"id": "kjv", "replace": true})
-	if err := e.run("bible.install", map[string]any{"path": kjv}, nil); code(err) != "bad_params" {
-		t.Errorf("install without a licence: %v", err)
+	if err := e.run("bible.install", map[string]any{"path": kjv, "licence_type": "creative_commons", "spdx": "MIT", "id": "x"}, nil); code(err) != "bad_params" {
+		t.Errorf("install with a bad licence: %v", err)
 	}
 	e.read("web", "Mal 3:23")
 	e.must("bible.remove", map[string]any{"module": "web"}, nil)

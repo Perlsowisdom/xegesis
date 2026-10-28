@@ -3,7 +3,6 @@ package library
 import (
 	"context"
 	"encoding/json"
-	"regexp"
 	"strings"
 
 	"github.com/Perlsowisdom/xegesis/internal/command"
@@ -11,47 +10,9 @@ import (
 	"github.com/Perlsowisdom/xegesis/internal/store"
 )
 
-var (
-	ccURLRe  = regexp.MustCompile(`(?i)creativecommons\.org/(?:licenses|publicdomain)/([a-z-]+)/(\d\.\d)`)
-	ccNameRe = regexp.MustCompile(`(?i)\bCC[- ]?(0|BY(?:[- ](?:SA|NC|ND))*)(?:[- ](\d\.\d))?\b`)
-)
-
-// suggest proposes a licence from a file's rights statement. It is only a starting answer: the
-// user confirms or changes it with library.set_licence.
-func suggest(rights string) licence.Licence {
-	r := strings.ToLower(rights)
-	t, spdx := licence.Unknown, ""
-	switch {
-	case strings.Contains(r, "public domain") && !strings.Contains(r, "creativecommons"):
-		t = licence.PublicDomain
-	case ccURLRe.MatchString(rights):
-		m := ccURLRe.FindStringSubmatch(rights)
-		t, spdx = licence.CreativeCommons, ccID(m[1], m[2])
-	case ccNameRe.MatchString(rights):
-		m := ccNameRe.FindStringSubmatch(rights)
-		t, spdx = licence.CreativeCommons, ccID(m[1], m[2])
-	case strings.Contains(r, "creative commons"):
-		t = licence.CreativeCommons
-	}
-	l, err := licence.Defaults(t, spdx)
-	if err != nil {
-		l, _ = licence.Defaults(licence.Unknown, "")
-	}
-	return l
-}
-
-// ccID builds an SPDX ID such as CC-BY-SA-4.0 or CC0-1.0.
-func ccID(kind, version string) string {
-	kind = strings.ToUpper(strings.ReplaceAll(kind, " ", "-"))
-	if kind == "0" || kind == "ZERO" {
-		return "CC0-1.0"
-	}
-	id := "CC-" + kind
-	if version != "" {
-		id += "-" + version
-	}
-	return id
-}
+// suggest is the licence an item gets when the user has not chosen one: the one its own rights
+// statement names, or a personal copy.
+func suggest(rights string) licence.Licence { return licence.Detect(rights) }
 
 type SetLicenceParams struct {
 	ItemIDs      []string       `json:"item_ids,omitempty" desc:"Items to set; or use pending"`
@@ -151,7 +112,7 @@ func (p SetLicenceParams) apply(l licence.Licence) licence.Licence {
 			*dst = *v
 		}
 	}
-	l.Confirmed = true
+	l.Confirmed, l.Origin = true, licence.ByUser
 	return l
 }
 
@@ -241,7 +202,8 @@ func putLicence(tx *store.Tx, itemID, licenceID string, l licence.Licence) error
 		"licence_url": nullable(l.URL), "attribution_text": nullable(l.Attribution),
 		"print_limit": limitJSON(l.Print), "export_limit": limitJSON(l.Export),
 		"commercial_allowed": boolInt(l.Commercial), "share_allowed": boolInt(l.Share),
-		"store_allowed": boolInt(l.Store), "confirmed_by_user": boolInt(l.Confirmed), "updated_at": now()}
+		"store_allowed": boolInt(l.Store), "confirmed_by_user": boolInt(l.Confirmed), "origin": origin(l),
+		"updated_at": now()}
 	if licenceID != "" {
 		return tx.Update("licences", store.ByID(licenceID), row)
 	}
@@ -253,7 +215,7 @@ func licenceFromRow(r store.Row) licence.Licence {
 	l := licence.Licence{Type: licence.Type(str(r["type"])), SPDX: str(r["spdx_or_cc"]),
 		RightsHolder: str(r["rights_holder"]), URL: str(r["licence_url"]), Attribution: str(r["attribution_text"]),
 		Commercial: num(r["commercial_allowed"]) == 1, Share: num(r["share_allowed"]) == 1,
-		Store: num(r["store_allowed"]) == 1, Confirmed: num(r["confirmed_by_user"]) == 1}
+		Store: num(r["store_allowed"]) == 1, Confirmed: num(r["confirmed_by_user"]) == 1, Origin: str(r["origin"])}
 	for dst, col := range map[**licence.Limit]string{&l.Print: "print_limit", &l.Export: "export_limit"} {
 		if s := str(r[col]); s != "" {
 			var lim licence.Limit
@@ -263,4 +225,38 @@ func licenceFromRow(r store.Row) licence.Licence {
 		}
 	}
 	return l
+}
+
+func origin(l licence.Licence) string {
+	if l.Origin == "" {
+		return licence.ByUser
+	}
+	return l.Origin
+}
+
+// fillDefaults gives every item in a folder that has no licence row the licence its own details
+// name, or a personal copy. Licences already recorded, above all the user's, are left alone.
+func fillDefaults(ctx context.Context, s *store.Store, cmd, folderID string) (int, error) {
+	ids, err := licenceTargets(ctx, s, SetLicenceParams{Pending: true, FolderID: folderID})
+	if err != nil {
+		return 0, err
+	}
+	for _, batch := range chunks(ids, batchSize) {
+		rights, err := rightsOf(ctx, s, batch)
+		if err != nil {
+			return 0, err
+		}
+		err = s.Write(ctx, cmd, func(tx *store.Tx) error {
+			for _, id := range batch {
+				if err := putLicence(tx, id, "", suggest(rights[id])); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			return 0, err
+		}
+	}
+	return len(ids), nil
 }

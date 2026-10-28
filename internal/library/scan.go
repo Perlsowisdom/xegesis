@@ -15,13 +15,12 @@ import (
 	"sync"
 
 	"github.com/Perlsowisdom/xegesis/internal/command"
-	"github.com/Perlsowisdom/xegesis/internal/licence"
 	"github.com/Perlsowisdom/xegesis/internal/store"
 )
 
-// maxQuestions caps the licence questions one scan returns; library.items with needs_licence
-// pages through the rest.
-const maxQuestions = 200
+// scanMu lets one scan run at a time, so the timed rescan and a scan the user asked for never
+// both add the same new file.
+var scanMu sync.Mutex
 
 type ScanParams struct {
 	FolderID string `json:"folder_id" required:"true"`
@@ -33,28 +32,17 @@ type FileError struct {
 	Error   string `json:"error"`
 }
 
-// LicenceQuestion asks the user to decide an item's licence. Nothing is assumed until they answer
-// with library.set_licence.
-type LicenceQuestion struct {
-	ItemID    string          `json:"item_id"`
-	Title     string          `json:"title"`
-	Rights    string          `json:"rights,omitempty" desc:"The rights statement in the file's metadata"`
-	Suggested licence.Licence `json:"suggested" desc:"Starting answer, from the rights statement; not yet confirmed"`
-}
-
 type ScanResult struct {
-	FolderID          string            `json:"folder_id"`
-	Path              string            `json:"path"`
-	Added             int               `json:"added"`
-	Changed           int               `json:"changed"`
-	Unchanged         int               `json:"unchanged"`
-	Moved             int               `json:"moved" desc:"Files renamed or moved within the folder"`
-	Restored          int               `json:"restored" desc:"Files that had vanished and are back"`
-	Removed           int               `json:"removed"`
-	Errors            []FileError       `json:"errors"`
-	NeedsLicence      []LicenceQuestion `json:"needs_licence" desc:"New items awaiting a licence decision (at most 200)"`
-	NeedsLicenceTotal int               `json:"needs_licence_total" desc:"Items in this folder with no licence decided"`
-	LicenceTypes      []licence.Type    `json:"licence_types" desc:"Licence types to offer the user"`
+	FolderID  string      `json:"folder_id"`
+	Path      string      `json:"path"`
+	Added     int         `json:"added"`
+	Changed   int         `json:"changed"`
+	Unchanged int         `json:"unchanged"`
+	Moved     int         `json:"moved" desc:"Files renamed or moved within the folder"`
+	Restored  int         `json:"restored" desc:"Files that had vanished and are back"`
+	Removed   int         `json:"removed"`
+	Errors    []FileError `json:"errors"`
+	Licensed  int         `json:"licensed" desc:"Books given a licence: the one their own details name, or Personal copy"`
 }
 
 // fileRow is a files row, as far as scanning needs it.
@@ -88,6 +76,8 @@ type scanner struct {
 }
 
 func scan(ctx context.Context, env *command.Env, p ScanParams) (ScanResult, error) {
+	scanMu.Lock()
+	defer scanMu.Unlock()
 	f, err := liveFolder(ctx, env.Store, p.FolderID)
 	if err != nil {
 		return ScanResult{}, err
@@ -98,7 +88,8 @@ func scan(ctx context.Context, env *command.Env, p ScanParams) (ScanResult, erro
 	}
 	dir := l.find(f)
 	if dir == "" {
-		return ScanResult{}, command.Errorf("unavailable", "library folder %q is offline (last seen at %s)", f.label, f.path)
+		return ScanResult{}, command.Errorf("unavailable", "library folder %q is offline (last seen at %s); "+
+			"connect its drive, or use library.relocate_folder if it has moved", f.label, f.path)
 	}
 	start := now()
 	since, err := lastScan(ctx, env.Store, f.id)
@@ -106,8 +97,7 @@ func scan(ctx context.Context, env *command.Env, p ScanParams) (ScanResult, erro
 		return ScanResult{}, err
 	}
 	sc := &scanner{ctx: ctx, s: env.Store, folder: f, people: map[string]string{},
-		res: ScanResult{FolderID: f.id, Path: dir, Errors: []FileError{}, NeedsLicence: []LicenceQuestion{},
-			LicenceTypes: licence.Types}}
+		res: ScanResult{FolderID: f.id, Path: dir, Errors: []FileError{}}}
 	if err := sc.run(dir, since, p.Verify); err != nil {
 		return sc.res, err
 	}
@@ -120,7 +110,7 @@ func scan(ctx context.Context, env *command.Env, p ScanParams) (ScanResult, erro
 	if err != nil {
 		return sc.res, err
 	}
-	sc.res.NeedsLicenceTotal, err = pendingCount(ctx, env.Store, f.id)
+	sc.res.Licensed, err = fillDefaults(ctx, env.Store, "library.scan", f.id)
 	return sc.res, err
 }
 
@@ -160,6 +150,9 @@ func (sc *scanner) run(dir string, since int64, verify bool) error {
 		}
 	}
 	for _, batch := range chunks(jobs, batchSize) {
+		if err := sc.ctx.Err(); err != nil {
+			return err
+		}
 		if err := sc.apply(batch); err != nil {
 			return err
 		}
@@ -263,19 +256,19 @@ func (sc *scanner) apply(batch []*job) error {
 	if err := sc.loadPeople(batch); err != nil {
 		return err
 	}
-	var added []LicenceQuestion
+	added := 0
 	err := sc.s.Write(sc.ctx, "library.scan", func(tx *store.Tx) error {
-		added = added[:0]
+		added = 0
 		for _, j := range batch {
 			if j.err != nil {
 				continue
 			}
-			q, err := sc.applyOne(tx, j)
+			isNew, err := sc.applyOne(tx, j)
 			if err != nil {
 				return err
 			}
-			if q != nil {
-				added = append(added, *q)
+			if isNew {
+				added++
 			}
 		}
 		return nil
@@ -288,26 +281,21 @@ func (sc *scanner) apply(batch []*job) error {
 			sc.res.Errors = append(sc.res.Errors, FileError{RelPath: j.disk.rel, Error: j.err.Error()})
 		}
 	}
-	for _, q := range added {
-		sc.res.Added++
-		if len(sc.res.NeedsLicence) < maxQuestions {
-			sc.res.NeedsLicence = append(sc.res.NeedsLicence, q)
-		}
-	}
+	sc.res.Added += added
 	return nil
 }
 
-// applyOne records one read file and returns a licence question if it made a new item.
-func (sc *scanner) applyOne(tx *store.Tx, j *job) (*LicenceQuestion, error) {
+// applyOne records one read file and reports whether it made a new item.
+func (sc *scanner) applyOne(tx *store.Tx, j *job) (bool, error) {
 	d := j.disk
 	if j.known == nil {
 		if rows := sc.gone[j.sha]; len(rows) > 0 && j.sha != "" {
 			k := rows[0]
 			sc.gone[j.sha] = rows[1:]
 			sc.res.Moved++
-			return nil, tx.Update("files", store.ByID(k.id), store.Row{"rel_path": d.rel})
+			return false, tx.Update("files", store.ByID(k.id), store.Row{"rel_path": d.rel})
 		}
-		return sc.createItem(tx, j)
+		return true, sc.createItem(tx, j)
 	}
 	k := j.known
 	fields := store.Row{"size_bytes": d.size}
@@ -316,7 +304,7 @@ func (sc *scanner) applyOne(tx *store.Tx, j *job) (*LicenceQuestion, error) {
 		fields["deleted_at"] = nil
 		sc.res.Restored++
 		if err := restoreItem(tx, k.itemID); err != nil {
-			return nil, err
+			return false, err
 		}
 	case j.sha != k.sha:
 		sc.res.Changed++
@@ -326,7 +314,7 @@ func (sc *scanner) applyOne(tx *store.Tx, j *job) (*LicenceQuestion, error) {
 	if j.sha != k.sha {
 		fields["sha256"], fields["indexed_at"] = j.sha, nil
 	}
-	return nil, tx.Update("files", store.ByID(k.id), fields)
+	return false, tx.Update("files", store.ByID(k.id), fields)
 }
 
 func restoreItem(tx *store.Tx, id string) error {
@@ -337,22 +325,22 @@ func restoreItem(tx *store.Tx, id string) error {
 	return tx.Update("items", store.ByID(id), store.Row{"deleted_at": nil, "updated_at": now()})
 }
 
-func (sc *scanner) createItem(tx *store.Tx, j *job) (*LicenceQuestion, error) {
+func (sc *scanner) createItem(tx *store.Tx, j *job) error {
 	m, id, t := j.meta, store.NewID(), now()
 	err := tx.Create("items", store.Row{"id": id, "kind": "book", "title": m.Title,
 		"subtitle": nullable(m.Subtitle), "language": nullable(m.Language), "year": nullInt(m.Year),
 		"publisher": nullable(m.Publisher), "series": nullable(m.Series), "series_no": nullable(m.SeriesNo),
 		"isbn": nullable(m.ISBN), "source": "import", "created_at": t, "updated_at": t})
 	if err != nil {
-		return nil, err
+		return err
 	}
 	err = tx.Create("files", store.Row{"id": store.NewID(), "item_id": id, "folder_id": sc.folder.id,
 		"rel_path": j.disk.rel, "format": j.disk.format, "size_bytes": j.disk.size, "sha256": j.sha})
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if err := sc.addPeople(tx, id, m.People); err != nil {
-		return nil, err
+		return err
 	}
 	facets := []Facet{}
 	for _, s := range m.Subjects {
@@ -364,10 +352,10 @@ func (sc *scanner) createItem(tx *store.Tx, j *job) (*LicenceQuestion, error) {
 	for _, f := range facets {
 		err := tx.Create("item_facets", store.Row{"item_id": id, "facet": f.Facet, "value": f.Value, "origin": "metadata"})
 		if err != nil {
-			return nil, err
+			return err
 		}
 	}
-	return &LicenceQuestion{ItemID: id, Title: m.Title, Rights: m.Rights, Suggested: suggest(m.Rights)}, nil
+	return nil
 }
 
 func (sc *scanner) loadPeople(batch []*job) error {
@@ -496,13 +484,4 @@ func deleteFiles(ctx context.Context, s *store.Store, cmd string, files []fileRo
 		return nil
 	})
 	return items, err
-}
-
-func pendingCount(ctx context.Context, s *store.Store, folderID string) (int, error) {
-	var n int
-	err := s.QueryRow(ctx, `SELECT COUNT(*) FROM items i WHERE i.deleted_at IS NULL
-		AND NOT EXISTS (SELECT 1 FROM licences l WHERE l.item_id = i.id)
-		AND EXISTS (SELECT 1 FROM files f WHERE f.item_id = i.id AND f.folder_id = ? AND f.deleted_at IS NULL)`,
-		folderID).Scan(&n)
-	return n, err
 }

@@ -23,22 +23,26 @@ type ItemsParams struct {
 	Text         string `json:"text,omitempty" desc:"Text in the title or subtitle"`
 	Facet        string `json:"facet,omitempty" desc:"Only items with this facet, e.g. subject"`
 	Value        string `json:"value,omitempty" desc:"With facet (or alone), only items with this facet value"`
-	NeedsLicence bool   `json:"needs_licence,omitempty" desc:"Only items whose licence the user has not decided"`
+	NeedsLicence bool   `json:"needs_licence,omitempty" desc:"Only items with no licence recorded yet (older libraries)"`
+	AddedSince   int64  `json:"added_since,omitempty" desc:"Only items added at or after this time (Unix milliseconds), e.g. the since of library.add"`
+	LicenceType  string `json:"licence_type,omitempty" desc:"Only items with this licence type"`
 	Limit        int    `json:"limit,omitempty" desc:"Most items to return (default 100, at most 1000)"`
 	Offset       int    `json:"offset,omitempty"`
 }
 
 type ItemSummary struct {
-	ID        string           `json:"id"`
-	Kind      string           `json:"kind"`
-	Title     string           `json:"title"`
-	Subtitle  string           `json:"subtitle,omitempty"`
-	Year      int              `json:"year,omitempty"`
-	Language  string           `json:"language,omitempty"`
-	Authors   []string         `json:"authors"`
-	Status    string           `json:"status" enum:"online,offline,missing" desc:"online: a file can be opened now; offline: its folder's drive is not mounted; missing: its files are gone"`
-	Licence   string           `json:"licence,omitempty" desc:"Licence type, or empty while undecided"`
-	Suggested *licence.Licence `json:"suggested_licence,omitempty" desc:"While undecided, the licence suggested by the item's metadata"`
+	ID            string           `json:"id"`
+	Kind          string           `json:"kind"`
+	Title         string           `json:"title"`
+	Subtitle      string           `json:"subtitle,omitempty"`
+	Year          int              `json:"year,omitempty"`
+	Language      string           `json:"language,omitempty"`
+	Authors       []string         `json:"authors"`
+	Status        string           `json:"status" enum:"online,offline,missing" desc:"online: a file can be opened now; offline: its folder's drive is not mounted; missing: its files are gone"`
+	Licence       string           `json:"licence" desc:"Licence type"`
+	LicenceName   string           `json:"licence_name" desc:"The licence in plain words: Public domain, Free to share, Personal copy or My own work"`
+	LicenceOrigin string           `json:"licence_origin" enum:"file,default,user" desc:"file: from the book's own details; default: none stated; user: set by the user"`
+	Suggested     *licence.Licence `json:"suggested_licence,omitempty" desc:"When no licence is recorded yet, the one the item will get"`
 }
 
 type ItemsResult struct {
@@ -56,11 +60,12 @@ func listItems(ctx context.Context, env *command.Env, p ItemsParams) (ItemsResul
 	p.Limit = min(p.Limit, 1000)
 	where, args := itemsWhere(p)
 	res := ItemsResult{Items: []ItemSummary{}}
-	if err := env.Store.QueryRow(ctx, `SELECT COUNT(*) FROM items i `+where, args...).Scan(&res.Total); err != nil {
+	if err := env.Store.QueryRow(ctx, `SELECT COUNT(*) FROM items i LEFT JOIN licences l ON l.item_id = i.id `+where, args...).Scan(&res.Total); err != nil {
 		return res, err
 	}
 	rows, err := queryRows(ctx, env.Store, `SELECT i.id, i.kind, i.title, i.subtitle, i.year, i.language,
-		(SELECT type FROM licences l WHERE l.item_id = i.id) AS licence FROM items i `+where+`
+		l.type AS licence, l.origin AS origin, l.share_allowed AS share FROM items i
+		LEFT JOIN licences l ON l.item_id = i.id `+where+`
 		ORDER BY i.title COLLATE NOCASE, i.id LIMIT ? OFFSET ?`, append(args, p.Limit, p.Offset)...)
 	if err != nil {
 		return res, err
@@ -89,14 +94,17 @@ func listItems(ctx context.Context, env *command.Env, p ItemsParams) (ItemsResul
 		id := str(r["id"])
 		it := ItemSummary{ID: id, Kind: str(r["kind"]), Title: str(r["title"]), Subtitle: str(r["subtitle"]),
 			Year: int(num(r["year"])), Language: str(r["language"]), Authors: authors[id], Status: states[id],
-			Licence: str(r["licence"])}
+			Licence: str(r["licence"]), LicenceOrigin: str(r["origin"])}
 		if it.Authors == nil {
 			it.Authors = []string{}
 		}
+		l := licence.Licence{Type: licence.Type(it.Licence), Share: num(r["share"]) == 1}
 		if it.Licence == "" {
-			s := suggest(rights[id])
-			it.Suggested = &s
+			l = suggest(rights[id])
+			it.Suggested = &l
+			it.Licence, it.LicenceOrigin = string(l.Type), l.Origin
 		}
+		it.LicenceName = l.Plain()
 		res.Items = append(res.Items, it)
 	}
 	return res, nil
@@ -131,7 +139,13 @@ func itemsWhere(p ItemsParams) (string, []any) {
 		add("EXISTS (SELECT 1 FROM item_facets x WHERE x.item_id = i.id AND x.value = ?)", p.Value)
 	}
 	if p.NeedsLicence {
-		add("NOT EXISTS (SELECT 1 FROM licences l WHERE l.item_id = i.id)")
+		add("l.id IS NULL")
+	}
+	if p.AddedSince > 0 {
+		add("i.created_at >= ?", p.AddedSince)
+	}
+	if p.LicenceType != "" {
+		add("l.type = ?", p.LicenceType)
 	}
 	return "WHERE " + strings.Join(conds, " AND "), args
 }
@@ -230,27 +244,28 @@ type ItemPerson struct {
 }
 
 type Item struct {
-	ID        string           `json:"id"`
-	Kind      string           `json:"kind"`
-	Title     string           `json:"title"`
-	Subtitle  string           `json:"subtitle,omitempty"`
-	Language  string           `json:"language,omitempty"`
-	Year      int              `json:"year,omitempty"`
-	Publisher string           `json:"publisher,omitempty"`
-	Series    string           `json:"series,omitempty"`
-	SeriesNo  string           `json:"series_no,omitempty"`
-	ISBN      string           `json:"isbn,omitempty"`
-	Source    string           `json:"source"`
-	SourceRef string           `json:"source_ref,omitempty"`
-	ModuleID  string           `json:"module_id,omitempty"`
-	CreatedAt int64            `json:"created_at"`
-	UpdatedAt int64            `json:"updated_at"`
-	Status    string           `json:"status" enum:"online,offline,missing"`
-	Files     []File           `json:"files"`
-	People    []ItemPerson     `json:"people"`
-	Facets    []Facet          `json:"facets"`
-	Licence   *licence.Licence `json:"licence,omitempty" desc:"The licence the user decided; absent while undecided"`
-	Suggested *licence.Licence `json:"suggested_licence,omitempty" desc:"While undecided, the licence suggested by the item's metadata"`
+	ID          string           `json:"id"`
+	Kind        string           `json:"kind"`
+	Title       string           `json:"title"`
+	Subtitle    string           `json:"subtitle,omitempty"`
+	Language    string           `json:"language,omitempty"`
+	Year        int              `json:"year,omitempty"`
+	Publisher   string           `json:"publisher,omitempty"`
+	Series      string           `json:"series,omitempty"`
+	SeriesNo    string           `json:"series_no,omitempty"`
+	ISBN        string           `json:"isbn,omitempty"`
+	Source      string           `json:"source"`
+	SourceRef   string           `json:"source_ref,omitempty"`
+	ModuleID    string           `json:"module_id,omitempty"`
+	CreatedAt   int64            `json:"created_at"`
+	UpdatedAt   int64            `json:"updated_at"`
+	Status      string           `json:"status" enum:"online,offline,missing"`
+	Files       []File           `json:"files"`
+	People      []ItemPerson     `json:"people"`
+	Facets      []Facet          `json:"facets"`
+	Licence     *licence.Licence `json:"licence" desc:"The item's licence; its origin says whether it came from the book's own details, the default or the user"`
+	LicenceName string           `json:"licence_name" desc:"The licence in plain words"`
+	Suggested   *licence.Licence `json:"suggested_licence,omitempty" desc:"When no licence is recorded yet, the one the item will get"`
 }
 
 func getItem(ctx context.Context, env *command.Env, p IDParams) (Item, error) {
@@ -335,7 +350,7 @@ func (it *Item) loadLicence(ctx context.Context, s *store.Store) error {
 	}
 	if len(rows) > 0 {
 		l := licenceFromRow(rows[0])
-		it.Licence = &l
+		it.Licence, it.LicenceName = &l, l.Plain()
 		return nil
 	}
 	rights := ""
@@ -345,7 +360,7 @@ func (it *Item) loadLicence(ctx context.Context, s *store.Store) error {
 		}
 	}
 	sug := suggest(rights)
-	it.Suggested = &sug
+	it.Suggested, it.Licence, it.LicenceName = &sug, &sug, sug.Plain()
 	return nil
 }
 
