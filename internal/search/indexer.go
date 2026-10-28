@@ -102,6 +102,8 @@ func (s *service) run(ctx context.Context, st *store.Store, j *job, f library.Fo
 	if ix, _ := s.index(f.ID, false); ix != nil {
 		ix.setState(context.Background(), map[string]string{"status": state, "last_error": msg,
 			"ended_at": strconv.FormatInt(ended, 10)})
+		// Give the write-ahead log's space back after a run; it can reach tens of megabytes.
+		ix.db.ExecContext(context.Background(), `PRAGMA wal_checkpoint(TRUNCATE)`)
 	}
 	j.update(func(p *Progress) { p.Running, p.State, p.Error, p.EndedAt = false, state, msg, ended })
 }

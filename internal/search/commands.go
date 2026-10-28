@@ -105,7 +105,7 @@ func (s *service) fillStatus(ctx context.Context, st *FolderStatus, files []libF
 			}
 		}
 	}
-	if err := ix.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM passages`).Scan(&st.Passages); err != nil {
+	if err := ix.rd.QueryRowContext(ctx, `SELECT COALESCE(SUM(passages), 0) FROM indexed`).Scan(&st.Passages); err != nil {
 		return err
 	}
 	st.State, st.LastError = ix.getState(ctx, "status"), ix.getState(ctx, "last_error")
