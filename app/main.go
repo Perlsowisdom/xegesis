@@ -28,12 +28,13 @@ import (
 
 // App is bound to the interface. The interface reaches every feature through Commands and Run.
 type App struct {
-	ctx  context.Context
-	bg   context.Context // ends at shutdown
-	reg  *command.Registry
-	env  *command.Env
-	stop context.CancelFunc
-	wg   sync.WaitGroup
+	ctx   context.Context
+	bg    context.Context // ends at shutdown
+	reg   *command.Registry
+	env   *command.Env
+	stop  context.CancelFunc
+	wg    sync.WaitGroup
+	typed sync.Once // fills in missing book types once per run
 }
 
 // rescanEvery is how often library folders are rescanned. Unchanged files are skipped, so it is cheap.
@@ -49,6 +50,12 @@ func (a *App) startup(ctx context.Context) {
 			runtime.EventsEmit(ctx, "library:changed")
 		}
 		a.index()
+		// Libraries from before book types existed get them once, without the user asking.
+		a.typed.Do(func() {
+			if _, err := a.reg.Run(bg, a.env, "facet.suggest", nil); err != nil && bg.Err() == nil {
+				log.Printf("facet.suggest: %v", err)
+			}
+		})
 	})
 	// Files and folders dropped on the window are added to the library by the interface.
 	runtime.OnFileDrop(ctx, func(_, _ int, paths []string) { runtime.EventsEmit(ctx, "files:dropped", paths) })

@@ -144,7 +144,6 @@ function catalogue(getFolders: () => Folder[]) {
   const msg = new Message();
   const text = h("input", { type: "search", autocomplete: "off" });
   const author = h("input", { type: "search", autocomplete: "off" });
-  const kind = h("input", { type: "text", autocomplete: "off", placeholder: "e.g. book, commentary", list: "kinds" });
   const folder = select([["", "All folders"]], "");
   const typeSel = select([["", "Any type"]], "");
   const tradSel = select([["", "Any tradition"]], "");
@@ -160,10 +159,9 @@ function catalogue(getFolders: () => Folder[]) {
   let since = 0;
 
   const filters = h("form", { class: "filters", role: "search", "aria-label": "Filter books" },
-    field("Title", text), field("Author", author), field("Kind", kind), field("Folder", folder),
+    field("Title", text), field("Author", author), field("Folder", folder),
     field("Type", typeSel), field("Tradition", tradSel), field("Chosen", bySel),
-    h("button", { type: "submit", class: "primary" }, "Filter"),
-    h("datalist", { id: "kinds" }, ["book", "bible", "commentary", "dictionary", "journal"].map((k) => h("option", { value: k }))));
+    h("button", { type: "submit", class: "primary" }, "Filter"));
   filters.addEventListener("submit", (e) => {
     e.preventDefault();
     offset = 0;
@@ -171,10 +169,11 @@ function catalogue(getFolders: () => Folder[]) {
   });
   for (const s of [folder, typeSel, tradSel, bySel]) s.addEventListener("change", () => { offset = 0; refresh(); });
   const rules = traditionsPanel(() => { loadVocab().then(refresh); });
+  // Xegesis sets types by itself; this re-runs it for books whose type was left unset.
+  rules.el.append(h("p", {}, button("Look again at books without a type", suggestAll)));
 
   const el = h("section", { "aria-labelledby": "books-h" },
-    h("div", { class: "row between wrap" }, h("h2", { id: "books-h" }, "Books"),
-      button("Set types and traditions automatically", suggestAll)),
+    h("h2", { id: "books-h" }, "Books"),
     filters, rules.el, reviewing, msg.el, selection, bulk,
     h("div", { class: "panes" }, h("div", { class: "pane" }, table, pager), detail));
 
@@ -251,7 +250,6 @@ function catalogue(getFolders: () => Folder[]) {
     const p: Record<string, unknown> = { limit: PAGE, offset };
     if (text.value.trim()) p.text = text.value.trim();
     if (author.value.trim()) p.author = author.value.trim();
-    if (kind.value.trim()) p.kind = kind.value.trim();
     if (folder.value) p.folder_id = folder.value;
     if (since) p.added_since = since;
     if (typeSel.value) p.type = typeSel.value;
@@ -325,7 +323,7 @@ function catalogue(getFolders: () => Folder[]) {
     review(t: number) {
       since = t;
       offset = 0;
-      text.value = author.value = kind.value = folder.value = typeSel.value = tradSel.value = bySel.value = "";
+      text.value = author.value = folder.value = typeSel.value = tradSel.value = bySel.value = "";
       refresh();
       el.scrollIntoView({ block: "start" });
     },

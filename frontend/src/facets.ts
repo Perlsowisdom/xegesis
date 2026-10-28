@@ -18,7 +18,7 @@ export interface FacetChooser {
 // "Leave as it is"; for one book it starts at the book's current value.
 export function facetChooser(vocab: Vocabulary, bulk: boolean, now: { type?: string; typeBy?: string; tradition?: string; traditionBy?: string } = {}): FacetChooser {
   const first: [string, string][] = bulk ? [[KEEP, "Leave as it is"]] : [];
-  const auto: [string, string] = [AUTO, "Back to automatic"];
+  const auto: [string, string] = [AUTO, "Let Xegesis decide"];
   const type = select([...first, auto, ...vocab.types.map((t): [string, string] => [t, t])], bulk ? KEEP : now.typeBy === "user" ? now.type! : AUTO);
   const startType = type.value;
   const mine = now.traditionBy === "user";
