@@ -182,7 +182,12 @@ func noteUpdate(ctx context.Context, env *command.Env, p NoteUpdateParams) (Note
 		if cur["deleted_at"] != nil {
 			return command.Errorf("not_found", "note %s is deleted", p.ID)
 		}
-		fields["updated_at"] = now()
+		// updated_at always moves forward, even for two edits within one millisecond.
+		t := now()
+		if prev, ok := cur["updated_at"].(int64); ok && t <= prev {
+			t = prev + 1
+		}
+		fields["updated_at"] = t
 		return tx.Update("notes", store.ByID(p.ID), fields)
 	})
 	if err != nil {
