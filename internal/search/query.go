@@ -223,32 +223,41 @@ func (ix *index) search(ctx context.Context, match string, items []string, n int
 			WHERE passages_fts MATCH ? AND passages_fts.rowid BETWEEN ? AND ?` + itemFilter + ` LIMIT ?`
 	}
 	per := max(n, slices*sliceRows/len(ranges))
-	type ranked struct {
-		id   int64
-		rank float64
-	}
-	var all []ranked
-	for _, r := range ranges {
-		args := []any{match, r.lo, r.hi}
-		if filtered {
-			args = append(args, jsonList(items))
-		}
-		rows, err := ix.rd.QueryContext(ctx, q, append(args, per)...)
-		if err != nil {
-			return nil, err
-		}
-		for rows.Next() {
-			var h ranked
-			if err := rows.Scan(&h.id, &h.rank); err != nil {
-				rows.Close()
-				return nil, err
+	// Each statement pays FTS5's set-up for bm25 (counting the passages that match each phrase), so
+	// the ranges are searched on several read connections at once.
+	var (
+		all      []ranked
+		mu       sync.Mutex
+		wg       sync.WaitGroup
+		firstErr error
+		next     = make(chan idRange)
+	)
+	for range min(readConns, len(ranges)) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for r := range next {
+				args := []any{match, r.lo, r.hi}
+				if filtered {
+					args = append(args, jsonList(items))
+				}
+				found, err := ix.rank(ctx, q, append(args, per)...)
+				mu.Lock()
+				all = append(all, found...)
+				if err != nil && firstErr == nil {
+					firstErr = err
+				}
+				mu.Unlock()
 			}
-			all = append(all, h)
-		}
-		rows.Close()
-		if err := rows.Err(); err != nil {
-			return nil, err
-		}
+		}()
+	}
+	for _, r := range ranges {
+		next <- r
+	}
+	close(next)
+	wg.Wait()
+	if firstErr != nil {
+		return nil, firstErr
 	}
 	sort.Slice(all, func(i, j int) bool {
 		if all[i].rank != all[j].rank {
@@ -283,6 +292,28 @@ func (ix *index) search(ctx context.Context, match string, items []string, n int
 		out = append(out, h)
 	}
 	return out, nil
+}
+
+type ranked struct {
+	id   int64
+	rank float64
+}
+
+func (ix *index) rank(ctx context.Context, q string, args ...any) ([]ranked, error) {
+	rows, err := ix.rd.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ranked
+	for rows.Next() {
+		var h ranked
+		if err := rows.Scan(&h.id, &h.rank); err != nil {
+			return nil, err
+		}
+		out = append(out, h)
+	}
+	return out, rows.Err()
 }
 
 // ranges returns the passage ID ranges to search: slices of the whole index, or, under an item

@@ -86,6 +86,9 @@ func openIndex(path, folderID string) (*index, error) {
 	return ix, nil
 }
 
+// readConns is how many connections read one index at once.
+const readConns = 4
+
 var errOldFormat = errors.New("index file of another format")
 
 func tryOpen(path, folderID string) (*index, error) {
@@ -105,7 +108,7 @@ func tryOpen(path, folderID string) (*index, error) {
 		db.Close()
 		return nil, err
 	}
-	ix.rd.SetMaxOpenConns(4)
+	ix.rd.SetMaxOpenConns(readConns)
 	ix.rd.SetMaxIdleConns(2)
 	return ix, nil
 }
