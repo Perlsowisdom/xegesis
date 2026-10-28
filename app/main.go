@@ -8,6 +8,8 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime/debug"
+	"strings"
 	"sync"
 	"time"
 
@@ -27,6 +29,7 @@ import (
 // App is bound to the interface. The interface reaches every feature through Commands and Run.
 type App struct {
 	ctx  context.Context
+	bg   context.Context // ends at shutdown
 	reg  *command.Registry
 	env  *command.Env
 	stop context.CancelFunc
@@ -39,12 +42,13 @@ const rescanEvery = 10 * time.Minute
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	bg, stop := context.WithCancel(context.Background())
-	a.stop = stop
+	a.bg, a.stop = bg, stop
 	a.every(bg, time.Hour, "backup.auto", nil)
 	a.every(bg, rescanEvery, "library.rescan", func(res any) {
 		if r, ok := res.(library.RescanResult); ok && r.Added+r.Changed+r.Removed > 0 {
 			runtime.EventsEmit(ctx, "library:changed")
 		}
+		a.index()
 	})
 	// Files and folders dropped on the window are added to the library by the interface.
 	runtime.OnFileDrop(ctx, func(_, _ int, paths []string) { runtime.EventsEmit(ctx, "files:dropped", paths) })
@@ -53,6 +57,25 @@ func (a *App) startup(ctx context.Context) {
 func (a *App) shutdown(context.Context) {
 	a.stop()
 	a.wg.Wait()
+	if _, err := a.reg.Run(context.Background(), a.env, "search.cancel", nil); err != nil {
+		log.Printf("search.cancel: %v", err)
+	}
+}
+
+// index starts indexing new and changed books in the background; books become searchable one by
+// one. It is cheap when nothing has changed, and it rebuilds index files of an older format.
+func (a *App) index() {
+	if a.bg == nil || a.bg.Err() != nil {
+		return
+	}
+	if _, err := a.reg.Run(a.bg, a.env, "search.index", nil); err != nil {
+		log.Printf("search.index: %v", err)
+	}
+}
+
+// addsBooks reports whether a command can bring new books into the library.
+func addsBooks(id string) bool {
+	return strings.HasPrefix(id, "library.add") || id == "library.scan" || id == "library.relocate_folder"
 }
 
 // every runs a command at start-up and then at each interval until ctx ends: the scheduled backup
@@ -89,6 +112,9 @@ func (a *App) Run(id, params string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if addsBooks(id) {
+		a.index()
+	}
 	b, err := json.Marshal(res)
 	return string(b), err
 }
@@ -105,7 +131,21 @@ func libraryPath() string {
 	return filepath.Join(dir, "Xegesis", "library.db")
 }
 
+// memoryLimit is the Go heap's soft limit (ADR 0008) unless GOMEMLIMIT is set. The 10,000-book
+// test peaks far below it (docs/performance.md); it makes the collector work harder before the
+// app grows past its memory budget.
+const memoryLimit = 300 << 20
+
+func setMemoryLimit() int64 {
+	if os.Getenv("GOMEMLIMIT") != "" {
+		return debug.SetMemoryLimit(-1)
+	}
+	debug.SetMemoryLimit(memoryLimit)
+	return memoryLimit
+}
+
 func main() {
+	setMemoryLimit()
 	lib := libraryPath()
 	s, err := store.Open(lib)
 	if err != nil {

@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"math"
 	"runtime"
+	"runtime/debug"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -40,5 +42,40 @@ func TestEveryRunsAndStopsCleanly(t *testing.T) {
 			t.Fatalf("%d goroutines left running, %d before", runtime.NumGoroutine(), before)
 		}
 		time.Sleep(time.Millisecond)
+	}
+}
+
+func TestMemoryLimit(t *testing.T) {
+	t.Setenv("GOMEMLIMIT", "")
+	if got := setMemoryLimit(); got != memoryLimit || debug.SetMemoryLimit(-1) != memoryLimit {
+		t.Errorf("limit %d", got)
+	}
+	t.Setenv("GOMEMLIMIT", "1GiB")
+	setMemoryLimit()
+	if got := debug.SetMemoryLimit(-1); got != memoryLimit {
+		t.Errorf("GOMEMLIMIT set: the app changed the limit to %d", got)
+	}
+	debug.SetMemoryLimit(math.MaxInt64)
+}
+
+func TestAddsBooksStartsIndexing(t *testing.T) {
+	var indexed atomic.Int32
+	reg := command.NewRegistry()
+	reg.Add(command.Define("library.add", "Add.", false, func(context.Context, *command.Env, struct{}) (int, error) {
+		return 1, nil
+	}), command.Define("library.items", "List.", false, func(context.Context, *command.Env, struct{}) (int, error) {
+		return 1, nil
+	}), command.Define("search.index", "Index.", false, func(context.Context, *command.Env, struct{}) (int, error) {
+		indexed.Add(1)
+		return 1, nil
+	}))
+	a := &App{ctx: context.Background(), bg: context.Background(), reg: reg, env: &command.Env{}}
+	for _, id := range []string{"library.items", "library.add"} {
+		if _, err := a.Run(id, "{}"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if indexed.Load() != 1 {
+		t.Errorf("search.index ran %d times", indexed.Load())
 	}
 }
