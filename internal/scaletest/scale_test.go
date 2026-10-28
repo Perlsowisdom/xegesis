@@ -3,6 +3,7 @@
 package scaletest
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -319,6 +320,27 @@ func TestScale(t *testing.T) {
 	add("size of library.db", 0, fmt.Sprintf("%.1f MB", mb(uint64(lib))))
 	add("size of the search indexes", 0, fmt.Sprintf("%.0f MB, %.2f x the %.0f MB of text", mb(uint64(ix)),
 		float64(ix)/float64(gen.TextBytes), mb(uint64(gen.TextBytes))))
+	add("index size by table", 0, indexBreakdown(t, filepath.Join(data, "index")))
+	if os.Getenv("XEGESIS_SCALE_OPTIMIZE") != "" {
+		start = time.Now()
+		files, _ := filepath.Glob(filepath.Join(data, "index", "*.db"))
+		for _, f := range files {
+			db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(f))
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, q := range []string{`INSERT INTO passages_fts(passages_fts) VALUES ('optimize')`, `VACUUM`} {
+				if _, err := db.Exec(q); err != nil {
+					t.Error(q, err)
+				}
+			}
+			db.Close()
+		}
+		ix := dirSize(filepath.Join(data, "index"))
+		add("optimize and vacuum the indexes", time.Since(start), fmt.Sprintf("%.0f MB, %.2f x text", mb(uint64(ix)),
+			float64(ix)/float64(gen.TextBytes)))
+		add("index size by table, optimized", 0, indexBreakdown(t, filepath.Join(data, "index")))
+	}
 	m.phase()
 	_, peak := processMemory()
 	rep.Rows = append(rep.Rows, Row{Name: "peak memory, whole run", HeapMB: mb(m.allHeap), ProcMB: mb(max(m.allProc, peak))})
@@ -343,3 +365,42 @@ func firstItems(l *lib, n int) []string {
 }
 
 func randFor(i int) *rand.Rand { return rand.New(rand.NewPCG(99, uint64(i))) }
+
+// indexBreakdown sums the index files' space by table, largest first.
+func indexBreakdown(t *testing.T, dir string) string {
+	files, _ := filepath.Glob(filepath.Join(dir, "*.db"))
+	sizes := map[string]int64{}
+	for _, f := range files {
+		db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(f)+"?mode=ro")
+		if err != nil {
+			t.Log(err)
+			continue
+		}
+		rows, err := db.Query(`SELECT name, SUM(pgsize) FROM dbstat GROUP BY name`)
+		if err != nil {
+			t.Log(err)
+			db.Close()
+			continue
+		}
+		for rows.Next() {
+			var name string
+			var n int64
+			rows.Scan(&name, &n)
+			sizes[name] += n
+		}
+		rows.Close()
+		db.Close()
+	}
+	names := make([]string, 0, len(sizes))
+	for n := range sizes {
+		names = append(names, n)
+	}
+	sort.Slice(names, func(i, j int) bool { return sizes[names[i]] > sizes[names[j]] })
+	var parts []string
+	for _, n := range names {
+		if sizes[n] >= 1<<20 {
+			parts = append(parts, fmt.Sprintf("%s %.0f MB", n, mb(uint64(sizes[n]))))
+		}
+	}
+	return strings.Join(parts, ", ")
+}

@@ -21,8 +21,9 @@ const indexVersion = 2
 // always be rebuilt from the folder's files.
 //
 // A file's passages have consecutive IDs, first_id to first_id+passages-1, so they are found and
-// dropped by range. passages.text_z is the passage text compressed (compress.go); FTS5 reads it
-// through the passages_text view, so snippets and highlighting work as with plain text.
+// dropped by range. passages.body_z is the passage's locator and text, compressed (compress.go);
+// FTS5 reads the text through the passages_text view, so snippets and highlighting work as with
+// plain text.
 const indexSchema = `
 CREATE TABLE state (
     key   TEXT PRIMARY KEY,
@@ -46,10 +47,9 @@ CREATE TABLE passages (
     id      INTEGER PRIMARY KEY,
     file    INTEGER NOT NULL,
     heading TEXT NOT NULL,
-    locator TEXT NOT NULL,
-    text_z  BLOB NOT NULL
+    body_z  BLOB NOT NULL
 );
-CREATE VIEW passages_text (id, heading, text) AS SELECT id, heading, xg_unpack(text_z) FROM passages;
+CREATE VIEW passages_text (id, heading, text) AS SELECT id, heading, xg_unpack(body_z) FROM passages;
 CREATE VIRTUAL TABLE passages_fts USING fts5(heading, text, content='passages_text', content_rowid='id',
     tokenize='unicode61 remove_diacritics 2');
 CREATE TABLE refs (
@@ -207,7 +207,7 @@ func (ix *index) put(ctx context.Context, f libFile, ps []passage, readErr error
 	if err != nil {
 		return err
 	}
-	ins, err := tx.PrepareContext(ctx, `INSERT INTO passages (id, file, heading, locator, text_z) VALUES (?, ?, ?, ?, ?)`)
+	ins, err := tx.PrepareContext(ctx, `INSERT INTO passages (id, file, heading, body_z) VALUES (?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
@@ -225,7 +225,7 @@ func (ix *index) put(ctx context.Context, f libFile, ps []passage, readErr error
 	for i, p := range ps {
 		id := first + int64(i)
 		loc, _ := json.Marshal(p.loc)
-		if _, err := ins.ExecContext(ctx, id, num, p.heading, string(loc), packText(p.text)); err != nil {
+		if _, err := ins.ExecContext(ctx, id, num, p.heading, packPassage(string(loc), p.text)); err != nil {
 			return err
 		}
 		if _, err := fts.ExecContext(ctx, id, p.heading, p.text); err != nil {
@@ -267,7 +267,7 @@ func dropFile(ctx context.Context, tx *sql.Tx, fileID string) error {
 	last := first + n - 1
 	for _, q := range []string{
 		`INSERT INTO passages_fts (passages_fts, rowid, heading, text)
-			SELECT 'delete', id, heading, xg_unpack(text_z) FROM passages WHERE id BETWEEN ? AND ?`,
+			SELECT 'delete', id, heading, xg_unpack(body_z) FROM passages WHERE id BETWEEN ? AND ?`,
 		`DELETE FROM refs WHERE passage_id BETWEEN ? AND ?`,
 		`DELETE FROM passages WHERE id BETWEEN ? AND ?`,
 	} {

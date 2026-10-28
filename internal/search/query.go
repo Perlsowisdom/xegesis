@@ -257,7 +257,7 @@ func (ix *index) search(ctx context.Context, match string, items []string, n int
 		return all[i].id < all[j].id
 	})
 	all = all[:min(n, len(all))]
-	snip, err := ix.rd.PrepareContext(ctx, `SELECT i.item_id, i.file_id, p.heading, p.locator,
+	snip, err := ix.rd.PrepareContext(ctx, `SELECT i.item_id, i.file_id, p.heading, p.body_z,
 		snippet(passages_fts, 1, '<mark>', '</mark>', '…', 24)
 		FROM passages_fts JOIN passages p ON p.id = passages_fts.rowid JOIN indexed i ON i.num = p.file
 		WHERE passages_fts MATCH ? AND passages_fts.rowid = ?`)
@@ -269,9 +269,13 @@ func (ix *index) search(ctx context.Context, match string, items []string, n int
 	for _, a := range all {
 		h := rawHit{}
 		h.PassageID, h.Score = a.id, -a.rank
-		err := snip.QueryRowContext(ctx, match, a.id).Scan(&h.ItemID, &h.FileID, &h.Heading, &h.locator, &h.Snippet)
+		var z []byte
+		err := snip.QueryRowContext(ctx, match, a.id).Scan(&h.ItemID, &h.FileID, &h.Heading, &z, &h.Snippet)
 		if errors.Is(err, sql.ErrNoRows) {
 			continue // the book was re-indexed meanwhile
+		}
+		if err == nil {
+			h.locator, _, err = unpackPassage(z)
 		}
 		if err != nil {
 			return nil, err
@@ -330,7 +334,7 @@ func (ix *index) refs(ctx context.Context, r verse.Range, items []string, n int)
 		args = append(args, jsonList(items))
 	}
 	top += ` GROUP BY x.passage_id ORDER BY width, x.passage_id LIMIT ?`
-	rows, err := ix.rd.QueryContext(ctx, `SELECT p.id, i.item_id, i.file_id, p.heading, p.locator, p.text_z,
+	rows, err := ix.rd.QueryContext(ctx, `SELECT p.id, i.item_id, i.file_id, p.heading, p.body_z,
 		t.width, t.verse_start, t.verse_end FROM (`+top+`) t JOIN passages p ON p.id = t.passage_id
 		JOIN indexed i ON i.num = p.file ORDER BY t.width, p.id`, append(args, n)...)
 	if err != nil {
@@ -342,11 +346,11 @@ func (ix *index) refs(ctx context.Context, r verse.Range, items []string, n int)
 		var h rawHit
 		var start, end int64
 		var z []byte
-		if err := rows.Scan(&h.PassageID, &h.ItemID, &h.FileID, &h.Heading, &h.locator, &z, &h.width,
+		if err := rows.Scan(&h.PassageID, &h.ItemID, &h.FileID, &h.Heading, &z, &h.width,
 			&start, &end); err != nil {
 			return nil, err
 		}
-		if h.text, err = unpackText(z); err != nil {
+		if h.locator, h.text, err = unpackPassage(z); err != nil {
 			return nil, err
 		}
 		cited := verse.Range{Start: verse.ID(start), End: verse.ID(end)}

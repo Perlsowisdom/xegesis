@@ -6,15 +6,16 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 
 	"modernc.org/sqlite"
 )
 
-// Passage text is stored compressed (index format 2). Passages are short, a few hundred
-// characters, so each is deflated with a preset dictionary of common English and Bible-study
-// words, which roughly halves what deflate alone leaves. The first byte says how a blob is stored:
-// rawText as is, flateV1 deflated with dictV1. A new dictionary needs a new tag.
+// A passage's locator and text are stored together, compressed (index format 2): the locator's
+// JSON, a newline, then the text. Passages are short, a few hundred characters, so each is
+// deflated with a preset dictionary of common words and locator keys. The first byte says how a
+// blob is stored: rawText as is, flateV1 deflated with dictV1. A new dictionary needs a new tag.
 const (
 	rawText byte = 0
 	flateV1 byte = 1
@@ -34,7 +35,10 @@ const dictV1 = `according to the words of the prophet the apostle Paul writes in
 	`well were what when who whom whose why with world year your. It is not that we have but that he ` +
 	`has. This is the way in which it was. He said to them, and they said to him, for it is written, ` +
 	`as it is in the one of the all the by the at the on the with the from the for the is the ` +
-	`that the to the in the and the of the `
+	`that the to the in the and the of the ` +
+	`{"page":1,"para":1,"offset":0}` + "\n" +
+	`{"spine":1,"href":"OEBPS/Text/chapter.xhtml","cfi":"/6/2","para":1,"offset":0}` + "\n" +
+	`{"spine":1,"href":"OEBPS/text/ch001.xhtml","cfi":"/6/2","para":1,"offset":`
 
 var (
 	writers = sync.Pool{New: func() any {
@@ -44,7 +48,17 @@ var (
 	bufs = sync.Pool{New: func() any { return new(bytes.Buffer) }}
 )
 
-// packText compresses a passage's text for the passages table.
+// packPassage compresses a passage's locator (JSON, which has no raw newlines) and text.
+func packPassage(loc, text string) []byte { return packText(loc + "\n" + text) }
+
+// unpackPassage reverses packPassage.
+func unpackPassage(b []byte) (loc, text string, err error) {
+	s, err := unpackText(b)
+	loc, text, _ = strings.Cut(s, "\n")
+	return loc, text, err
+}
+
+// packText compresses a string.
 func packText(s string) []byte {
 	buf := bufs.Get().(*bytes.Buffer)
 	defer bufs.Put(buf)
@@ -78,19 +92,18 @@ func unpackText(b []byte) (string, error) {
 	return "", fmt.Errorf("passage blob kind %d is from a newer Xegesis", b[0])
 }
 
-// The index files' passages_text view calls xg_unpack, so FTS5 reads plain text for snippets and
-// highlighting while the table stores it compressed. Functions registered here are available on
-// every connection the driver opens.
+// The index files' passages_text view calls xg_unpack for a passage's text, so FTS5 reads plain
+// text for snippets and highlighting while the table stores it compressed. Functions registered
+// here are available on every connection the driver opens.
 func init() {
 	err := sqlite.RegisterDeterministicScalarFunction("xg_unpack", 1,
 		func(_ *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
 			switch v := args[0].(type) {
 			case []byte:
-				return unpackText(v)
+				_, text, err := unpackPassage(v)
+				return text, err
 			case nil:
 				return nil, nil
-			case string:
-				return unpackText([]byte(v))
 			}
 			return nil, fmt.Errorf("xg_unpack: unexpected %T", args[0])
 		})

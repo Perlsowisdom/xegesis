@@ -27,6 +27,10 @@ func TestPackText(t *testing.T) {
 	if _, err := unpackText([]byte{9, 1}); err == nil {
 		t.Error("unknown blob kind accepted")
 	}
+	loc, text, err := unpackPassage(packPassage(`{"page":2}`, "line one\nline two"))
+	if loc != `{"page":2}` || text != "line one\nline two" || err != nil {
+		t.Errorf("passage: %q %q %v", loc, text, err)
+	}
 }
 
 // An index file of the old format is replaced by an empty one of the current format, and the next
