@@ -42,6 +42,7 @@ type ScanResult struct {
 	Restored  int         `json:"restored" desc:"Files that had vanished and are back"`
 	Removed   int         `json:"removed"`
 	Errors    []FileError `json:"errors"`
+	Typed     int         `json:"typed" desc:"New books given a type automatically"`
 	Licensed  int         `json:"licensed" desc:"Books given a licence: the one their own details name, or Personal copy"`
 }
 
@@ -73,6 +74,7 @@ type scanner struct {
 	res    ScanResult
 	people map[string]string // name -> person ID
 	gone   map[string][]*fileRow
+	newIDs []string // items this scan made
 }
 
 func scan(ctx context.Context, env *command.Env, p ScanParams) (ScanResult, error) {
@@ -110,7 +112,11 @@ func scan(ctx context.Context, env *command.Env, p ScanParams) (ScanResult, erro
 	if err != nil {
 		return sc.res, err
 	}
-	sc.res.Licensed, err = fillDefaults(ctx, env.Store, "library.scan", f.id)
+	if sc.res.Licensed, err = fillDefaults(ctx, env.Store, "library.scan", f.id); err != nil {
+		return sc.res, err
+	}
+	applied, err := autoNew(ctx, env.Store, "library.scan", sc.newIDs)
+	sc.res.Typed = applied.Typed
 	return sc.res, err
 }
 
@@ -327,6 +333,7 @@ func restoreItem(tx *store.Tx, id string) error {
 
 func (sc *scanner) createItem(tx *store.Tx, j *job) error {
 	m, id, t := j.meta, store.NewID(), now()
+	sc.newIDs = append(sc.newIDs, id)
 	err := tx.Create("items", store.Row{"id": id, "kind": "book", "title": m.Title,
 		"subtitle": nullable(m.Subtitle), "language": nullable(m.Language), "year": nullInt(m.Year),
 		"publisher": nullable(m.Publisher), "series": nullable(m.Series), "series_no": nullable(m.SeriesNo),

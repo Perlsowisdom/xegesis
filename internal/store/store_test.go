@@ -25,8 +25,8 @@ func TestOpenMigratesAndKeepsDevice(t *testing.T) {
 		t.Fatal(err)
 	}
 	v, err := s.SchemaVersion()
-	if err != nil || v != 3 {
-		t.Fatalf("schema version = %d, %v; want 3", v, err)
+	if err != nil || v != 4 {
+		t.Fatalf("schema version = %d, %v; want 4", v, err)
 	}
 	dev := s.Device()
 	s.Close()

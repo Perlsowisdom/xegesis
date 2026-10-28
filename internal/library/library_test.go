@@ -90,7 +90,7 @@ func TestCommandsDescribeThemselves(t *testing.T) {
 	r, _ := setup(t)
 	n := 0
 	for _, d := range r.List() {
-		if !strings.HasPrefix(d.ID, "library.") {
+		if !strings.HasPrefix(d.ID, "library.") && !strings.HasPrefix(d.ID, "facet.") {
 			t.Errorf("command %s outside library namespace", d.ID)
 		}
 		if d.Summary == "" || d.Params == nil {
@@ -98,7 +98,7 @@ func TestCommandsDescribeThemselves(t *testing.T) {
 		}
 		n++
 	}
-	if n != 16 {
+	if n != 21 {
 		t.Errorf("%d commands", n)
 	}
 	d, _ := r.Describe("library.set_licence")
@@ -570,7 +570,7 @@ func TestItemQueriesAndUpdates(t *testing.T) {
 	var it Item
 	must(t, r, env, "library.item", obj{"id": id}, &it)
 	if len(it.Files) != 1 || it.Files[0].Format != "epub" || len(it.Files[0].SHA256) != 64 ||
-		it.Files[0].Path != filepath.Join(dir, "calvin", "institutes.epub") || len(it.People) != 2 || len(it.Facets) != 3 {
+		it.Files[0].Path != filepath.Join(dir, "calvin", "institutes.epub") || len(it.People) != 2 || len(it.Facets) != 4 {
 		t.Fatalf("item: %+v", it)
 	}
 
