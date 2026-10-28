@@ -7,6 +7,14 @@ Instructions for every contributor, human or AI agent. Read this before changing
 A free, open-source Bible study app for Windows, macOS and Linux. It is fast, works fully offline, keeps
 user data in open formats, and can be driven by people, scripts and AI agents through the same commands.
 
+## Design philosophy
+
+"Simple things should be simple, complex things should be possible." (Alan Kay)
+
+- The common path takes no decisions the app can make itself: sensible defaults, no blocking questions.
+- Details, options and exact control are one step away (a "change" link, "More options"), never in the way.
+- Plain words in the interface: no command names, no internal type names, no jargon a reader would not use.
+
 ## Clean-room rules (non-negotiable)
 
 Xegesis is designed from public sources and open data only.
