@@ -107,11 +107,14 @@ export function libraryView() {
   }
 
   async function scan(f: Folder) {
+    addMsg.clear();
     folderMsg.info(`Checking ${f.label || f.path}…`);
     const r = await folderMsg.attempt(() => run<ScanResult>("library.scan", { folder_id: f.id }));
     if (!r) return;
+    const news = [[r.added, "added"], [r.changed, "changed"], [r.moved, "moved"], [r.restored, "back"], [r.removed, "gone"]]
+      .filter(([n]) => Number(n) > 0).map(([n, w]) => `${n} ${w}`);
     clear(folderMsg.el,
-      `Checked ${f.label || f.path}: ${r.added} added, ${r.changed} changed, ${r.moved} moved, ${r.restored} back, ${r.removed} gone.`,
+      `Checked ${f.label || f.path}: ${news.length ? news.join(", ") : "no changes"}.`,
       r.errors.length ? h("details", {}, h("summary", {}, `${r.errors.length} files could not be read`),
         h("ul", {}, r.errors.map((e) => h("li", {}, h("code", {}, e.rel_path), ` ${e.error}`)))) : null);
     folderMsg.el.className = "msg ok";
