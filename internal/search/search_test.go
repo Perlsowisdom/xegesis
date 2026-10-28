@@ -379,3 +379,38 @@ func TestRebuild(t *testing.T) {
 		t.Error("nothing found after rebuild")
 	}
 }
+
+func TestCollectionFilter(t *testing.T) {
+	e := setup(t)
+	dir := t.TempDir()
+	books(t, dir)
+	e.index(e.folder(dir))
+
+	all := e.query(map[string]any{"query": "pilgrim mercy", "mode": "any"})
+	if len(all.Hits) != 2 {
+		t.Fatalf("unfiltered: %s", titles(all.Hits))
+	}
+	pick := all.Hits[0].ItemID
+	var c library.CollectionResult
+	e.must("collection.create", map[string]any{"name": "Mine", "item_ids": []string{pick}}, &c)
+	res := e.query(map[string]any{"query": "pilgrim mercy", "mode": "any", "collection_id": c.ID})
+	if len(res.Hits) != 1 || res.Hits[0].ItemID != pick {
+		t.Errorf("hand-picked collection: %s", titles(res.Hits))
+	}
+
+	e.must("collection.create", map[string]any{"name": "Bunyan", "rule": map[string]any{"author": "bunyan"}}, &c)
+	if r := e.query(map[string]any{"query": "pilgrim mercy", "mode": "any", "collection_id": c.ID}); titles(r.Hits) != "Study Notes" {
+		t.Errorf("rule collection: %s", titles(r.Hits))
+	}
+	if r := e.query(map[string]any{"query": "pilgrim mercy", "mode": "any", "collection_id": "b:author:John Bunyan"}); titles(r.Hits) != "Study Notes" {
+		t.Errorf("built-in grouping: %s", titles(r.Hits))
+	}
+	e.must("collection.create", map[string]any{"name": "Empty"}, &c)
+	if r := e.query(map[string]any{"query": "pilgrim mercy", "mode": "any", "collection_id": c.ID}); len(r.Hits) != 0 {
+		t.Errorf("empty collection: %s", titles(r.Hits))
+	}
+	var out QueryResult
+	if err := e.run(context.Background(), "search.query", map[string]any{"query": "grace", "collection_id": "nope"}, &out); err == nil {
+		t.Error("an unknown collection was accepted")
+	}
+}

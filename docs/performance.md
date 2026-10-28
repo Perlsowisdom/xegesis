@@ -115,6 +115,34 @@ compressing 16 KB blocks of passages would leave about 0.47x and bring the total
 real English text, which compresses better, we expect 1.3x to 1.4x. Getting below 1.0x would need a
 contentless index with snippets read from the book files, which offline drives rule out.
 
+## Collections (T15)
+
+Counts for the built-in groupings and for rule collections, measured on a generated catalogue of
+10,000 books (`TestCollectionsScale` in `internal/scaletest`, tag `scale`; same machine as above).
+It makes catalogue rows only (3,333 authors, a type, a tradition, a year and a licence per book), not
+book files, since counts never read files. Each number is the median of five runs, with the worst in
+brackets. Times on this laptop vary by up to 2x between runs.
+
+```sh
+go test -tags scale -run TestCollectionsScale -v ./internal/scaletest
+```
+
+| Measurement | Target | 10,000 books |
+| --- | --- | --- |
+| `collection.list`, built-in groupings only | under 200 ms | 37 to 90 ms (worst 190 ms) |
+| `collection.list`, groupings and 11 collections (1 hand-picked, 10 by rule) | under 200 ms | 150 to 180 ms (worst 280 ms) |
+| `collection.list` also listing all 3,333 authors (on demand, when Author is opened) | none | 95 to 295 ms |
+| `collection.preview`, one rule, with 5 examples | under 200 ms | 8 to 36 ms; 65 to 75 ms for an author text that matches many names |
+| `collection.items`, rule collection, first 50 books | none | 55 ms |
+| `library.items` in a built-in grouping, first 50 books | none | 30 ms |
+
+What made it fast (from 1,050 ms for the first version): migration 5 adds covering indexes on
+`item_facets(facet, value, item_id)`, `item_people(person_id, item_id, role)` and
+`licences(type, item_id)`, so counts are read from an index; type, tradition, author and licence
+conditions are `IN (subquery)` instead of one lookup per book; and the join to licences was dropped.
+Each rule collection costs one count query (about 10 to 20 ms), so the tree grows with the number of
+rules; ten is typical for a heavy user.
+
 ## Known gaps
 
 - Ranking for very broad searches is approximate (a sample of 20,000 matches per index); exact for

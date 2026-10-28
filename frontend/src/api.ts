@@ -299,3 +299,33 @@ export interface CatalogueItem {
   module?: string;
   update_available?: boolean;
 }
+
+// Collections: collection.list returns one tree of built-in groupings and the user's own.
+export interface CollectionRule {
+  version?: number;
+  type?: string;
+  tradition?: string;
+  author?: string;
+  text?: string;
+  language?: string;
+  year_from?: number;
+  year_to?: number;
+  folder_id?: string;
+  licence?: string;
+}
+
+export interface CollectionNode {
+  id: string;
+  name: string;
+  kind: "builtin" | "manual" | "rule";
+  count: number;
+  parent_id?: string;
+  rule?: CollectionRule;
+  children?: CollectionNode[];
+  has_children?: boolean;
+}
+
+export interface RulePreview {
+  count: number;
+  examples: { id: string; title: string; authors: string[]; year?: number }[];
+}

@@ -31,8 +31,15 @@ type ItemsParams struct {
 	Type         string `json:"type,omitempty" desc:"Only books of this type (see facet.vocabulary), or none for books with no type yet"`
 	Tradition    string `json:"tradition,omitempty" desc:"Only books in this tradition, or none for books with no tradition yet"`
 	SetBy        string `json:"set_by,omitempty" enum:"auto,user" desc:"Only books whose type or tradition was set automatically (auto) or by the user"`
+	Language     string `json:"language,omitempty" desc:"Only books in this language, e.g. en"`
+	YearFrom     int    `json:"year_from,omitempty" desc:"Only books published in or after this year"`
+	YearTo       int    `json:"year_to,omitempty" desc:"Only books published in or before this year"`
+	CollectionID string `json:"collection_id,omitempty" desc:"Only books in this collection: one of yours, or a built-in grouping from collection.list"`
 	Limit        int    `json:"limit,omitempty" desc:"Most items to return (default 100, at most 1000)"`
 	Offset       int    `json:"offset,omitempty"`
+
+	authorExact string // set by built-in groupings: a credited person's whole name
+	authorAny   bool   // set by the Author grouping: has a credited person
 }
 
 type ItemSummary struct {
@@ -69,7 +76,10 @@ func listItems(ctx context.Context, env *command.Env, p ItemsParams) (ItemsResul
 		p.Limit = 100
 	}
 	p.Limit = min(p.Limit, 1000)
-	where, args := itemsWhere(p)
+	where, args, err := itemsWhereIn(ctx, env.Store, p)
+	if err != nil {
+		return ItemsResult{}, err
+	}
 	res := ItemsResult{Items: []ItemSummary{}}
 	if err := env.Store.QueryRow(ctx, `SELECT COUNT(*) FROM items i LEFT JOIN licences l ON l.item_id = i.id `+where, args...).Scan(&res.Total); err != nil {
 		return res, err
@@ -131,7 +141,20 @@ func listItems(ctx context.Context, env *command.Env, p ItemsParams) (ItemsResul
 	return res, nil
 }
 
-func itemsWhere(p ItemsParams) (string, []any) {
+// itemsWhereIn is itemsWhere plus the collection filter, which needs the database.
+func itemsWhereIn(ctx context.Context, s *store.Store, p ItemsParams) (string, []any, error) {
+	conds, args := itemsConds(p)
+	if p.CollectionID != "" {
+		c, a, err := collectionConds(ctx, s, p.CollectionID)
+		if err != nil {
+			return "", nil, err
+		}
+		conds, args = append(conds, c...), append(args, a...)
+	}
+	return "WHERE " + strings.Join(conds, " AND "), args, nil
+}
+
+func itemsConds(p ItemsParams) ([]string, []any) {
 	conds := []string{"i.deleted_at IS NULL"}
 	var args []any
 	add := func(cond string, a ...any) {
@@ -145,8 +168,8 @@ func itemsWhere(p ItemsParams) (string, []any) {
 		add("EXISTS (SELECT 1 FROM files f WHERE f.item_id = i.id AND f.folder_id = ? AND f.deleted_at IS NULL)", p.FolderID)
 	}
 	if p.Author != "" {
-		add(`EXISTS (SELECT 1 FROM item_people ip JOIN people pe ON pe.id = ip.person_id
-			WHERE ip.item_id = i.id AND pe.name LIKE ? ESCAPE '\')`, likeArg(p.Author))
+		add(`i.id IN (SELECT ip.item_id FROM item_people ip JOIN people pe ON pe.id = ip.person_id
+			WHERE pe.name LIKE ? ESCAPE '\')`, likeArg(p.Author))
 	}
 	if p.Text != "" {
 		add(`(i.title LIKE ? ESCAPE '\' OR i.subtitle LIKE ? ESCAPE '\')`, likeArg(p.Text), likeArg(p.Text))
@@ -160,16 +183,33 @@ func itemsWhere(p ItemsParams) (string, []any) {
 		add("EXISTS (SELECT 1 FROM item_facets x WHERE x.item_id = i.id AND x.value = ?)", p.Value)
 	}
 	if p.NeedsLicence {
-		add("l.id IS NULL")
+		add("i.id NOT IN (SELECT item_id FROM licences)")
 	}
 	if p.AddedSince > 0 {
 		add("i.created_at >= ?", p.AddedSince)
 	}
 	if p.LicenceType != "" {
-		add("l.type = ?", p.LicenceType)
+		add("i.id IN (SELECT item_id FROM licences WHERE type = ?)", p.LicenceType)
 	}
 	facetFilter(p, add)
-	return "WHERE " + strings.Join(conds, " AND "), args
+	if p.authorAny {
+		add(`EXISTS (SELECT 1 FROM item_people ip WHERE ip.item_id = i.id AND ip.role = 'author')`)
+	}
+	if p.authorExact != "" {
+		add(`EXISTS (SELECT 1 FROM item_people ip JOIN people pe ON pe.id = ip.person_id
+			WHERE ip.item_id = i.id AND ip.role = 'author' AND pe.name = ?)`, p.authorExact)
+	}
+	if p.Language != "" {
+		lang := strings.TrimSuffix(strings.TrimPrefix(likeArg(p.Language), "%"), "%")
+		add(`(i.language = ? OR i.language LIKE ? ESCAPE '\')`, p.Language, lang+"-%")
+	}
+	if p.YearFrom > 0 {
+		add("i.year >= ?", p.YearFrom)
+	}
+	if p.YearTo > 0 {
+		add("i.year > 0 AND i.year <= ?", p.YearTo)
+	}
+	return conds, args
 }
 
 func authorsOf(ctx context.Context, s *store.Store, ids []string) (map[string][]string, error) {

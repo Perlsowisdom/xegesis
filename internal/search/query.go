@@ -20,10 +20,11 @@ const maxPerFolder = 1000
 
 // Filter narrows a search to some books.
 type Filter struct {
-	ItemIDs   []string `json:"item_ids,omitempty" desc:"Only these items"`
-	Kind      string   `json:"kind,omitempty" desc:"Only items of this kind, e.g. book, commentary"`
-	Author    string   `json:"author,omitempty" desc:"Only items crediting a person whose name contains this text"`
-	FolderIDs []string `json:"folder_ids,omitempty" desc:"Only books in these library folders"`
+	ItemIDs      []string `json:"item_ids,omitempty" desc:"Only these items"`
+	Kind         string   `json:"kind,omitempty" desc:"Only items of this kind, e.g. book, commentary"`
+	Author       string   `json:"author,omitempty" desc:"Only items crediting a person whose name contains this text"`
+	FolderIDs    []string `json:"folder_ids,omitempty" desc:"Only books in these library folders"`
+	CollectionID string   `json:"collection_id,omitempty" desc:"Only books in this collection: one of yours, or a built-in grouping from collection.list"`
 }
 
 // Hit is one matching passage.
@@ -426,7 +427,7 @@ func jsonList(ids []string) string {
 
 // filterItems returns the IDs of the items a filter allows, or nil when it allows every item.
 func filterItems(ctx context.Context, st *store.Store, f Filter) ([]string, error) {
-	if len(f.ItemIDs) == 0 && f.Kind == "" && f.Author == "" {
+	if len(f.ItemIDs) == 0 && f.Kind == "" && f.Author == "" && f.CollectionID == "" {
 		return nil, nil
 	}
 	q := `SELECT i.id FROM items i WHERE i.deleted_at IS NULL`
@@ -443,6 +444,14 @@ func filterItems(ctx context.Context, st *store.Store, f Filter) ([]string, erro
 		q += ` AND EXISTS (SELECT 1 FROM item_people ip JOIN people pe ON pe.id = ip.person_id
 			WHERE ip.item_id = i.id AND pe.name LIKE ? ESCAPE '\')`
 		args = append(args, likeArg(f.Author))
+	}
+	if f.CollectionID != "" {
+		in, err := library.CollectionItemIDs(ctx, st, f.CollectionID)
+		if err != nil {
+			return nil, err
+		}
+		q += ` AND i.id IN (SELECT value FROM json_each(?))`
+		args = append(args, jsonList(in))
 	}
 	out := []string{}
 	rows, err := st.Query(ctx, q, args...)

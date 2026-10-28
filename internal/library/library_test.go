@@ -90,7 +90,7 @@ func TestCommandsDescribeThemselves(t *testing.T) {
 	r, _ := setup(t)
 	n := 0
 	for _, d := range r.List() {
-		if !strings.HasPrefix(d.ID, "library.") && !strings.HasPrefix(d.ID, "facet.") {
+		if !strings.HasPrefix(d.ID, "library.") && !strings.HasPrefix(d.ID, "facet.") && !strings.HasPrefix(d.ID, "collection.") {
 			t.Errorf("command %s outside library namespace", d.ID)
 		}
 		if d.Summary == "" || d.Params == nil {
@@ -98,7 +98,7 @@ func TestCommandsDescribeThemselves(t *testing.T) {
 		}
 		n++
 	}
-	if n != 21 {
+	if n != 29 {
 		t.Errorf("%d commands", n)
 	}
 	d, _ := r.Describe("library.set_licence")
