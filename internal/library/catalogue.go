@@ -168,8 +168,8 @@ func itemsConds(p ItemsParams) ([]string, []any) {
 		add("EXISTS (SELECT 1 FROM files f WHERE f.item_id = i.id AND f.folder_id = ? AND f.deleted_at IS NULL)", p.FolderID)
 	}
 	if p.Author != "" {
-		add(`EXISTS (SELECT 1 FROM item_people ip JOIN people pe ON pe.id = ip.person_id
-			WHERE ip.item_id = i.id AND pe.name LIKE ? ESCAPE '\')`, likeArg(p.Author))
+		add(`i.id IN (SELECT ip.item_id FROM item_people ip JOIN people pe ON pe.id = ip.person_id
+			WHERE pe.name LIKE ? ESCAPE '\')`, likeArg(p.Author))
 	}
 	if p.Text != "" {
 		add(`(i.title LIKE ? ESCAPE '\' OR i.subtitle LIKE ? ESCAPE '\')`, likeArg(p.Text), likeArg(p.Text))
@@ -183,13 +183,13 @@ func itemsConds(p ItemsParams) ([]string, []any) {
 		add("EXISTS (SELECT 1 FROM item_facets x WHERE x.item_id = i.id AND x.value = ?)", p.Value)
 	}
 	if p.NeedsLicence {
-		add("l.id IS NULL")
+		add("i.id NOT IN (SELECT item_id FROM licences)")
 	}
 	if p.AddedSince > 0 {
 		add("i.created_at >= ?", p.AddedSince)
 	}
 	if p.LicenceType != "" {
-		add("l.type = ?", p.LicenceType)
+		add("i.id IN (SELECT item_id FROM licences WHERE type = ?)", p.LicenceType)
 	}
 	facetFilter(p, add)
 	if p.authorAny {

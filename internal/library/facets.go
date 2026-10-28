@@ -679,9 +679,9 @@ func facetFilter(p ItemsParams, add func(string, ...any)) {
 		switch v {
 		case "":
 		case "none":
-			add("NOT EXISTS (SELECT 1 FROM item_facets x WHERE x.item_id = i.id AND x.facet = '" + facet + "')")
+			add("i.id NOT IN (SELECT x.item_id FROM item_facets x WHERE x.facet = '" + facet + "')")
 		default:
-			add("EXISTS (SELECT 1 FROM item_facets x WHERE x.item_id = i.id AND x.facet = '"+facet+"' AND x.value = ?)", v)
+			add("i.id IN (SELECT x.item_id FROM item_facets x WHERE x.facet = '"+facet+"' AND x.value = ?)", v)
 		}
 	}
 	switch p.SetBy {

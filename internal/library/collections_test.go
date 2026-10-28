@@ -362,3 +362,31 @@ func TestCollectionNeedsAName(t *testing.T) {
 		t.Errorf("both kinds: %v", err)
 	}
 }
+
+func TestDeletedBooksAreNotCounted(t *testing.T) {
+	r, env := setup(t)
+	ids := seed(t, env, library5)
+	var c CollectionResult
+	must(t, r, env, "collection.create", obj{"name": "Picked", "item_ids": ids[:2]}, &c)
+	must(t, r, env, "collection.create", obj{"name": "Calvin", "rule": obj{"author": "calvin"}}, nil)
+	err := env.Store.Write(t.Context(), "test.delete", func(tx *store.Tx) error { return tx.Delete("items", store.ByID(ids[0])) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	tree := listTree(t, r, env, true)
+	wantCount(t, tree, builtinAll, 4)
+	wantCount(t, tree, "b:type", 3)
+	wantCount(t, tree, "b:type:"+TypeCommentaryN, 1)
+	wantCount(t, tree, "b:type:none", 1)
+	wantCount(t, tree, "b:tradition:Reformed", 1)
+	wantCount(t, tree, "b:author:John Calvin", 1)
+	if find(tree, "b:year:d1540") != nil {
+		t.Error("a decade with no books is listed")
+	}
+	wantCount(t, tree, c.ID, 1)
+	for _, n := range tree {
+		if n.Name == "Calvin" && n.Count != 1 {
+			t.Errorf("rule count %d, want 1", n.Count)
+		}
+	}
+}

@@ -124,9 +124,14 @@ func builtinTree(ctx context.Context, s *store.Store, authors bool) ([]*Node, er
 	if err := s.QueryRow(ctx, `SELECT COUNT(*) FROM items WHERE deleted_at IS NULL`).Scan(&total); err != nil {
 		return nil, err
 	}
+	dead, err := queryStrings(ctx, s, `SELECT id FROM items WHERE deleted_at IS NOT NULL`)
+	if err != nil {
+		return nil, err
+	}
+	gone := notIn(dead)
 	out := []*Node{{ID: builtinAll, Name: "All books", Kind: "builtin", Count: total}}
 	for _, f := range []struct{ facet, name string }{{facetType, "Type"}, {facetTradition, "Tradition"}} {
-		n, err := facetGroup(ctx, s, f.facet, f.name)
+		n, err := facetGroup(ctx, s, f.facet, f.name, total, gone)
 		if err != nil {
 			return nil, err
 		}
@@ -136,32 +141,32 @@ func builtinTree(ctx context.Context, s *store.Store, authors bool) ([]*Node, er
 	if err != nil {
 		return nil, err
 	}
-	author, err := authorGroup(ctx, s, authors)
+	author, err := authorGroup(ctx, s, authors, gone)
 	if err != nil {
 		return nil, err
 	}
 	return append(out, year, author), nil
 }
 
-// facetGroup lists the values of a facet with the number of books having each.
-func facetGroup(ctx context.Context, s *store.Store, facet, name string) (*Node, error) {
+// facetGroup lists the values of a facet with the number of books having each. The counts are
+// read from the facet's index alone.
+func facetGroup(ctx context.Context, s *store.Store, facet, name string, total int, gone clause) (*Node, error) {
 	g := &Node{ID: "b:" + facet, Name: name, Kind: "builtin"}
-	rows, err := s.Query(ctx, `SELECT x.value, COUNT(DISTINCT x.item_id) FROM item_facets x
-		JOIN items i ON i.id = x.item_id AND i.deleted_at IS NULL WHERE x.facet = ? GROUP BY x.value`, facet)
+	rows, err := s.Query(ctx, `SELECT value, COUNT(*) FROM item_facets WHERE facet = ?`+gone.sql+` GROUP BY value`, append([]any{facet}, gone.args...)...)
 	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
 	counts := map[string]int{}
 	for rows.Next() {
 		var v string
 		var n int
 		if err := rows.Scan(&v, &n); err != nil {
-			rows.Close()
 			return nil, err
 		}
 		counts[v] = n
+		g.Count += n // a book has one value of each of these facets
 	}
-	rows.Close()
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
@@ -180,15 +185,6 @@ func facetGroup(ctx context.Context, s *store.Store, facet, name string) (*Node,
 		if counts[v] > 0 {
 			g.Children = append(g.Children, &Node{ID: "b:" + facet + ":" + v, Name: v, Kind: "builtin", Count: counts[v], ParentID: g.ID})
 		}
-	}
-	err = s.QueryRow(ctx, `SELECT COUNT(DISTINCT x.item_id) FROM item_facets x
-		JOIN items i ON i.id = x.item_id AND i.deleted_at IS NULL WHERE x.facet = ?`, facet).Scan(&g.Count)
-	if err != nil {
-		return nil, err
-	}
-	var total int
-	if err := s.QueryRow(ctx, `SELECT COUNT(*) FROM items WHERE deleted_at IS NULL`).Scan(&total); err != nil {
-		return nil, err
 	}
 	if none := total - g.Count; none > 0 {
 		g.Children = append(g.Children, &Node{ID: "b:" + facet + ":none", Name: "Not set yet", Kind: "builtin", Count: none, ParentID: g.ID})
@@ -255,10 +251,9 @@ func yearGroup(ctx context.Context, s *store.Store) (*Node, error) {
 
 // authorGroup lists authors by name. Its children are only listed on request, as there can be
 // thousands.
-func authorGroup(ctx context.Context, s *store.Store, list bool) (*Node, error) {
+func authorGroup(ctx context.Context, s *store.Store, list bool, gone clause) (*Node, error) {
 	g := &Node{ID: "b:author", Name: "Author", Kind: "builtin"}
-	err := s.QueryRow(ctx, `SELECT COUNT(DISTINCT ip.item_id) FROM item_people ip
-		JOIN items i ON i.id = ip.item_id AND i.deleted_at IS NULL WHERE ip.role = 'author'`).Scan(&g.Count)
+	err := s.QueryRow(ctx, `SELECT COUNT(DISTINCT item_id) FROM item_people WHERE role = 'author'`+gone.sql, gone.args...).Scan(&g.Count)
 	if err != nil {
 		return nil, err
 	}
@@ -266,23 +261,51 @@ func authorGroup(ctx context.Context, s *store.Store, list bool) (*Node, error) 
 	if !list || g.Count == 0 {
 		return g, nil
 	}
-	rows, err := s.Query(ctx, `SELECT pe.name, COUNT(DISTINCT ip.item_id) FROM item_people ip
-		JOIN people pe ON pe.id = ip.person_id JOIN items i ON i.id = ip.item_id AND i.deleted_at IS NULL
-		WHERE ip.role = 'author' GROUP BY pe.name ORDER BY pe.name COLLATE NOCASE`)
+	rows, err := s.Query(ctx, `SELECT person_id, COUNT(*) FROM item_people WHERE role = 'author'`+gone.sql+` GROUP BY person_id`, gone.args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
+	byPerson := map[string]int{}
 	for rows.Next() {
-		var name string
+		var id string
 		var n int
-		if err := rows.Scan(&name, &n); err != nil {
+		if err := rows.Scan(&id, &n); err != nil {
 			return nil, err
 		}
-		g.Children = append(g.Children, &Node{ID: "b:author:" + name, Name: name, Kind: "builtin", Count: n, ParentID: g.ID})
+		byPerson[id] = n
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	people, err := s.Query(ctx, `SELECT id, name FROM people`)
+	if err != nil {
+		return nil, err
+	}
+	defer people.Close()
+	byName := map[string]int{} // people with the same name are one author
+	for people.Next() {
+		var id, name string
+		if err := people.Scan(&id, &name); err != nil {
+			return nil, err
+		}
+		if byPerson[id] > 0 {
+			byName[name] += byPerson[id]
+		}
+	}
+	if err := people.Err(); err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(byName))
+	for name := range byName {
+		names = append(names, name)
+	}
+	sort.Slice(names, func(i, j int) bool { return strings.ToLower(names[i]) < strings.ToLower(names[j]) })
+	for _, name := range names {
+		g.Children = append(g.Children, &Node{ID: "b:author:" + name, Name: name, Kind: "builtin", Count: byName[name], ParentID: g.ID})
 	}
 	g.HasChildren = false
-	return g, rows.Err()
+	return g, nil
 }
 
 // builtinParams turns a built-in grouping's ID into the book filter it stands for.
@@ -409,7 +432,7 @@ func manualCounts(ctx context.Context, s *store.Store) (map[string]int, error) {
 func countMatching(ctx context.Context, s *store.Store, p ItemsParams) (int, error) {
 	conds, args := itemsConds(p)
 	var n int
-	err := s.QueryRow(ctx, `SELECT COUNT(*) FROM items i LEFT JOIN licences l ON l.item_id = i.id WHERE `+
+	err := s.QueryRow(ctx, `SELECT COUNT(*) FROM items i WHERE `+
 		strings.Join(conds, " AND "), args...).Scan(&n)
 	return n, err
 }
@@ -447,7 +470,7 @@ func CollectionItemIDs(ctx context.Context, s *store.Store, id string) ([]string
 	if err != nil {
 		return nil, err
 	}
-	return queryStrings(ctx, s, `SELECT i.id FROM items i LEFT JOIN licences l ON l.item_id = i.id WHERE `+
+	return queryStrings(ctx, s, `SELECT i.id FROM items i WHERE `+
 		strings.Join(conds, " AND "), args...)
 }
 
@@ -555,7 +578,7 @@ func countOf(ctx context.Context, s *store.Store, id string) (int, error) {
 		return 0, err
 	}
 	var n int
-	err = s.QueryRow(ctx, `SELECT COUNT(*) FROM items i LEFT JOIN licences l ON l.item_id = i.id WHERE `+
+	err = s.QueryRow(ctx, `SELECT COUNT(*) FROM items i WHERE `+
 		strings.Join(conds, " AND "), args...).Scan(&n)
 	return n, err
 }
@@ -879,7 +902,7 @@ func collectionPreview(ctx context.Context, env *command.Env, p PreviewParams) (
 		return res, err
 	}
 	conds, args := itemsConds(p.Rule.params())
-	where := ` FROM items i LEFT JOIN licences l ON l.item_id = i.id WHERE ` + strings.Join(conds, " AND ")
+	where := ` FROM items i WHERE ` + strings.Join(conds, " AND ")
 	if err := env.Store.QueryRow(ctx, `SELECT COUNT(*)`+where, args...).Scan(&res.Count); err != nil {
 		return res, err
 	}
@@ -906,4 +929,20 @@ func collectionPreview(ctx context.Context, env *command.Env, p PreviewParams) (
 		res.Examples = append(res.Examples, Example{ID: id, Title: str(r["title"]), Authors: a, Year: int(num(r["year"]))})
 	}
 	return res, err
+}
+
+// clause is an extra condition on a table with an item_id column, and its arguments.
+type clause struct {
+	sql  string
+	args []any
+}
+
+// notIn leaves out the given books. With none to leave out it adds nothing, which keeps counts on
+// the index alone.
+func notIn(ids []string) clause {
+	if len(ids) == 0 {
+		return clause{}
+	}
+	raw, _ := json.Marshal(ids)
+	return clause{" AND item_id NOT IN (SELECT value FROM json_each(?))", []any{string(raw)}}
 }
