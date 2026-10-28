@@ -117,7 +117,7 @@ export function collectionsSidebar(d: SidebarDeps) {
   }
 
   function render() {
-    const builtin = tree.filter((n) => n.kind === "builtin"), own = tree.filter((n) => n.kind !== "builtin");
+    const builtin = tree.filter((n) => n.kind === "builtin" && (n.id === ALL || !!n.children?.length || n.has_children)), own = tree.filter((n) => n.kind !== "builtin");
     clear(treeEl,
       h("ul", { class: "coll-list" }, builtin.map(row)),
       h("h3", {}, "My collections"),
