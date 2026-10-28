@@ -2,9 +2,10 @@
 // and the catalogue, where licences are shown in plain words and can be changed for one book or a
 // selection. Every action is a library.* command.
 
-import { AddResult, Facet, Folder, Item, ItemSummary, Message, Vocabulary, pick, pickFiles, run } from "../api";
+import { AddResult, CollectionNode, Facet, Folder, Item, ItemSummary, Message, Vocabulary, pick, pickFiles, run } from "../api";
 import { badge, button, clear, field, h, select } from "../dom";
 import { changedFields, formatTime, pageLabel } from "../helpers";
+import { collectionsSidebar } from "../collections";
 import { facetChooser, traditionsPanel } from "../facets";
 import { NOT_SET, countText, facetValue, reasonText } from "../facetwords";
 import { licenceChooser, licenceLine, originText, plainName, termsText } from "../licence";
@@ -23,7 +24,14 @@ export function libraryView() {
   const addMsg = new Message();
   const folderMsg = new Message();
   const folderList = h("div", { class: "table-wrap" });
-  const items = catalogue(() => folders);
+  let side!: ReturnType<typeof collectionsSidebar>;
+  const items = catalogue(() => folders, () => side);
+  side = collectionsSidebar({
+    folders: () => folders, vocab: () => items.vocab(), picked: (n) => items.filterCollection(n),
+    changed: () => items.refresh(), say: (t) => items.say(t),
+  });
+  items.slot.append(side.bar);
+  const refreshAll = () => { items.refresh(); side.reload(); };
 
   // Adding books: one button, two ways.
   const menu = h("div", { class: "menu", role: "menu", hidden: true },
@@ -69,7 +77,7 @@ export function libraryView() {
     addMsg.el.className = "msg ok";
     addMsg.el.setAttribute("role", "status");
     showFolders();
-    items.refresh();
+    refreshAll();
   }
 
   const el = h("div", { class: "view" },
@@ -78,7 +86,7 @@ export function libraryView() {
       "You can also drop them on the window. Files you choose are copied into Documents/Xegesis Library; " +
       "folders stay where they are and are checked for new books every few minutes."),
     addMsg.el,
-    items.el,
+    h("div", { class: "lib-body" }, side.el, items.el),
     h("section", { "aria-labelledby": "folders-h" },
       h("div", { class: "row between" }, h("h2", { id: "folders-h" }, "Folders"),
         button("Look for moved drives", async () => {
@@ -120,7 +128,7 @@ export function libraryView() {
       r.errors.length ? h("details", {}, h("summary", {}, `${r.errors.length} files could not be read`),
         h("ul", {}, r.errors.map((e) => h("li", {}, h("code", {}, e.rel_path), ` ${e.error}`)))) : null);
     folderMsg.el.className = "msg ok";
-    items.refresh();
+    refreshAll();
   }
 
   async function removeFolder(f: Folder) {
@@ -129,18 +137,18 @@ export function libraryView() {
     if (!r) return;
     folderMsg.ok(`Removed ${f.label || f.path} (${r.items} books).`);
     showFolders();
-    items.refresh();
+    refreshAll();
   }
 
   async function show() {
     await showFolders();
-    items.refresh();
+    refreshAll();
   }
-  return { el, show, drop: add, changed: () => { showFolders(); items.refresh(); } };
+  return { el, show, drop: add, changed: () => { showFolders(); refreshAll(); } };
 }
 
 // catalogue is the filtered, paged list of items with a detail pane and licence changes.
-function catalogue(getFolders: () => Folder[]) {
+function catalogue(getFolders: () => Folder[], getSide: () => ReturnType<typeof collectionsSidebar>) {
   const msg = new Message();
   const text = h("input", { type: "search", autocomplete: "off" });
   const author = h("input", { type: "search", autocomplete: "off" });
@@ -155,8 +163,10 @@ function catalogue(getFolders: () => Folder[]) {
   const reviewing = h("p", { class: "msg", role: "status", hidden: true });
   const selection = h("div", { class: "row wrap", hidden: true });
   const bulk = h("div", { class: "card", hidden: true });
+  const slot = h("div", {});
   let offset = 0;
   let since = 0;
+  let collection: CollectionNode | null = null;
 
   const filters = h("form", { class: "filters", role: "search", "aria-label": "Filter books" },
     field("Title", text), field("Author", author), field("Folder", folder),
@@ -174,7 +184,7 @@ function catalogue(getFolders: () => Folder[]) {
 
   const el = h("section", { "aria-labelledby": "books-h" },
     h("h2", { id: "books-h" }, "Books"),
-    filters, rules.el, reviewing, msg.el, selection, bulk,
+    slot, filters, rules.el, reviewing, msg.el, selection, bulk,
     h("div", { class: "panes" }, h("div", { class: "pane" }, table, pager), detail));
 
   const checked = () => [...table.querySelectorAll<HTMLInputElement>("tbody input[type=checkbox]:checked")].map((b) => b.value);
@@ -184,7 +194,9 @@ function catalogue(getFolders: () => Folder[]) {
     selection.hidden = ids.length === 0;
     clear(selection, h("span", {}, `${ids.length} selected`),
       button("Set licence for selected", () => openBulk(), { class: "primary" }),
-      button("Set type/tradition for selected", () => openBulkFacets()));
+      button("Set type/tradition for selected", () => openBulkFacets()),
+      button("Add to collection", () => openAddTo()),
+      collection?.kind === "manual" ? button("Take out of this collection", () => getSide().removeFrom(ids)) : null);
     if (!ids.length) bulk.hidden = true;
   }
 
@@ -205,6 +217,13 @@ function catalogue(getFolders: () => Folder[]) {
     bulk.querySelector<HTMLInputElement>("input")?.focus();
   }
 
+  function openAddTo() {
+    const ids = checked();
+    clear(bulk, getSide().addTo(ids, () => { bulk.hidden = true; }));
+    bulk.hidden = false;
+    bulk.querySelector<HTMLElement>("select, button")?.focus();
+  }
+
   function openBulkFacets() {
     const ids = checked();
     const chooser = facetChooser(vocab, true);
@@ -218,7 +237,7 @@ function catalogue(getFolders: () => Folder[]) {
           if (!r) return;
           bulk.hidden = true;
           msg.ok(`Changed ${countText(r.updated)}.`);
-          loadVocab().then(refresh);
+          loadVocab().then(changedBooks);
         }, { class: "primary" }),
         button("Cancel", () => { bulk.hidden = true; })), bmsg.el);
     bulk.hidden = false;
@@ -242,12 +261,19 @@ function catalogue(getFolders: () => Folder[]) {
     const r = await msg.attempt(() => run<{ typed: number; traditions: number; unsure: number }>("facet.suggest", { redo: true }));
     if (!r) return;
     msg.ok(`Set ${countText(r.typed)} automatically (${r.unsure} had nothing to go on). Anything you chose yourself was left alone.`);
+    changedBooks();
+  }
+
+  // changedBooks reloads the list and the collection counts after a book's details changed.
+  function changedBooks() {
     refresh();
+    getSide().reload();
   }
 
   async function refresh() {
     if (!vocab.types.length) await loadVocab();
     const p: Record<string, unknown> = { limit: PAGE, offset };
+    if (collection) p.collection_id = collection.id;
     if (text.value.trim()) p.text = text.value.trim();
     if (author.value.trim()) p.author = author.value.trim();
     if (folder.value) p.folder_id = folder.value;
@@ -299,14 +325,20 @@ function catalogue(getFolders: () => Folder[]) {
     const it = await msg.attempt(() => run<Item>("library.item", { id }));
     if (!it) return;
     detail.hidden = false;
-    clear(detail, itemDetail(it, getFolders(), vocab, editLicence, editFacets, () => { detail.hidden = true; }, (updated) => { refresh(); open(updated.id); }));
+    clear(detail, itemDetail(it, getFolders(), vocab, editLicence, editFacets, () => { detail.hidden = true; }, (updated) => { changedBooks(); open(updated.id); }));
     detail.scrollIntoView({ block: "start" });
     const target = editFacets ? detail.querySelector<HTMLElement>(".facet-edit select") : editLicence ? detail.querySelector<HTMLElement>(".licence input:checked") : detail.querySelector<HTMLElement>("h3");
     target?.focus({ preventScroll: true });
   }
 
   return {
-    el, refresh,
+    el, refresh, slot, vocab: () => vocab, say: (t: string) => msg.ok(t),
+    filterCollection(n: CollectionNode | null) {
+      collection = n;
+      since = 0;
+      offset = 0;
+      refresh();
+    },
     setFolders(fs: Folder[]) {
       const v = folder.value;
       clear(folder, h("option", { value: "" }, "All folders"), fs.map((f) => h("option", { value: f.id }, f.label || f.path)));
@@ -323,6 +355,8 @@ function catalogue(getFolders: () => Folder[]) {
     review(t: number) {
       since = t;
       offset = 0;
+      collection = null;
+      getSide().reset();
       text.value = author.value = folder.value = typeSel.value = tradSel.value = bySel.value = "";
       refresh();
       el.scrollIntoView({ block: "start" });

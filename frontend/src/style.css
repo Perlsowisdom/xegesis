@@ -273,3 +273,27 @@ td.actions progress { width: 8rem; vertical-align: middle; }
 details.more { margin: 6px 0; }
 details.more > summary { cursor: pointer; color: var(--accent); }
 .licence-line .hint { margin: 0; }
+
+/* Collections */
+.lib-body { display: grid; grid-template-columns: minmax(200px, 250px) minmax(0, 1fr); gap: 20px; align-items: start; margin-top: 12px; }
+.collections { position: sticky; top: 0; max-height: calc(100vh - 32px); overflow: auto; padding-right: 4px; }
+.collections h2 { margin-top: 0; }
+.collections h3 { margin: 14px 0 4px; font-size: .85rem; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.coll-list { list-style: none; margin: 0; padding: 0; }
+.coll-list .coll-list { margin-left: 18px; }
+.coll-row { display: flex; align-items: center; gap: 2px; }
+.coll-gap { display: inline-block; width: 28px; flex: none; }
+.coll-toggle { flex: none; width: 28px; background: none; border: 0; }
+.coll-pick { flex: 1; min-width: 0; display: flex; justify-content: space-between; gap: 8px; text-align: left; border: 0; background: none; padding: 3px 8px; border-radius: 6px; white-space: normal; }
+.coll-pick:hover { background: var(--panel); }
+.coll-pick[aria-current="true"] { background: var(--accent); color: var(--accent-fg); }
+.coll-pick .count { color: var(--muted); font-size: .85rem; flex: none; }
+.coll-pick[aria-current="true"] .count { color: inherit; }
+.coll-bar { border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; margin: 0 0 10px; background: var(--panel); }
+.coll-bar p { margin: 4px 0; }
+.rule-builder .examples { margin: 0 0 8px; padding-left: 18px; }
+.collections .card { margin: 10px 0; }
+@media (max-width: 860px) {
+  .lib-body { grid-template-columns: minmax(0, 1fr); }
+  .collections { position: static; max-height: none; }
+}

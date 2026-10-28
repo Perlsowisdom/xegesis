@@ -2,6 +2,7 @@
 // (search.refs). Each hit opens in the reader's book pane at its locator.
 
 import { Message, paramEnum, run } from "../api";
+import { collectionPicker } from "../collections";
 import { clear, field, h, select } from "../dom";
 import { markSegments } from "../helpers";
 import { navigate, state } from "../state";
@@ -71,11 +72,13 @@ export function librarySearchPanel() {
   const mode = select([], "all");
   paramEnum("search.query", "mode").then((ms) => ms.forEach((m) => mode.append(h("option", { value: m, selected: m === "all" }, MODE_LABELS[m] ?? m))));
   const author = h("input", { type: "text", autocomplete: "off", placeholder: "Optional" });
+  const where = collectionPicker();
   const count = h("p", { class: "hint", role: "status", "aria-live": "polite" });
   const results = h("ol", { class: "results" });
   const more = h("div", {});
   const form = h("form", { class: "card", role: "search", "aria-label": "Search the library" },
     h("div", { class: "grid3" }, field("Words", query), field("Match", mode), field("Author", author)),
+    h("div", { class: "grid3" }, where.el),
     h("div", { class: "row" }, h("button", { type: "submit", class: "primary" }, "Search books")));
   form.addEventListener("submit", (e) => {
     e.preventDefault();
@@ -87,6 +90,7 @@ export function librarySearchPanel() {
     count.textContent = "Searching…";
     const p: Record<string, unknown> = { query: query.value.trim(), mode: mode.value || "all", limit: PAGE, offset };
     if (author.value.trim()) p.author = author.value.trim();
+    if (where.value()) p.collection_id = where.value();
     const r = await msg.attempt(() => run<QueryResult>("search.query", p));
     if (!r) return void (count.textContent = "");
     count.textContent = summary(r, offset);
@@ -98,17 +102,18 @@ export function librarySearchPanel() {
   const el = h("div", {},
     h("p", { class: "hint" }, "Searches the text of the books in your library folders. Index a folder in the Library section first."),
     form, msg.el, count, results, more);
-  return { el, focus: () => query.focus() };
+  return { el, focus: () => query.focus(), show: where.reload };
 }
 
 export function citingPanel() {
   const msg = new Message();
   const ref = h("input", { type: "search", autocomplete: "off", placeholder: "e.g. Rom 8:28" });
+  const where = collectionPicker();
   const count = h("p", { class: "hint", role: "status", "aria-live": "polite" });
   const results = h("ol", { class: "results" });
   const more = h("div", {});
   const form = h("form", { class: "card", role: "search", "aria-label": "Find books citing a passage" },
-    h("div", { class: "grid3" }, field("Passage", ref, "Books that cite verses in this passage")),
+    h("div", { class: "grid3" }, field("Passage", ref, "Books that cite verses in this passage"), where.el),
     h("div", { class: "row" }, h("button", { type: "submit", class: "primary" }, "Find books")));
   form.addEventListener("submit", (e) => {
     e.preventDefault();
@@ -118,7 +123,7 @@ export function citingPanel() {
   async function search(offset: number) {
     if (!ref.value.trim()) return;
     count.textContent = "Searching…";
-    const r = await msg.attempt(() => run<QueryResult>("search.refs", { ref: ref.value.trim(), limit: PAGE, offset }));
+    const r = await msg.attempt(() => run<QueryResult>("search.refs", { ref: ref.value.trim(), limit: PAGE, offset, ...(where.value() ? { collection_id: where.value() } : {}) }));
     if (!r) return void (count.textContent = "");
     count.textContent = summary(r, offset);
     clear(results, hitList(r.hits));
@@ -132,6 +137,7 @@ export function citingPanel() {
     // show fills in the passage being read, if the box is empty.
     show() {
       if (!ref.value && state.ref) ref.value = state.ref;
+      where.reload();
     },
     focus: () => ref.focus(),
   };

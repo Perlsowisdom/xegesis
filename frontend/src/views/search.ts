@@ -53,7 +53,7 @@ export function searchView() {
   const citing = citingPanel();
   const tabs = searchTabs([
     { id: "bibles", label: "Bibles", el: bibleTab, focus: () => query.focus() },
-    { id: "library", label: "Library", el: library.el, focus: library.focus },
+    { id: "library", label: "Library", el: library.el, focus: library.focus, show: library.show },
     { id: "citing", label: "Books citing a passage", el: citing.el, focus: citing.focus, show: citing.show },
   ]);
   const el = h("div", { class: "view" }, h("h1", {}, "Search"), tabs.el);
