@@ -7,6 +7,8 @@ import { Book, Column, Verse, alignColumns, neighbourChapters, verseParts } from
 import { notesPanel } from "../notes";
 import { lastRef, onPassage, setModules, setPassage, state } from "../state";
 import { bookPane } from "./book";
+import { studyPanel } from "./study";
+import { renderMarkup } from "../markup";
 
 export function readerView() {
   const msg = new Message();
@@ -22,8 +24,10 @@ export function readerView() {
     heading: "Notes on this passage",
     scope: () => (state.parsed ? { ref: state.parsed.osis, display: state.parsed.display } : null),
   });
+  const study = studyPanel((ref) => go(ref), () => layout());
   const book = bookPane((open) => panes.classList.toggle("with-book", open));
-  const panes = h("div", { class: "panes" }, h("section", { class: "pane", "aria-label": "Text" }, text), book.el, h("aside", { class: "pane" }, notes.el));
+  const panes = h("div", { class: "panes" }, h("section", { class: "pane", "aria-label": "Text" }, text), book.el, h("aside", { class: "pane" }, study.el, notes.el));
+  const words = { onWord: study.showWord, onRef: (osis: string) => go(osis) };
   let modules: Module[] = [];
   let books: Book[] = [];
   let neighbours: { prev: string | null; next: string | null } = { prev: null, next: null };
@@ -34,7 +38,12 @@ export function readerView() {
     e.preventDefault();
     go(input.value);
   });
-  showNotes.addEventListener("change", () => panes.classList.toggle("single", !showNotes.checked));
+  // The side column holds the notes (when wanted) and the study panel (when it has something).
+  function layout() {
+    notes.el.hidden = !showNotes.checked;
+    panes.classList.toggle("single", !showNotes.checked && study.empty());
+  }
+  showNotes.addEventListener("change", layout);
 
   const el = h("div", { class: "view" },
     h("h1", {}, "Reader"),
@@ -60,6 +69,7 @@ export function readerView() {
   async function read() {
     const p = state.parsed;
     if (!p) return;
+    study.showPassage(p.osis);
     neighbours = books.length ? neighbourChapters(p.start, books) : { prev: null, next: null };
     prev.disabled = !neighbours.prev;
     next.disabled = !neighbours.next;
@@ -71,10 +81,10 @@ export function readerView() {
       return;
     }
     if (chosen.length === 1) {
-      const r = await msg.attempt(() => run<Column>("bible.read", { module: chosen[0], ref: p.osis }));
+      const r = await msg.attempt(() => run<Column>("bible.read", { module: chosen[0], ref: p.osis, markup: true }));
       if (r) renderSingle(r);
     } else {
-      const r = await msg.attempt(() => run<{ ref: string; columns: Column[] }>("bible.parallel", { modules: chosen, ref: p.osis }));
+      const r = await msg.attempt(() => run<{ ref: string; columns: Column[] }>("bible.parallel", { modules: chosen, ref: p.osis, markup: true }));
       if (r) renderParallel(r.columns);
     }
   }
@@ -87,10 +97,14 @@ export function readerView() {
     return h("h3", { class: "chapter" }, name ? `${name} ${chapter}` : `Chapter ${chapter}`);
   }
 
+  function content(v: Verse): Node[] | string {
+    return v.markup ? renderMarkup(v.markup, words) : v.text;
+  }
+
   function verseEl(v: Verse) {
     const n = verseParts(v.id).verse;
     const end = v.end && v.end !== v.id ? `–${verseParts(v.end).verse}` : "";
-    return h("span", { class: "verse", id: `v${v.id}` }, h("sup", { class: "vnum", "aria-label": `verse ${n}${end}` }, `${n}${end}`), " ", v.text, " ");
+    return h("span", { class: "verse", id: `v${v.id}` }, h("sup", { class: "vnum", "aria-label": `verse ${n}${end}` }, `${n}${end}`), " ", content(v), " ");
   }
 
   function renderSingle(c: Column) {
@@ -112,7 +126,7 @@ export function readerView() {
       h("tbody", {}, rows.map((r) =>
         h("tr", {},
           h("th", { scope: "row", class: "vnum" }, `${verseParts(r.base).chapter}:${verseParts(r.base).verse}`),
-          r.cells.map((v) => h("td", { lang: "" }, v ? v.text : "")))))),
+          r.cells.map((v) => h("td", { lang: "" }, v ? content(v) : "")))))),
     columns.some((c) => c.attribution)
       ? h("footer", { class: "attribution" }, columns.filter((c) => c.attribution).map((c) => h("p", {}, `${c.module}: ${c.attribution}`)))
       : null);

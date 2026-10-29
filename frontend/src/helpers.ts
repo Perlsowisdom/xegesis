@@ -94,6 +94,7 @@ export interface Verse {
   end: number;
   ref: string;
   text: string;
+  markup?: string;
 }
 
 export interface Column {

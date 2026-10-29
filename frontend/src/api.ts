@@ -159,6 +159,7 @@ export interface Licence {
 
 export interface Module {
   id: string;
+  kind: string;
   name: string;
   abbreviation: string;
   language: string;

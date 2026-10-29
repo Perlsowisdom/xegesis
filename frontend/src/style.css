@@ -298,3 +298,19 @@ details.more > summary { cursor: pointer; color: var(--accent); }
   .lib-body { grid-template-columns: minmax(0, 1fr); }
   .collections { position: static; max-height: none; }
 }
+
+/* Tagged words, words of Christ and the study panel beside the text (views/study.ts). */
+.w { cursor: pointer; border-radius: 3px; }
+.w:hover, .w:focus-visible { background: var(--mark); text-decoration: underline dotted; }
+.woc { color: var(--woc, #b3261e); }
+.study > section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; }
+.study h3 { margin: 0 0 6px; }
+.study h4 { margin: 10px 0 4px; font-size: .95em; }
+.study details { margin: 6px 0; }
+.study summary { cursor: pointer; font-weight: 600; }
+.study .entry p, .study .lex-entry p { margin: 4px 0; }
+.study dl { margin: 6px 0; }
+.study dt { font-weight: 600; margin-top: 6px; }
+.study dd { margin: 0 0 4px 12px; }
+.study .renderings { padding-left: 18px; margin: 4px 0; }
+.word-facts { color: var(--muted, inherit); margin: 0 0 6px; }

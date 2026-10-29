@@ -4,6 +4,7 @@
 import { CatalogueItem, Message, Module, paramEnum, pick, run } from "../api";
 import { badge, button, clear, field, h, select } from "../dom";
 import { licenceChooser, licenceLine, plainName, termsText } from "../licence";
+import { kindLabel } from "../markupwords";
 
 type Tab = "get" | "installed" | "file";
 
@@ -50,6 +51,8 @@ function size(n?: number): string {
   return n >= 1 << 20 ? `${(n / (1 << 20)).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
 }
 
+const nouns: Record<string, string> = { bible: "Bibles", commentary: "commentaries and cross-reference sets", dictionary: "dictionaries and lexicons" };
+
 function licenceText(l: CatalogueItem["licence"]): string {
   return plainName(l) + (l?.spdx ? ` (${l.spdx})` : "");
 }
@@ -58,6 +61,8 @@ function licenceText(l: CatalogueItem["licence"]): string {
 function getBibles(changed: () => void) {
   const msg = new Message();
   const off = h("div", { class: "card", hidden: true });
+  const what = select([["bible", "Bibles"], ["commentary", "Commentaries and cross-references"], ["dictionary", "Dictionaries and lexicons"]],
+    "bible", { "aria-label": "What to get" });
   const language = select([["", "All languages"]], "", { "aria-label": "Language" });
   const search = h("input", { type: "search", placeholder: "Search names", "aria-label": "Search Bibles" });
   const licence = select([["", "Any licence"], ["public_domain", "Public domain"], ["creative_commons", "Free to share"],
@@ -72,16 +77,17 @@ function getBibles(changed: () => void) {
 
   const disableButton = button("Turn off catalogues", () => disable(), { hidden: true });
   const toolbar = h("div", { class: "row wrap" },
-    language, h("div", { class: "grow" }, search), licence,
+    what, language, h("div", { class: "grow" }, search), licence,
     h("label", { class: "check" }, installable, " Only ones Xegesis can install"),
     button("Refresh catalogues", () => refresh()),
     disableButton);
 
   const el = h("section", { "aria-label": "Get Bibles" },
-    h("p", { class: "hint" }, "Bibles from the CrossWire SWORD repositories and eBible.org. Pick a language, then Install."),
+    h("p", { class: "hint" }, "Bibles, commentaries, cross-references and lexicons from CrossWire, eBible.org, STEPBible and OpenBible.info. Pick a language, then Install."),
     off, toolbar, status, msg.el, dialog, list);
 
   language.addEventListener("change", () => { pickedLanguage = true; load(); });
+  what.addEventListener("change", () => load());
   for (const c of [licence, installable]) c.addEventListener("change", () => load());
   search.addEventListener("input", () => { clearTimeout(timer); timer = window.setTimeout(load, 250); });
 
@@ -108,7 +114,7 @@ function getBibles(changed: () => void) {
   }
 
   async function load() {
-    const params: Record<string, unknown> = { limit: 500, supported: installable.checked };
+    const params: Record<string, unknown> = { limit: 500, supported: installable.checked, kind: what.value };
     if (language.value) params.language = language.value;
     if (search.value.trim()) params.text = search.value.trim();
     if (licence.value) params.licence = licence.value;
@@ -122,7 +128,7 @@ function getBibles(changed: () => void) {
         "library is sent. You can turn them off again here at any time."),
       button("Turn on Bible catalogues", enable, { class: "primary" }));
     if (fillLanguages(r)) return load();
-    status.textContent = r.cached ? `${r.total.toLocaleString()} Bibles${r.total > r.items.length ? `, showing ${r.items.length}` : ""}.` :
+    status.textContent = r.cached ? `${r.total.toLocaleString()} ${nouns[what.value] ?? "items"}${r.total > r.items.length ? `, showing ${r.items.length}` : ""}.` :
       r.enabled ? "No catalogue downloaded yet. Choose Refresh catalogues." : "";
     clear(list, r.items.length === 0 ? (r.cached ? h("p", { class: "empty" }, "Nothing matches.") : null) :
       h("table", { class: "list" },
@@ -202,7 +208,7 @@ function getBibles(changed: () => void) {
       const r = await msg.attempt(() => run<{ module: Module; warnings: string[] }>("bible.get", params));
       clearInterval(poll);
       if (r) {
-        msg.ok(`Installed ${r.module.name} (${r.module.verse_count.toLocaleString()} verses).`);
+        msg.ok(`Installed ${r.module.name}.`);
         changed();
       }
       load();
@@ -222,7 +228,7 @@ function installedList(changed: () => void) {
 
   async function show() {
     const [ms, ups] = await Promise.all([
-      msg.attempt(() => run<Module[]>("bible.modules")),
+      msg.attempt(() => run<Module[]>("bible.modules", { kind: "all" })),
       run<{ module: string; name: string; version: string; installed_version: string }[]>("bible.updates").catch(() => []),
     ]);
     if (!ms) return;
@@ -231,13 +237,13 @@ function installedList(changed: () => void) {
       "Update them from Get Bibles.") : null);
     clear(table, ms.length === 0 ? h("p", { class: "empty" }, "No Bibles installed yet. Get one from the catalogues, or install one from a file.") :
       h("table", { class: "list" },
-        h("thead", {}, h("tr", {}, ["Name", "Abbrev.", "Language", "Numbering", "Verses", "Licence", ""].map((t) => h("th", { scope: "col" }, t)))),
+        h("thead", {}, h("tr", {}, ["Name", "Kind", "Language", "Numbering", "Contents", "Licence", ""].map((t) => h("th", { scope: "col" }, t)))),
         h("tbody", {}, ms.map((m) => h("tr", {},
-          h("td", {}, h("strong", {}, m.name || m.id), h("br"), h("small", { class: "hint" }, m.id)),
-          h("td", {}, m.abbreviation),
+          h("td", {}, h("strong", {}, m.name || m.id), h("br"), h("small", { class: "hint" }, `${m.abbreviation} · ${m.id}`)),
+          h("td", {}, kindLabel(m.kind)),
           h("td", {}, m.language),
-          h("td", {}, m.versification),
-          h("td", { class: "num" }, (m.verse_count ?? 0).toLocaleString()),
+          h("td", {}, m.kind === "dictionary" || m.kind === "lexicon" ? "—" : m.versification),
+          h("td", { class: "num" }, `${(m.verse_count ?? 0).toLocaleString()} ${m.kind === "dictionary" || m.kind === "lexicon" ? "entries" : "verses"}`),
           h("td", {}, licenceLine(m.licence, "Bible", () => clear(editor, bibleLicenceEditor(m, () => { clear(editor); show(); })))),
           h("td", {}, button("Remove", () => remove(m), { class: "danger", "aria-label": `Remove ${m.name || m.id}` })))))));
   }
