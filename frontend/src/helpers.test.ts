@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   alignColumns, changedFields, errorText, exampleParams, markSegments, neighbourChapters, pageLabel, parseError,
-  splitList, verseParts,
+  highlightFor, selectionRuns, splitList, verseParts, verseRangeText,
 } from "./helpers";
 
 describe("parseError", () => {
@@ -70,4 +70,25 @@ it("markSegments", () => {
   expect(markSegments("a <mark>b</mark> c")).toEqual([
     { text: "a ", mark: false }, { text: "b", mark: true }, { text: " c", mark: false },
   ]);
+});
+
+it("selectionRuns", () => {
+  const order = [1, 2, 3, 4, 5];
+  expect(selectionRuns(order, new Set([2, 3, 5]))).toEqual([[2, 3], [5, 5]]);
+  expect(selectionRuns(order, new Set())).toEqual([]);
+  expect(selectionRuns(order, new Set([1, 2, 3, 4, 5]))).toEqual([[1, 5]]);
+});
+
+it("verseRangeText", () => {
+  const books = [{ number: 45, osis: "Rom", name: "Romans", chapters: 16 }];
+  expect(verseRangeText(45008028, 45008028, books)).toBe("Romans 8:28");
+  expect(verseRangeText(45008028, 45008030, books)).toBe("Romans 8:28-30");
+  expect(verseRangeText(45008028, 45009002, books)).toBe("Romans 8:28-9:2");
+});
+
+it("highlightFor takes the newest highlight over a verse", () => {
+  const list = [{ id: "a", verse_start: 10, verse_end: 20 }, { id: "b", verse_start: 12, verse_end: 14 }];
+  expect(highlightFor(list, 13)?.id).toBe("b");
+  expect(highlightFor(list, 18)?.id).toBe("a");
+  expect(highlightFor(list, 30)).toBeUndefined();
 });

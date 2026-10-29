@@ -183,8 +183,52 @@ export interface Note {
   title: string;
   body: string;
   ref?: Ref | null;
+  item_id?: string;
+  item_title?: string;
+  locator?: Record<string, unknown> | null;
+  tags: string[];
   created_at: number;
   updated_at: number;
+  deleted_at?: number;
+}
+
+export interface TagCount {
+  tag: string;
+  count: number;
+}
+
+export interface Highlight {
+  id: string;
+  style: string;
+  ref?: string;
+  verse_start?: number;
+  verse_end?: number;
+}
+
+export interface SavedList {
+  id: string;
+  kind: "verses" | "words" | "excerpts";
+  name: string;
+  count: number;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface ListEntry {
+  id: string;
+  position: number;
+  ref?: Ref | null;
+  word?: string;
+  strong?: string;
+  lemma?: string;
+  language?: string;
+  item_id?: string;
+  title?: string;
+  locator?: Record<string, unknown> | null;
+  text?: string;
+  attribution?: string;
+  note?: string;
+  already?: boolean;
 }
 
 export interface Change {

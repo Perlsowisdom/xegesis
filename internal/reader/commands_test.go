@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/Perlsowisdom/xegesis/internal/command/core"
+	"github.com/Perlsowisdom/xegesis/internal/lists"
 	"github.com/Perlsowisdom/xegesis/internal/search"
 )
 
@@ -313,4 +314,62 @@ func TestOfflineBook(t *testing.T) {
 	}
 	defer os.Rename(e.books+"-moved", e.books)
 	e.fails("book.open", map[string]any{"item_id": e.items["epub"]}, "unavailable")
+}
+
+func TestVerseHighlightsAreKeptInEnglishNumbering(t *testing.T) {
+	e := setup(t)
+	var h Highlight
+	e.must("highlight.create", map[string]any{"verse_start": 45008028, "verse_end": 45008030, "style": "green"}, &h)
+	if h.Ref != "Romans 8:28-30" || h.Start != 45008028 || h.End != 45008030 || h.Style != "green" {
+		t.Errorf("highlight = %+v", h)
+	}
+	// Hebrew Joel 3:1-5 is English Joel 2:28-32.
+	e.must("highlight.create", map[string]any{"ref": "Joel 3:1-5", "versification": "hebrew"}, &h)
+	if h.Ref != "Joel 2:28-32" {
+		t.Errorf("converted highlight = %+v", h)
+	}
+	var found []Highlight
+	e.must("highlight.list", map[string]any{"ref": "Joel 2"}, &found)
+	if len(found) != 1 {
+		t.Errorf("highlights on Joel 2 = %d", len(found))
+	}
+	for _, bad := range []map[string]any{
+		{"ref": "John 3:16", "verse_start": 43003016},
+		{"verse_start": 43003016, "verse_end": 43003001},
+		{"verse_start": 5},
+	} {
+		if err := e.run("highlight.create", bad, nil); err == nil {
+			t.Errorf("accepted %v", bad)
+		}
+	}
+}
+
+// An excerpt added to a list is a copy: it uses up the book's daily allowance and carries the credit.
+func TestExcerptListUsesBookCopy(t *testing.T) {
+	e := setup(t)
+	lists.Register(e.reg)
+	book := e.items["epub"]
+	e.must("library.set_licence", map[string]any{"item_ids": []string{book}, "type": "personal_purchase",
+		"rights_holder": "Example Press", "export_limit": map[string]any{"pages": 1}}, nil)
+	var l struct {
+		ID string `json:"id"`
+	}
+	e.must("list.create", map[string]any{"kind": "excerpts", "name": "Quotes"}, &l)
+	loc := Anchor{Section: 1, Para: 1, Offset: 0, EndPara: 1, EndOffset: 5}
+	var x struct {
+		Text        string `json:"text"`
+		Attribution string `json:"attribution"`
+	}
+	e.must("list.add", map[string]any{"list": l.ID, "item_id": book, "locator": loc, "text": strings.Repeat("a", 1500)}, &x)
+	if len(x.Text) != 1500 || x.Attribution != "© Example Press" {
+		t.Fatalf("excerpt %+v", x)
+	}
+	e.fails("list.add", map[string]any{"list": l.ID, "item_id": book, "locator": loc, "text": strings.Repeat("b", 600)}, "not_allowed")
+	var items struct {
+		Entries []any `json:"entries"`
+	}
+	e.must("list.items", map[string]any{"id": l.ID}, &items)
+	if len(items.Entries) != 1 {
+		t.Fatalf("entries = %d", len(items.Entries))
+	}
 }

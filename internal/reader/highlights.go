@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 
 	"github.com/Perlsowisdom/xegesis/internal/command"
+	"github.com/Perlsowisdom/xegesis/internal/passage"
 	"github.com/Perlsowisdom/xegesis/internal/store"
 	"github.com/Perlsowisdom/xegesis/internal/verse"
 )
@@ -40,10 +41,13 @@ func (a Anchor) valid() bool {
 }
 
 type HighlightCreateParams struct {
-	ItemID  string  `json:"item_id,omitempty" desc:"The book; give it with locator"`
-	Locator *Anchor `json:"locator,omitempty" desc:"Where in the book"`
-	Ref     string  `json:"ref,omitempty" desc:"Or Bible verses to highlight, e.g. \"John 3:16\""`
-	Style   string  `json:"style,omitempty" enum:"yellow,green,blue,pink,purple,underline" desc:"Default yellow"`
+	ItemID        string  `json:"item_id,omitempty" desc:"The book; give it with locator"`
+	Locator       *Anchor `json:"locator,omitempty" desc:"Where in the book"`
+	Ref           string  `json:"ref,omitempty" desc:"Or Bible verses to highlight, e.g. \"John 3:16\""`
+	Start         int     `json:"verse_start,omitempty" desc:"Or the first verse ID (BBCCCVVV), with verse_end"`
+	End           int     `json:"verse_end,omitempty" desc:"The last verse ID"`
+	Versification string  `json:"versification,omitempty" enum:"english,hebrew" desc:"Numbering of the verses given; default english. Highlights are kept in English numbering and show in every Bible"`
+	Style         string  `json:"style,omitempty" enum:"yellow,green,blue,pink,purple,underline" desc:"Default yellow"`
 }
 
 type Highlight struct {
@@ -51,14 +55,20 @@ type Highlight struct {
 	ItemID    string  `json:"item_id,omitempty"`
 	Locator   *Anchor `json:"locator,omitempty"`
 	Ref       string  `json:"ref,omitempty" desc:"The highlighted verses, for a Bible highlight"`
+	Start     int64   `json:"verse_start,omitempty" desc:"First highlighted verse ID, in English numbering"`
+	End       int64   `json:"verse_end,omitempty" desc:"Last highlighted verse ID"`
 	Style     string  `json:"style"`
 	CreatedAt int64   `json:"created_at"`
 }
 
 func (s *service) highlightCreate(ctx context.Context, env *command.Env, p HighlightCreateParams) (Highlight, error) {
 	anchor := store.Row{"id": store.NewID()}
+	r, haveVerses, err := passage.Resolve("highlight.create", p.Ref, p.Start, p.End, p.Versification)
+	if err != nil {
+		return Highlight{}, err
+	}
 	switch {
-	case p.ItemID != "" && p.Locator != nil && p.Ref == "":
+	case p.ItemID != "" && p.Locator != nil && !haveVerses:
 		if !p.Locator.valid() {
 			return Highlight{}, command.Errorf("bad_params", "highlight.create: the locator needs a section and a paragraph or page")
 		}
@@ -67,11 +77,7 @@ func (s *service) highlightCreate(ctx context.Context, env *command.Env, p Highl
 		}
 		raw, _ := json.Marshal(p.Locator)
 		anchor["item_id"], anchor["locator_json"] = p.ItemID, string(raw)
-	case p.Ref != "" && p.ItemID == "" && p.Locator == nil:
-		r, err := verse.Parse(p.Ref)
-		if err != nil {
-			return Highlight{}, command.Errorf("bad_params", "%v", err)
-		}
+	case haveVerses && p.ItemID == "" && p.Locator == nil:
 		anchor["verse_start"], anchor["verse_end"], anchor["versification"] = int64(r.Start), int64(r.End), string(verse.English)
 	default:
 		return Highlight{}, command.Errorf("bad_params", "highlight.create: give item_id with locator, or ref")
@@ -80,7 +86,7 @@ func (s *service) highlightCreate(ctx context.Context, env *command.Env, p Highl
 		p.Style = "yellow"
 	}
 	id := store.NewID()
-	err := env.Store.Write(ctx, "highlight.create", func(tx *store.Tx) error {
+	err = env.Store.Write(ctx, "highlight.create", func(tx *store.Tx) error {
 		if err := tx.Create("anchors", anchor); err != nil {
 			return err
 		}
@@ -168,6 +174,7 @@ func queryHighlights(ctx context.Context, st *store.Store, where string, args ..
 		}
 		if start.Valid && end.Valid {
 			h.Ref = verse.Range{Start: verse.ID(start.Int64), End: verse.ID(end.Int64)}.String()
+			h.Start, h.End = start.Int64, end.Int64
 		}
 		out = append(out, h)
 	}

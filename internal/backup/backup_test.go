@@ -76,7 +76,12 @@ func seed(t *testing.T, s *store.Store) {
 			{"lists", store.Row{"id": "L1", "kind": "verses", "name": "Favourites", "created_at": int64(1), "updated_at": int64(2)}},
 			{"lists", store.Row{"id": "L2", "kind": "words", "name": "Greek", "created_at": int64(1), "updated_at": int64(2)}},
 			{"list_entries", store.Row{"id": "E1", "list_id": "L1", "anchor_id": "A3", "note": "key verse", "position": int64(1)}},
-			{"list_entries", store.Row{"id": "E2", "list_id": "L2", "word": "agape", "language": "grc", "position": int64(0)}},
+			{"list_entries", store.Row{"id": "E2", "list_id": "L2", "word": "agape", "language": "grc", "strong": "G26", "lemma": "ἀγάπη", "position": int64(0)}},
+			{"lists", store.Row{"id": "L3", "kind": "excerpts", "name": "Quotes", "created_at": int64(1), "updated_at": int64(2)}},
+			{"list_entries", store.Row{"id": "E3", "list_id": "L3", "anchor_id": "A2", "attribution": "Smith (CC-BY)", "position": int64(1)}},
+			{"note_tags", store.Row{"note_id": "N1", "tag": "grace"}},
+			{"note_tags", store.Row{"note_id": "N1", "tag": "calling and election"}},
+			{"note_tags", store.Row{"note_id": "N4", "tag": "deleted"}},
 			{"collections", store.Row{"id": "C1", "name": "Parent", "kind": "manual", "created_at": int64(1), "updated_at": int64(2)}},
 			{"collections", store.Row{"id": "C2", "parent_id": "C1", "name": "Child", "kind": "rule", "rule_json": `{"facet":"era","value":"early"}`, "position": int64(1), "created_at": int64(1), "updated_at": int64(2)}},
 			{"collection_items", store.Row{"collection_id": "C1", "item_id": "ITEM1", "position": int64(2)}},
@@ -100,7 +105,7 @@ func seed(t *testing.T, s *store.Store) {
 	}
 }
 
-var dumpTables = []string{"items", "anchors", "notes", "highlights", "lists", "list_entries", "collections",
+var dumpTables = []string{"items", "anchors", "notes", "note_tags", "highlights", "lists", "list_entries", "collections",
 	"collection_items", "reading_plans", "plan_days", "plan_progress", "documents"}
 
 // dump renders the exported tables, row by row, so two libraries can be compared exactly.
