@@ -131,8 +131,10 @@ func newFake(t *testing.T, tinyVersion string) *fake {
 		"mods.d/nrsv.conf":   strings.Replace(swordtest.Conf("Other", "zText", ""), "Versification=KJV", "Versification=LXX", 1),
 		"mods.d/unclear.conf": strings.Replace(swordtest.Conf("Unclear", "zText", ""),
 			"DistributionLicense=Public Domain", "DistributionLicense=See README file", 1),
-		"mods.d/dict.conf": swordtest.Conf("Dict", "zLD", ""),
+		"mods.d/dict.conf": strings.Replace(swordtest.Conf("Dict", "zLD", "Feature=GreekDef\n"), "DataPath=./modules/texts/Dict/", "DataPath=./modules/lexdict/zld/dict/dict", 1),
+		"mods.d/tinycom.conf": strings.Replace(swordtest.Conf("TinyCom", "zCom", ""), "/texts/TinyCom/", "/comments/zcom/tinycom/", 1),
 	})
+	addReferenceFiles(t, f)
 	f.files["/master.conf"] = []byte("[Repos]\n" +
 		"1=HTTPSPackagePreference=CrossWire|" + host + "|/sword/raw\n" +
 		"2=FTPSource=CrossWire|ftp.example.org|/pub/sword/raw\n" +
@@ -164,7 +166,8 @@ func setup(t *testing.T) *env {
 	t.Cleanup(e.lib.Close)
 	bible.RegisterLibrary(e.reg, e.lib)
 	Register(e.reg, filepath.Join(e.dir, "catalogues"), e.lib, WithHTTPClient(f.srv.Client()),
-		WithURLs(f.srv.URL+"/master.conf", f.srv.URL+"/sword/raw", f.srv.URL+"/ebible"))
+		WithURLs(f.srv.URL+"/master.conf", f.srv.URL+"/sword/raw", f.srv.URL+"/ebible"),
+		WithDataURLs(f.srv.URL+"/step", f.srv.URL+"/ob"))
 	return e
 }
 
@@ -210,11 +213,13 @@ func (e *env) enable() {
 
 func (e *env) item(source, id string) Item {
 	e.t.Helper()
-	var res AvailableResult
-	e.must("bible.available", map[string]any{"source": source, "text": id, "limit": 1000}, &res)
-	for _, it := range res.Items {
-		if it.ID == id {
-			return it
+	for _, kind := range []string{"bible", "commentary", "dictionary"} {
+		var res AvailableResult
+		e.must("bible.available", map[string]any{"source": source, "text": id, "limit": 1000, "kind": kind}, &res)
+		for _, it := range res.Items {
+			if it.ID == id {
+				return it
+			}
 		}
 	}
 	e.t.Fatalf("%s/%s not listed", source, id)
@@ -245,7 +250,7 @@ func TestRefreshAndList(t *testing.T) {
 	for _, s := range src.Sources {
 		ids[s.ID] = s
 	}
-	if len(src.Sources) != 3 || ids["crosswire"].Items != 6 || ids["ebible"].Items != 3 || ids["test-beta"].Error == "" {
+	if len(src.Sources) != 5 || ids["stepbible"].Items != 4 || ids["crosswire"].Items != 7 || ids["ebible"].Items != 3 || ids["test-beta"].Error == "" {
 		t.Fatalf("sources: %+v", src.Sources)
 	}
 
@@ -272,7 +277,7 @@ func TestRefreshAndList(t *testing.T) {
 			t.Errorf("filter let through %s/%s", it.Source, it.ID)
 		}
 	}
-	e.must("bible.available", map[string]any{"kind": "dictionary"}, &res)
+	e.must("bible.available", map[string]any{"kind": "dictionary", "source": "crosswire"}, &res)
 	if res.Total != 1 || res.Items[0].ID != "Dict" {
 		t.Errorf("dictionaries: %+v", res.Items)
 	}
@@ -387,7 +392,7 @@ func TestOfflineCache(t *testing.T) {
 	var src SourcesResult
 	e.must("bible.sources", map[string]any{"refresh": true}, &src)
 	for _, s := range src.Sources {
-		if s.ID == "crosswire" && (s.Error == "" || s.Items != 6) {
+		if s.ID == "crosswire" && (s.Error == "" || s.Items != 7) {
 			t.Errorf("failed refresh lost the cache: %+v", s)
 		}
 	}

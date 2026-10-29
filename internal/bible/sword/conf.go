@@ -140,8 +140,17 @@ func (c Conf) Kind() string {
 
 // DataPath is the module's folder relative to the repository root, without "./" and with a
 // trailing slash.
+// For a dictionary the DataPath ends with its files' name prefix, which is left out here.
 func (c Conf) DataPath() string {
 	p := strings.TrimPrefix(strings.TrimSpace(c.Get("DataPath")), "./")
+	if c.Kind() == "dictionary" {
+		p = strings.TrimSuffix(p, "/")
+		if i := strings.LastIndexByte(p, '/'); i >= 0 {
+			p = p[:i]
+		} else {
+			p = ""
+		}
+	}
 	if p != "" && !strings.HasSuffix(p, "/") {
 		p += "/"
 	}

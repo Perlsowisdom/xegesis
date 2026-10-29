@@ -96,6 +96,10 @@ func (s *Service) refresh(ctx context.Context, only string) error {
 		if only != "" && list[i].ID != only {
 			continue
 		}
+		if list[i].Kind == KindData {
+			list[i].Items, list[i].Error, list[i].Refreshed = len(s.dataItems(list[i])), "", s.now().UnixMilli()
+			continue
+		}
 		data, err := s.get(ctx, s.catalogueURL(list[i]), maxCatalogue)
 		if err == nil {
 			list[i].Items, err = s.writeCache(list[i], data)
@@ -255,11 +259,14 @@ func (s *Service) allItems() ([]Item, bool, bool, error) {
 	var all []Item
 	cached := false
 	for _, src := range srcs {
+		if src.Kind == KindData && !on {
+			continue // listed once the catalogues are on
+		}
 		items, err := s.items(src)
 		if err != nil {
 			continue // an unreadable cache is refreshed by bible.sources
 		}
-		cached = cached || items != nil
+		cached = cached || (items != nil && src.Kind != KindData)
 		for _, it := range items {
 			if m, ok := bySource[it.Origin]; ok {
 				it.Installed, it.Module, it.Update = true, m.ID, newer(it.Version, m.Version)

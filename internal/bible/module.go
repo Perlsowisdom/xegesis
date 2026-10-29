@@ -53,6 +53,21 @@ CREATE TABLE versification_map (
     PRIMARY KEY (system, module_id)
 ) WITHOUT ROWID;
 CREATE INDEX versification_map_system ON versification_map(system, system_id);
+CREATE TABLE entries (
+    key        TEXT NOT NULL,
+    fold       TEXT NOT NULL,
+    strong     TEXT NOT NULL,
+    lemma      TEXT NOT NULL,
+    lemma_fold TEXT NOT NULL,
+    translit   TEXT NOT NULL,
+    morph      TEXT NOT NULL,
+    gloss      TEXT NOT NULL,
+    text       TEXT NOT NULL,
+    markup     TEXT NOT NULL
+);
+CREATE INDEX entries_fold ON entries(fold);
+CREATE INDEX entries_strong ON entries(strong);
+CREATE INDEX entries_lemma ON entries(lemma_fold);
 CREATE VIRTUAL TABLE verses_fts USING fts5(text, content='verses', content_rowid='id',
     tokenize='unicode61 remove_diacritics 2');
 `
@@ -60,7 +75,7 @@ CREATE VIRTUAL TABLE verses_fts USING fts5(text, content='verses', content_rowid
 // Meta describes a module.
 type Meta struct {
 	ID            string          `json:"id"`
-	Kind          string          `json:"kind" desc:"bible"`
+	Kind          string          `json:"kind" desc:"bible, commentary, crossref, dictionary or lexicon"`
 	Name          string          `json:"name"`
 	Abbreviation  string          `json:"abbreviation"`
 	Language      string          `json:"language" desc:"BCP 47 language tag"`
@@ -69,7 +84,7 @@ type Meta struct {
 	Source        string          `json:"source,omitempty" desc:"Where the text came from"`
 	Version       string          `json:"version,omitempty"`
 	Books         []string        `json:"books" desc:"OSIS IDs of the books present"`
-	VerseCount    int             `json:"verse_count"`
+	VerseCount    int             `json:"verse_count" desc:"Verses, or for a dictionary or lexicon its entries"`
 	CreatedAt     int64           `json:"created_at"`
 }
 
@@ -81,7 +96,7 @@ type Mapping struct {
 }
 
 // write creates a module file at path from imported verses. It writes to a temporary file first.
-func write(ctx context.Context, path string, m Meta, verses []Verse, maps []Mapping) error {
+func write(ctx context.Context, path string, m Meta, verses []Verse, maps []Mapping, heads ...Headword) error {
 	tmp := path + ".tmp"
 	os.Remove(tmp)
 	db, err := sql.Open("sqlite", tmp)
@@ -89,7 +104,7 @@ func write(ctx context.Context, path string, m Meta, verses []Verse, maps []Mapp
 		return err
 	}
 	db.SetMaxOpenConns(1)
-	err = fill(ctx, db, m, verses, maps)
+	err = fill(ctx, db, m, verses, maps, heads)
 	if cerr := db.Close(); err == nil {
 		err = cerr
 	}
@@ -100,7 +115,7 @@ func write(ctx context.Context, path string, m Meta, verses []Verse, maps []Mapp
 	return os.Rename(tmp, path)
 }
 
-func fill(ctx context.Context, db *sql.DB, m Meta, verses []Verse, maps []Mapping) error {
+func fill(ctx context.Context, db *sql.DB, m Meta, verses []Verse, maps []Mapping, heads []Headword) error {
 	if _, err := db.ExecContext(ctx, schema); err != nil {
 		return err
 	}
@@ -116,6 +131,9 @@ func fill(ctx context.Context, db *sql.DB, m Meta, verses []Verse, maps []Mappin
 		return err
 	}
 	if err := insertMaps(ctx, tx, maps); err != nil {
+		return err
+	}
+	if err := insertHeadwords(ctx, tx, heads); err != nil {
 		return err
 	}
 	stmts := []string{
