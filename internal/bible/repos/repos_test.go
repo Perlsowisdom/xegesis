@@ -131,7 +131,7 @@ func newFake(t *testing.T, tinyVersion string) *fake {
 		"mods.d/nrsv.conf":   strings.Replace(swordtest.Conf("Other", "zText", ""), "Versification=KJV", "Versification=LXX", 1),
 		"mods.d/unclear.conf": strings.Replace(swordtest.Conf("Unclear", "zText", ""),
 			"DistributionLicense=Public Domain", "DistributionLicense=See README file", 1),
-		"mods.d/dict.conf": strings.Replace(swordtest.Conf("Dict", "zLD", "Feature=GreekDef\n"), "DataPath=./modules/texts/Dict/", "DataPath=./modules/lexdict/zld/dict/dict", 1),
+		"mods.d/dict.conf":    strings.Replace(swordtest.Conf("Dict", "zLD", "Feature=GreekDef\n"), "DataPath=./modules/texts/Dict/", "DataPath=./modules/lexdict/zld/dict/dict", 1),
 		"mods.d/tinycom.conf": strings.Replace(swordtest.Conf("TinyCom", "zCom", ""), "/texts/TinyCom/", "/comments/zcom/tinycom/", 1),
 	})
 	addReferenceFiles(t, f)
