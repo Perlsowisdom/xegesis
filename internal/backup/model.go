@@ -76,7 +76,11 @@ var objTypes = []objType{
 		{name: "position", col: "position", kind: fNumber}}},
 	{name: "reading_plan", table: "reading_plans", group: "reading_plan", key: []string{"id"}, fields: []field{
 		{name: "name", col: "name", kind: fText}, {name: "start_date", col: "start_date", kind: fDate},
+		{name: "weekdays", col: "weekdays", kind: fNumber}, {name: "template", col: "template", kind: fText},
 		ts("created_at"), ts("deleted_at")}},
+	{name: "plan_schedule", table: "plan_schedule", group: "reading_plan", key: []string{"plan_id", "day_no"}, fields: []field{
+		{name: "plan", col: "plan_id", kind: fRelation, rel: "reading_plan"},
+		{name: "day_no", col: "day_no", kind: fNumber}, {name: "date", col: "day_date", kind: fDate}}},
 	{name: "plan_day", table: "plan_days", group: "reading_plan", key: []string{"plan_id", "day_no", "verse_start"}, fields: []field{
 		{name: "plan", col: "plan_id", kind: fRelation, rel: "reading_plan"},
 		{name: "day_no", col: "day_no", kind: fNumber}, {name: "verse_start", col: "verse_start", kind: fNumber},

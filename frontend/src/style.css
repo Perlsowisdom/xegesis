@@ -275,6 +275,24 @@ details.more { margin: 6px 0; }
 details.more > summary { cursor: pointer; color: var(--accent); }
 .licence-line .hint { margin: 0; }
 
+/* Reading plans */
+.plan-card { margin: 10px 0; }
+.plan-card h2 { margin: 0; font-size: 1.05rem; }
+.plan-block { margin: 6px 0; }
+.plan-block + .plan-block { border-top: 1px solid var(--line); padding-top: 6px; }
+.plan-day { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; margin: 4px 0; }
+.plan-when { color: var(--muted); font-size: .85rem; min-width: 7rem; }
+.plan-readings { display: inline-flex; flex-wrap: wrap; gap: 2px 12px; }
+.plan-catchup { background: var(--warn-bg); border-radius: 8px; padding: 6px 12px; margin: 6px 0; }
+.plan-catchup p { margin: 2px 0 6px; }
+.plan progress { width: 100%; height: 10px; }
+.plan-days { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: .9rem; }
+.plan-days th, .plan-days td { text-align: left; padding: 3px 8px; border-bottom: 1px solid var(--line); }
+.plan-days tr.done td { color: var(--muted); }
+.weekdays { border: 0; padding: 0; margin: 0 0 10px; }
+.weekdays legend { font-size: .85rem; font-weight: 600; padding: 0; }
+.book-parts { margin: 6px 0 0; padding-left: 18px; }
+
 /* Collections */
 .lib-body { display: grid; grid-template-columns: minmax(200px, 250px) minmax(0, 1fr); gap: 20px; align-items: start; margin-top: 12px; }
 .collections { position: sticky; top: 0; max-height: calc(100vh - 32px); overflow: auto; padding-right: 4px; }

@@ -15,6 +15,7 @@ import (
 	"github.com/Perlsowisdom/xegesis/internal/integrations/secrets"
 	"github.com/Perlsowisdom/xegesis/internal/library"
 	"github.com/Perlsowisdom/xegesis/internal/lists"
+	"github.com/Perlsowisdom/xegesis/internal/plan"
 	"github.com/Perlsowisdom/xegesis/internal/reader"
 	"github.com/Perlsowisdom/xegesis/internal/search"
 )
@@ -34,5 +35,6 @@ func Registry(dataDir string, s secrets.Store) *command.Registry {
 	backup.Register(r, dataDir)
 	reader.Register(r)
 	lists.Register(r)
+	plan.Register(r)
 	return r
 }

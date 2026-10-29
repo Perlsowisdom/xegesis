@@ -90,6 +90,8 @@ func seed(t *testing.T, s *store.Store) {
 			{"plan_days", store.Row{"plan_id": "P1", "day_no": int64(1), "verse_start": int64(43001001), "verse_end": int64(43001018)}},
 			{"plan_days", store.Row{"plan_id": "P1", "day_no": int64(2), "verse_start": int64(1), "verse_end": int64(2), "item_id": "ITEM2", "locator_json": `{"page":3}`}},
 			{"plan_progress", store.Row{"plan_id": "P1", "day_no": int64(1), "completed_at": int64(1700000999999)}},
+			{"plan_schedule", store.Row{"plan_id": "P1", "day_no": int64(1), "day_date": "2026-01-01"}},
+			{"plan_schedule", store.Row{"plan_id": "P1", "day_no": int64(2), "day_date": "2026-01-03"}},
 			{"documents", store.Row{"id": "D1", "kind": "sermon", "title": "Grace alone", "body_md": bodies[4], "outline_json": `[{"h":"One"},{"h":"Two"}]`, "created_at": int64(1), "updated_at": int64(2)}},
 			{"documents", store.Row{"id": "D2", "title": "Empty", "body_md": "", "created_at": int64(1), "updated_at": int64(2)}},
 		}
@@ -106,7 +108,7 @@ func seed(t *testing.T, s *store.Store) {
 }
 
 var dumpTables = []string{"items", "anchors", "notes", "note_tags", "highlights", "lists", "list_entries", "collections",
-	"collection_items", "reading_plans", "plan_days", "plan_progress", "documents"}
+	"collection_items", "reading_plans", "plan_days", "plan_progress", "plan_schedule", "documents"}
 
 // dump renders the exported tables, row by row, so two libraries can be compared exactly.
 func dump(t *testing.T, s *store.Store) string {
