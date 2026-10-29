@@ -16,6 +16,7 @@ type Note struct {
 	Body      string         `json:"body" desc:"Markdown text"`
 	Ref       *RefResult     `json:"ref,omitempty" desc:"The verses the note is attached to"`
 	ItemID    string         `json:"item_id,omitempty" desc:"The book the note is attached to"`
+	ItemTitle string         `json:"item_title,omitempty" desc:"That book's title"`
 	Locator   map[string]any `json:"locator,omitempty" desc:"Where in the book, as highlight.create's locator"`
 	Tags      []string       `json:"tags" desc:"The note's tags, in lower case"`
 	CreatedAt int64          `json:"created_at"`
@@ -246,7 +247,8 @@ func noteDelete(ctx context.Context, env *command.Env, p IDParams) (struct{}, er
 }
 
 const noteSelect = `SELECT n.id, n.title, n.body_md, n.created_at, n.updated_at, a.verse_start, a.verse_end,
-	a.item_id, a.locator_json, COALESCE(n.deleted_at, 0) FROM notes n LEFT JOIN anchors a ON a.id = n.anchor_id`
+	a.item_id, a.locator_json, COALESCE(n.deleted_at, 0), it.title FROM notes n LEFT JOIN anchors a ON a.id = n.anchor_id
+	LEFT JOIN items it ON it.id = a.item_id`
 
 // queryNotes runs a noteSelect query and fills in each note's tags.
 func queryNotes(ctx context.Context, env *command.Env, q string, args ...any) ([]Note, error) {
@@ -286,11 +288,11 @@ func scanNote(rows *sql.Rows) (Note, error) {
 	var n Note
 	var title sql.NullString
 	var start, end sql.NullInt64
-	var item, locator sql.NullString
-	if err := rows.Scan(&n.ID, &title, &n.Body, &n.CreatedAt, &n.UpdatedAt, &start, &end, &item, &locator, &n.DeletedAt); err != nil {
+	var item, locator, itemTitle sql.NullString
+	if err := rows.Scan(&n.ID, &title, &n.Body, &n.CreatedAt, &n.UpdatedAt, &start, &end, &item, &locator, &n.DeletedAt, &itemTitle); err != nil {
 		return n, err
 	}
-	n.ItemID = item.String
+	n.ItemID, n.ItemTitle = item.String, itemTitle.String
 	if locator.Valid {
 		json.Unmarshal([]byte(locator.String), &n.Locator)
 	}

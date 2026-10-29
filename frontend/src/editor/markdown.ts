@@ -173,7 +173,8 @@ function writeBlock(b: Block): string {
     case "paragraph":
       return writeInline(b.spans);
     case "heading":
-      return `${"#".repeat(b.level)} ${writeInline(b.spans)}`;
+      // An empty heading would read back as the text "##"; it is an empty paragraph instead.
+      return b.spans.length === 0 ? "" : `${"#".repeat(b.level)} ${writeInline(b.spans)}`;
     case "quote":
       return writeInline(b.spans).split("\n").map((l) => `> ${l}`).join("\n");
     case "list":

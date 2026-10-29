@@ -1,7 +1,8 @@
 // The Notes section: every note, newest first, with search, filters and Recently deleted.
 
 import { Message, Note, TagCount, run } from "../api";
-import { button, clear, field, h, select } from "../dom";
+import { button, clear, h, select } from "../dom";
+import { renderMarkdown } from "../editor/render";
 import { formatTime } from "../helpers";
 import { CardActions, deleteNote, historyDrawer, noteCard, noteForm, noteName, placeOf } from "../notes";
 
@@ -123,7 +124,7 @@ export function notesSectionView() {
       h("ul", { class: "notes" }, got.length === 0 ? h("li", { class: "empty" }, "Nothing has been deleted.") : got.map((n) =>
         h("li", { class: "note" },
           h("div", { class: "row between" }, h("strong", {}, noteName(n)), placeOf(n) ? h("span", { class: "badge" }, placeOf(n)) : null),
-          h("p", { class: "note-body" }, n.body.length > 300 ? n.body.slice(0, 300) + "…" : n.body),
+          renderMarkdown(n.body.length > 600 ? n.body.slice(0, 600) + "…" : n.body),
           h("div", { class: "row small" },
             h("span", { class: "hint" }, `Deleted ${formatTime(n.deleted_at ?? n.updated_at)}`),
             button("Restore", async () => {
@@ -163,7 +164,6 @@ export function notesSectionView() {
       edit(null);
     }
   });
-  void field;
 
   return {
     el,

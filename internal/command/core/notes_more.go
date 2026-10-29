@@ -296,3 +296,62 @@ func noteRestore(ctx context.Context, env *command.Env, p IDParams) (Note, error
 	}
 	return getNote(ctx, env, p.ID)
 }
+
+// Sources --------------------------------------------------------------------------------------
+
+type NoteBook struct {
+	Name   string `json:"name,omitempty" desc:"Book of the Bible"`
+	ItemID string `json:"item_id,omitempty" desc:"Library book"`
+	Title  string `json:"title,omitempty" desc:"Library book title"`
+	Count  int    `json:"count" desc:"Notes on it"`
+}
+
+type NoteSources struct {
+	BibleBooks   []NoteBook `json:"bible_books" desc:"Books of the Bible with notes, in Bible order"`
+	LibraryBooks []NoteBook `json:"library_books" desc:"Library books with notes, by title"`
+	Free         int        `json:"free" desc:"Notes attached to nothing"`
+	Deleted      int        `json:"deleted" desc:"Deleted notes that can still be restored"`
+}
+
+func noteSources(ctx context.Context, env *command.Env, _ struct{}) (NoteSources, error) {
+	if err := needStore(env); err != nil {
+		return NoteSources{}, err
+	}
+	out := NoteSources{BibleBooks: []NoteBook{}, LibraryBooks: []NoteBook{}}
+	rows, err := env.Store.Query(ctx, `SELECT a.verse_start / 1000000, COUNT(*) FROM notes n JOIN anchors a ON a.id = n.anchor_id
+		WHERE n.deleted_at IS NULL AND a.verse_start IS NOT NULL GROUP BY 1 ORDER BY 1`)
+	if err != nil {
+		return out, err
+	}
+	for rows.Next() {
+		var num, count int
+		if err := rows.Scan(&num, &count); err != nil {
+			rows.Close()
+			return out, err
+		}
+		if b, ok := verse.BookByNumber(num); ok {
+			out.BibleBooks = append(out.BibleBooks, NoteBook{Name: b.Name, Count: count})
+		}
+	}
+	rows.Close()
+	rows, err = env.Store.Query(ctx, `SELECT i.id, i.title, COUNT(*) FROM notes n JOIN anchors a ON a.id = n.anchor_id
+		JOIN items i ON i.id = a.item_id WHERE n.deleted_at IS NULL GROUP BY i.id ORDER BY i.title`)
+	if err != nil {
+		return out, err
+	}
+	for rows.Next() {
+		var b NoteBook
+		if err := rows.Scan(&b.ItemID, &b.Title, &b.Count); err != nil {
+			rows.Close()
+			return out, err
+		}
+		out.LibraryBooks = append(out.LibraryBooks, b)
+	}
+	rows.Close()
+	err = env.Store.QueryRow(ctx, `SELECT COUNT(*) FROM notes WHERE anchor_id IS NULL AND deleted_at IS NULL`).Scan(&out.Free)
+	if err != nil {
+		return out, err
+	}
+	err = env.Store.QueryRow(ctx, `SELECT COUNT(*) FROM notes WHERE deleted_at IS NOT NULL`).Scan(&out.Deleted)
+	return out, err
+}

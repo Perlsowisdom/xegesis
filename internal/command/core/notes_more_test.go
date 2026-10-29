@@ -140,3 +140,20 @@ func TestRestoringAVersionCanBeUndone(t *testing.T) {
 		t.Fatalf("after undoing the restore, body = %q", n.Body)
 	}
 }
+
+func TestNoteSources(t *testing.T) {
+	r, env := setup(t)
+	for _, p := range []string{`{"body":"a","ref":"Rom 1:1"}`, `{"body":"b","ref":"Rom 2:1"}`, `{"body":"c","ref":"Gen 1:1"}`, `{"body":"d"}`} {
+		run(t, r, env, "note.create", p, nil)
+	}
+	var n Note
+	run(t, r, env, "note.create", `{"body":"gone"}`, &n)
+	run(t, r, env, "note.delete", `{"id":"`+n.ID+`"}`, nil)
+	var s NoteSources
+	if err := run(t, r, env, "note.sources", `{}`, &s); err != nil {
+		t.Fatal(err)
+	}
+	if len(s.BibleBooks) != 2 || s.BibleBooks[0].Name != "Genesis" || s.BibleBooks[1].Count != 2 || s.Free != 1 || s.Deleted != 1 || len(s.LibraryBooks) != 0 {
+		t.Errorf("sources = %+v", s)
+	}
+}
