@@ -5,6 +5,7 @@ import { Message, Module, Ref, run } from "../api";
 import { button, clear, h } from "../dom";
 import { Book, Column, Verse, alignColumns, neighbourChapters, verseParts } from "../helpers";
 import { notesPanel } from "../notes";
+import { todayCard } from "../plancard";
 import { lastRef, onPassage, setModules, setPassage, state } from "../state";
 import { bookPane } from "./book";
 import { studyPanel } from "./study";
@@ -24,6 +25,7 @@ export function readerView() {
     heading: "Notes on this passage",
     scope: () => (state.parsed ? { ref: state.parsed.osis, display: state.parsed.display } : null),
   });
+  const today = todayCard();
   const study = studyPanel((ref) => go(ref), () => layout());
   const book = bookPane((open) => panes.classList.toggle("with-book", open));
   const panes = h("div", { class: "panes" }, h("section", { class: "pane", "aria-label": "Text" }, text), book.el, h("aside", { class: "pane" }, study.el, notes.el));
@@ -51,7 +53,7 @@ export function readerView() {
     h("div", { class: "row wrap" }, picker, h("span", { class: "spacer" }),
       h("label", { class: "check" }, showNotes, " Notes beside the text"),
       button("Open a book", () => book.choose(), { title: "Read a library book beside the Bible" }), prev, next),
-    msg.el, panes);
+    today.el, msg.el, panes);
 
   async function go(ref: string) {
     ref = ref.trim();
@@ -163,6 +165,7 @@ export function readerView() {
   });
 
   async function show() {
+    void today.refresh();
     const [ms, bs] = await Promise.all([
       msg.attempt(() => run<Module[]>("bible.modules")),
       books.length ? Promise.resolve(books) : msg.attempt(() => run<Book[]>("verse.books")),

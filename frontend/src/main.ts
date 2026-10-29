@@ -8,6 +8,7 @@ import { setNavigator } from "./state";
 import { biblesView } from "./views/bibles";
 import { commandsView } from "./views/commands";
 import { libraryView } from "./views/library";
+import { plansView } from "./views/plans";
 import { readerView } from "./views/reader";
 import { searchView } from "./views/search";
 import { settingsView } from "./views/settings";
@@ -30,6 +31,7 @@ const sections: { id: string; label: string; make: () => View }[] = [
   { id: "bibles", label: "Bibles", make: biblesView },
   { id: "library", label: "Library", make: libraryView },
   { id: "notes", label: "Notes", make: notesView },
+  { id: "plans", label: "Plans", make: plansView },
   { id: "search", label: "Search", make: searchView },
   { id: "commands", label: "Commands", make: commandsView },
   { id: "settings", label: "Settings", make: settingsView },
@@ -89,7 +91,7 @@ function boot(tries = 10) {
       links.set(s.id, a);
       return h("li", {}, a);
     })),
-    h("p", { class: "hint shortcuts" }, "Alt+1–7 sections · Ctrl+L passage · Alt+N new note"));
+    h("p", { class: "hint shortcuts" }, "Alt+1–8 sections · Ctrl+L passage · Alt+N new note"));
   app.replaceChildren(h("div", { class: "shell" }, nav, main));
   setNavigator((id) => show(id));
 
