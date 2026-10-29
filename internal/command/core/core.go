@@ -28,7 +28,12 @@ func Register(r *command.Registry) {
 		command.Define("note.get", "Show one note.", false, noteGet),
 		command.Define("note.list", "List notes, optionally only those on verses in a reference.", false, noteList),
 		command.Define("note.update", "Change a note's title or text.", true, noteUpdate),
-		command.Define("note.delete", "Delete a note. It can be restored from its history.", true, noteDelete),
+		command.Define("note.delete", "Delete a note. It stays in note.deleted until it is restored.", true, noteDelete),
+		command.Define("note.search", "Find notes by words in them, tag, book of the Bible or library book, newest first.", false, noteSearch),
+		command.Define("note.tags", "List the tags in use with how many notes have each, to suggest tags.", false, noteTags),
+		command.Define("note.move", "Attach a note to other verses or a book place, or detach it so it belongs to none.", true, noteMove),
+		command.Define("note.deleted", "List deleted notes, most recently deleted first.", false, noteDeleted),
+		command.Define("note.restore", "Bring a deleted note back.", true, noteRestore),
 		command.Define("history.list", "List the recorded changes to one object, oldest first.", false, historyList),
 		command.Define("history.restore", "Return an object to how it was just after a recorded change.", true, historyRestore),
 	)
