@@ -169,7 +169,11 @@ export function readerView() {
     ]);
     modules = ms ?? [];
     books = bs ?? [];
-    if (state.modules.length === 0 && modules.length) setModules([modules[0].id]);
+    // Forget remembered Bibles that are no longer installed; with none left, use the first one.
+    const kept = state.modules.filter((m) => modules.some((x) => x.id === m));
+    if (kept.length !== state.modules.length || (kept.length === 0 && modules.length)) {
+      setModules(kept.length ? kept : modules.length ? [modules[0].id] : []);
+    }
     renderPicker();
     if (!state.parsed) await go(input.value);
     else read();

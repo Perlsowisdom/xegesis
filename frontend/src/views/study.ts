@@ -64,9 +64,13 @@ export function studyPanel(go: (ref: string) => void, changed: () => void) {
   }
 
   // showWord looks a clicked word up in the lexicons and finds where else it occurs.
-  async function showWord(w: WordInfo) {
+  // A word can carry several numbers ("God" is often tagged G3588 G2316, the article then the noun);
+  // the last one is the word itself, and the others are offered as "also tagged".
+  async function showWord(w: WordInfo, chosen?: string) {
     const seq = ++wordSeq;
-    const number = w.strongs.find((s) => !/^H9\d{3}/.test(s)) ?? w.strongs[0];
+    const numbers = w.strongs.filter((s) => !/^H9\d{3}/.test(s));
+    const number = chosen ?? numbers[numbers.length - 1] ?? w.strongs[0];
+    const others = numbers.filter((s) => s !== number);
     wordBox.hidden = false;
     clear(wordBox, h("p", { class: "hint" }, `Looking up ${w.text}…`));
     changed();
@@ -82,6 +86,8 @@ export function studyPanel(go: (ref: string) => void, changed: () => void) {
         button("Close", () => closeWord(), { "aria-label": "Close the word panel" })),
       h("p", { class: "word-facts" },
         [head?.transliteration, w.gloss || head?.gloss, number, w.morph].filter(Boolean).join(" · ")),
+      others.length ? h("p", { class: "hint" }, "Also tagged: ",
+        others.map((n, i) => [i ? ", " : "", button(n, () => showWord(w, n), { class: "link" })])) : null,
       entries.length === 0 ? h("p", { class: "hint" }, "No lexicon installed has this word. Lexicons are in Bibles → Get Bibles, under Dictionaries and lexicons.") :
         entries.map((e) => h("div", { class: "lex-entry" },
           h("h4", {}, `${e.name}${e.key && e.key !== e.strong ? ` (${e.key})` : ""}`),

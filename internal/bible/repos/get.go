@@ -382,10 +382,18 @@ func (s *Service) installSWORDDict(ctx context.Context, key, dir string, it Item
 		h.Key = k
 		if prefix != "" {
 			num := strings.TrimLeft(strings.TrimRight(k, `\ `), "0")
-			if num == "" || strings.Trim(num, "0123456789") != "" {
-				return nil // the introduction and other non-numbered entries
+			switch {
+			case num != "" && strings.Trim(num, "0123456789") == "":
+				h.Strong = prefix + num
+			case strings.Trim(k, "0123456789 ") == "" || strings.EqualFold(k, "intro"):
+				return nil // the introduction and other non-word keys
+			default:
+				// A lexicon keyed by original-language headwords (Abbott-Smith, for one); its
+				// Strong's-keyed companion points here with "@LINK <headword>".
+				if h.Lemma == "" {
+					h.Lemma = strings.ToLower(k) // keys are often capitals: ἈΓΑΠΆΩ becomes ἀγαπάω
+				}
 			}
-			h.Strong = prefix + num
 		}
 		heads = append(heads, h)
 		return nil

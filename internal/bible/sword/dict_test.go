@@ -60,3 +60,17 @@ func TestReadCommentary(t *testing.T) {
 		t.Fatalf("got %v", got)
 	}
 }
+
+// A commentary stored in chapter blocks names its files nt.czv, nt.czs and nt.czz; Barnes' Notes
+// on CrossWire is one.
+func TestReadChapterBlockedCommentary(t *testing.T) {
+	dir := t.TempDir()
+	if err := swordtest.ZTextBlocks(dir, "c", map[swordtest.Key]string{swordtest.K(43, 3, 16): "For God so loved."}); err != nil {
+		t.Fatal(err)
+	}
+	conf := strings.Replace(swordtest.Conf("Com", "zCom", ""), "BlockType=BOOK", "BlockType=CHAPTER", 1)
+	c := parse(t, fixFirst(conf))
+	if got := walk(t, dir, c); got[swordtest.ID(swordtest.K(43, 3, 16))] != "For God so loved." {
+		t.Fatalf("got %v", got)
+	}
+}

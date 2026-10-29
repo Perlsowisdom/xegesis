@@ -123,9 +123,10 @@ function getBibles(changed: () => void) {
     off.hidden = r.enabled;
     disableButton.hidden = !r.enabled;
     clear(off, h("h2", {}, "Bible catalogues are off"),
-      h("p", {}, "When you turn them on, Xegesis downloads the lists of Bibles from CrossWire (crosswire.org) and " +
-        "eBible.org, and the Bibles you choose to install. Only these files are requested; nothing about you or your " +
-        "library is sent. You can turn them off again here at any time."),
+      h("p", {}, "When you turn them on, Xegesis downloads the lists of what is available from CrossWire (crosswire.org), " +
+        "eBible.org, STEPBible (stepbible.org) and OpenBible.info, and the Bibles, commentaries and lexicons you choose " +
+        "to install. Only these files are requested; nothing about you or your library is sent. You can turn them off " +
+        "again here at any time."),
       button("Turn on Bible catalogues", enable, { class: "primary" }));
     if (fillLanguages(r)) return load();
     status.textContent = r.cached ? `${r.total.toLocaleString()} ${nouns[what.value] ?? "items"}${r.total > r.items.length ? `, showing ${r.items.length}` : ""}.` :
@@ -205,13 +206,18 @@ function getBibles(changed: () => void) {
         if (p.total > 0) { bar.max = p.total; bar.value = Math.min(p.done, p.total); }
         phase.textContent = p.phase === "downloading" ? `Downloading ${size(p.done)}` : p.phase === "checking" ? "Checking" : "Converting";
       }, 400);
-      const r = await msg.attempt(() => run<{ module: Module; warnings: string[] }>("bible.get", params));
-      clearInterval(poll);
-      if (r) {
+      try {
+        const r = await run<{ module: Module; warnings: string[] }>("bible.get", params);
+        clearInterval(poll);
         msg.ok(`Installed ${r.module.name}.`);
         changed();
+        load();
+      } catch (e) {
+        clearInterval(poll);
+        // Reload first: a successful reload clears messages, and the failure must stay visible.
+        await load();
+        msg.error(e);
       }
-      load();
     }
   }
 

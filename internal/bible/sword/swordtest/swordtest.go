@@ -60,7 +60,11 @@ func split(entries map[Key]string) [2]map[Key]string {
 
 // ZText writes a zText module (one zlib block per testament) into dir. Testaments without
 // entries are left out.
-func ZText(dir string, entries map[Key]string) error {
+func ZText(dir string, entries map[Key]string) error { return ZTextBlocks(dir, "b", entries) }
+
+// ZTextBlocks is ZText with the file names of another block size: "b" (BOOK), "c" (CHAPTER) or
+// "v" (VERSE), as the module's BlockType sets them.
+func ZTextBlocks(dir, letter string, entries map[Key]string) error {
 	for t, es := range split(entries) {
 		if len(es) == 0 {
 			continue
@@ -83,7 +87,7 @@ func ZText(dir string, entries map[Key]string) error {
 		binary.LittleEndian.PutUint32(bzs[4:], uint32(z.Len()))
 		binary.LittleEndian.PutUint32(bzs[8:], uint32(block.Len()))
 		name := filepath.Join(dir, [2]string{"ot", "nt"}[t])
-		for ext, data := range map[string][]byte{".bzv": idx, ".bzs": bzs, ".bzz": z.Bytes()} {
+		for ext, data := range map[string][]byte{"." + letter + "zv": idx, "." + letter + "zs": bzs, "." + letter + "zz": z.Bytes()} {
 			if err := os.WriteFile(name+ext, data, 0o644); err != nil {
 				return err
 			}

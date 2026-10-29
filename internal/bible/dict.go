@@ -131,7 +131,39 @@ func (m *Module) Lookup(ctx context.Context, strong, word string, limit int) ([]
 		}
 		out = append(out, h)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+	for i := range out {
+		if err := m.followLink(ctx, &out[i]); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
+// followLink replaces an entry that only points to another headword ("@LINK ὁ", as some SWORD
+// lexicons key their Strong's numbers) with that headword's entry, keeping the Strong's number.
+func (m *Module) followLink(ctx context.Context, h *Headword) error {
+	target, ok := strings.CutPrefix(strings.TrimSpace(h.Text), "@LINK")
+	if !ok {
+		return nil
+	}
+	f := fold(strings.TrimSpace(target))
+	var to Headword
+	err := m.db.QueryRowContext(ctx, `SELECT key, lemma, translit, morph, gloss, text, markup FROM entries
+		WHERE (lemma_fold = ? OR fold = ?) AND text NOT LIKE '@LINK%' ORDER BY rowid LIMIT 1`, f, f).
+		Scan(&to.Key, &to.Lemma, &to.Translit, &to.Morph, &to.Gloss, &to.Text, &to.Markup)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	to.Strong = h.Strong
+	*h = to
+	return nil
 }
 
 var strongSuffix = regexp.MustCompile(`^([HG][0-9]+)[A-Za-z]*$`)

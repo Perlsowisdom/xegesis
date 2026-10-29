@@ -24,6 +24,7 @@ import (
 //	RawText  ot.vss / nt.vss  start u32, size u16   text in ot / nt
 //	RawText4                  start u32, size u32
 //	zText    ot.bzv / nt.bzv  block u32, start u32, size u16   (start and size within the block)
+//	         The b in .bzv/.bzs/.bzz is the block size (BlockType): b book, c chapter, v verse.
 //	zText4                    block u32, start u32, size u32
 //	zText    ot.bzs / nt.bzs  offset u32, size u32, uncompressed size u32   blocks in ot.bzz / nt.bzz
 type driver struct {
@@ -113,9 +114,10 @@ func DataFiles(c Conf) []string {
 	}
 	d := drivers[strings.ToLower(c.Driver())]
 	var out []string
+	b := blockLetter(c)
 	for _, t := range testaments {
 		if d.compressed {
-			out = append(out, t+".bzs", t+".bzv", t+".bzz")
+			out = append(out, t+"."+b+"zs", t+"."+b+"zv", t+"."+b+"zz")
 		} else {
 			out = append(out, t, t+".vss")
 		}
@@ -130,6 +132,7 @@ type Text struct {
 	drv   driver
 	v11n  *Versification
 	latin bool
+	block string // b, c or v: the block size letter in compressed file names
 }
 
 // Open checks a module folder: the module must be supported, and each testament's index must
@@ -140,7 +143,7 @@ func Open(dir string, c Conf) (*Text, error) {
 	}
 	v, _ := LookupVersification(c.Get("Versification"))
 	t := &Text{dir: dir, conf: c, drv: drivers[strings.ToLower(c.Driver())], v11n: v,
-		latin: strings.EqualFold(c.Get("Encoding"), "Latin-1")}
+		latin: strings.EqualFold(c.Get("Encoding"), "Latin-1"), block: blockLetter(c)}
 	found := false
 	for i := range testaments {
 		n, ok, err := t.entries(i)
@@ -167,7 +170,7 @@ func (t *Text) System() verse.System { return t.v11n.System }
 
 func (t *Text) indexName(i int) string {
 	if t.drv.compressed {
-		return testaments[i] + ".bzv"
+		return testaments[i] + "." + t.block + "zv"
 	}
 	return testaments[i] + ".vss"
 }
@@ -184,7 +187,7 @@ func (t *Text) entries(i int) (int, bool, error) {
 	// Some modules carry an empty testament: a one-record index and no text. That testament is absent.
 	data := filepath.Join(t.dir, testaments[i])
 	if t.drv.compressed {
-		data += ".bzz"
+		data += "." + t.block + "zz"
 	}
 	if d, err := os.Stat(data); err == nil && d.Size() == 0 {
 		return 0, false, nil
@@ -268,14 +271,14 @@ func (t *Text) source(i int) (source, error) {
 		}
 		return &rawSource{f: f, sizeBytes: t.drv.sizeBytes}, nil
 	}
-	blocks, err := os.ReadFile(name + ".bzs")
+	blocks, err := os.ReadFile(name + "." + t.block + "zs")
 	if err != nil {
 		return nil, err
 	}
 	if len(blocks)%12 != 0 {
-		return nil, fmt.Errorf("%s.bzs is not a whole number of 12-byte entries", testaments[i])
+		return nil, fmt.Errorf("%s.%szs is not a whole number of 12-byte entries", testaments[i], t.block)
 	}
-	f, err := os.Open(name + ".bzz")
+	f, err := os.Open(name + "." + t.block + "zz")
 	if err != nil {
 		return nil, err
 	}
@@ -384,3 +387,15 @@ func (s *zSource) close() { s.f.Close() }
 
 // Versification is the module's verse numbering.
 func (t *Text) Versification() *Versification { return t.v11n }
+
+// blockLetter is the letter compressed modules use for their block size: b for BOOK (the default),
+// c for CHAPTER and v for VERSE, as in nt.czv for a chapter-blocked New Testament index.
+func blockLetter(c Conf) string {
+	switch strings.ToUpper(c.Get("BlockType")) {
+	case "CHAPTER":
+		return "c"
+	case "VERSE":
+		return "v"
+	}
+	return "b"
+}

@@ -243,7 +243,37 @@ func (c cmds) lookup(ctx context.Context, _ *command.Env, p LookupParams) ([]Loo
 			out = append(out, LookupEntry{Module: m.ID, Name: m.Name, Attribution: m.Licence.AttributionLine(), Headword: h})
 		}
 	}
+	for i := range out {
+		if err := c.followLink(ctx, mods, &out[i]); err != nil {
+			return nil, err
+		}
+	}
 	return out, nil
+}
+
+// followLink resolves an entry that only points to a headword ("@LINK ἀγαπάω"). Some SWORD lexicons
+// are just such an index from Strong's numbers into a companion lexicon, so the headword is looked
+// up in every installed lexicon and dictionary. Without a match the entry reads "See ἀγαπάω".
+func (c cmds) followLink(ctx context.Context, mods []*Module, e *LookupEntry) error {
+	target, ok := strings.CutPrefix(strings.TrimSpace(e.Text), "@LINK")
+	if !ok {
+		return nil
+	}
+	target = strings.TrimSpace(target)
+	for _, m := range mods {
+		hs, err := m.Lookup(ctx, "", target, 1)
+		if err != nil {
+			return command.Errorf("failed", "%s: %v", m.ID, err)
+		}
+		if len(hs) == 1 && !strings.HasPrefix(strings.TrimSpace(hs[0].Text), "@LINK") {
+			strong := e.Strong
+			*e = LookupEntry{Module: m.ID, Name: m.Name, Attribution: m.Licence.AttributionLine(), Headword: hs[0]}
+			e.Strong = strong
+			return nil
+		}
+	}
+	e.Lemma, e.Text, e.Markup = target, "See "+target+".", "See "+target+"."
+	return nil
 }
 
 type WordStudyParams struct {
