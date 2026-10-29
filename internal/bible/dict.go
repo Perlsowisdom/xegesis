@@ -105,6 +105,15 @@ func (l *Library) InstallHeadwords(ctx context.Context, o InstallOptions, heads 
 // Lookup finds entries by Strong's number, by original-language word or by headword. A Strong's
 // number with a letter suffix (H1254A) also finds the plain number's entries, and the other way round.
 func (m *Module) Lookup(ctx context.Context, strong, word string, limit int) ([]Headword, error) {
+	return m.lookup(ctx, strong, word, false, limit)
+}
+
+// LookupPrefix also finds headwords that begin with word ("GRACE OF GOD" for "grace"), shortest first.
+func (m *Module) LookupPrefix(ctx context.Context, word string, limit int) ([]Headword, error) {
+	return m.lookup(ctx, "", word, true, limit)
+}
+
+func (m *Module) lookup(ctx context.Context, strong, word string, prefix bool, limit int) ([]Headword, error) {
 	if VerseKeyed(m.Kind) {
 		return nil, nil
 	}
@@ -115,8 +124,10 @@ func (m *Module) Lookup(ctx context.Context, strong, word string, limit int) ([]
 		base := baseStrong(strong)
 		rows, err = m.db.QueryContext(ctx, cols+` WHERE strong = ? OR strong = ? OR (strong >= ? AND strong < ?)
 			ORDER BY strong = ? DESC, rowid LIMIT ?`, strong, base, base+"A", base+"[", strong, limit)
+	} else if f := fold(word); prefix && f != "" {
+		rows, err = m.db.QueryContext(ctx, cols+` WHERE lemma_fold = ? OR (fold >= ? AND fold < ?)
+			ORDER BY fold != ?, length(fold), rowid LIMIT ?`, f, f, f+"\U0010FFFF", f, limit)
 	} else {
-		f := fold(word)
 		rows, err = m.db.QueryContext(ctx, cols+` WHERE lemma_fold = ? OR fold = ? ORDER BY rowid LIMIT ?`, f, f, limit)
 	}
 	if err != nil {

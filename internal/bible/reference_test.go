@@ -175,6 +175,17 @@ func TestLexiconLookup(t *testing.T) {
 	if len(es) != 1 || es[0].Module != "names" || es[0].Lemma != "Aaron" || !strings.Contains(es[0].Markup, `<r o="Exod.4.14">`) {
 		t.Errorf("dictionary: %+v", es)
 	}
+	if es[0].Kind != KindDictionary {
+		t.Errorf("kind %q", es[0].Kind)
+	}
+	e.must("lexicon.lookup", map[string]any{"word": "aar"}, &es)
+	if len(es) != 0 {
+		t.Errorf("exact lookup found a prefix: %+v", es)
+	}
+	e.must("lexicon.lookup", map[string]any{"word": "aar", "prefix": true}, &es)
+	if len(es) != 1 || es[0].Key != "AARON" {
+		t.Errorf("prefix: %+v", es)
+	}
 	if err := e.run("lexicon.lookup", map[string]any{"strong": "X1"}, nil); code(err) != "bad_params" {
 		t.Errorf("bad number: %v", err)
 	}
