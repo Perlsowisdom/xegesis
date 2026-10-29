@@ -76,7 +76,7 @@ func TestConfSyntax(t *testing.T) {
 func TestSupported(t *testing.T) {
 	for _, tc := range []struct{ extra, want string }{
 		{"", ""},
-		{"Versification=NRSV\n", "NRSV verse numbering"},
+		{"Versification=LXX\n", "LXX verse numbering"},
 		{"CompressType=LZSS\n", "LZSS compression"},
 		{"Encoding=SCSU\n", "encoding"},
 	} {
@@ -87,8 +87,11 @@ func TestSupported(t *testing.T) {
 		}
 	}
 	c := parse(t, swordtest.Conf("T", "zLD", ""))
-	if sword.Supported(c) == nil || c.Kind() != "dictionary" {
-		t.Error("dictionary reported as a supported Bible")
+	if sword.Supported(c) != nil || c.Kind() != "dictionary" {
+		t.Errorf("dictionary: %v", sword.Supported(c))
+	}
+	if c := parse(t, swordtest.Conf("B", "RawGenBook", "")); sword.Supported(c) == nil {
+		t.Error("general book reported as supported")
 	}
 }
 

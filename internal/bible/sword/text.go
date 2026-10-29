@@ -34,6 +34,9 @@ type driver struct {
 var drivers = map[string]driver{
 	"rawtext": {false, 2}, "rawtext4": {false, 4},
 	"ztext": {true, 2}, "ztext4": {true, 4},
+	// commentaries use the same verse index as Bibles
+	"rawcom": {false, 2}, "rawcom4": {false, 4},
+	"zcom": {true, 2}, "zcom4": {true, 4},
 }
 
 func (d driver) recordSize() int {
@@ -53,11 +56,13 @@ func Supported(c Conf) error {
 	if c.Locked() {
 		return ErrLocked
 	}
-	d, ok := drivers[strings.ToLower(c.Driver())]
-	if !ok {
+	drv := strings.ToLower(c.Driver())
+	d, verseKeyed := drivers[drv]
+	ld, dict := ldDrivers[drv]
+	if !verseKeyed && !dict {
 		return fmt.Errorf("sword: %s modules (%s) cannot be read yet", c.Kind(), c.Driver())
 	}
-	if d.compressed {
+	if d.compressed || ld.compressed {
 		switch strings.ToUpper(c.Get("CompressType")) {
 		case "ZIP", "BZIP2":
 		case "", "LZSS", "XZ":
@@ -73,8 +78,15 @@ func Supported(c Conf) error {
 	}
 	switch strings.ToLower(c.Get("SourceType")) {
 	case "", "plaintext", "osis", "thml", "gbf":
+	case "tei":
+		if !dict {
+			return fmt.Errorf("sword: TEI markup cannot be read in %s modules", c.Kind())
+		}
 	default:
 		return fmt.Errorf("sword: %s markup cannot be read", c.Get("SourceType"))
+	}
+	if !verseKeyed {
+		return nil
 	}
 	if _, ok := LookupVersification(c.Get("Versification")); !ok {
 		return fmt.Errorf("sword: the %s verse numbering is not supported yet", c.Get("Versification"))
@@ -89,9 +101,16 @@ func firstNonEmpty(a, b string) string {
 	return b
 }
 
-// DataFiles lists the files a module's folder may hold. A testament's files are absent when the
-// module has no books in it.
+// DataFiles lists the files a module's folder (Folder) may hold. A testament's files are absent
+// when the module has no books in it.
 func DataFiles(c Conf) []string {
+	if ld, ok := ldDrivers[strings.ToLower(c.Driver())]; ok {
+		p := ldPrefix(c)
+		if ld.compressed {
+			return []string{p + ".idx", p + ".dat", p + ".zdx", p + ".zdt"}
+		}
+		return []string{p + ".idx", p + ".dat"}
+	}
 	d := drivers[strings.ToLower(c.Driver())]
 	var out []string
 	for _, t := range testaments {
@@ -162,6 +181,14 @@ func (t *Text) entries(i int) (int, bool, error) {
 	if err != nil {
 		return 0, false, err
 	}
+	// Some modules carry an empty testament: a one-record index and no text. That testament is absent.
+	data := filepath.Join(t.dir, testaments[i])
+	if t.drv.compressed {
+		data += ".bzz"
+	}
+	if d, err := os.Stat(data); err == nil && d.Size() == 0 {
+		return 0, false, nil
+	}
 	rs := int64(t.drv.recordSize())
 	if info.Size()%rs != 0 {
 		return 0, false, fmt.Errorf("sword: %s is %d bytes, not a whole number of %d-byte entries",
@@ -203,7 +230,7 @@ func (t *Text) walkTestament(i int, emit func(verse.ID, bool, string) error) err
 			return fmt.Errorf("entry %d (%s): %w", n, s.id, err)
 		}
 		text := t.decode(raw)
-		if strings.TrimSpace(text) == "" {
+		if s.id == 0 || strings.TrimSpace(text) == "" {
 			continue
 		}
 		if err := emit(s.id, s.intro, text); err != nil {
@@ -354,3 +381,6 @@ func (s *zSource) load(b int) error {
 }
 
 func (s *zSource) close() { s.f.Close() }
+
+// Versification is the module's verse numbering.
+func (t *Text) Versification() *Versification { return t.v11n }

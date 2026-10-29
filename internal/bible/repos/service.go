@@ -38,6 +38,8 @@ type Service struct {
 	masterURL  string
 	crosswire  string
 	ebible     string
+	stepbible  string
+	openbible  string
 	now        func() time.Time
 	mu         sync.Mutex // guards the state file, memo and progress
 	memo       map[string]memoEntry
@@ -61,10 +63,16 @@ func WithURLs(master, crosswire, ebible string) Option {
 	return func(s *Service) { s.masterURL, s.crosswire, s.ebible = master, crosswire, ebible }
 }
 
+// WithDataURLs replaces the STEPBible and OpenBible.info download folders.
+func WithDataURLs(stepbible, openbible string) Option {
+	return func(s *Service) { s.stepbible, s.openbible = stepbible, openbible }
+}
+
 // New makes a Service caching catalogues in dir and installing into lib.
 func New(dir string, lib *bible.Library, opts ...Option) *Service {
 	s := &Service{dir: dir, lib: lib, http: &http.Client{Timeout: 10 * time.Minute},
 		masterURL: DefaultMasterList, crosswire: DefaultCrossWire, ebible: DefaultEBible,
+		stepbible: DefaultSTEPBible, openbible: DefaultOpenBible,
 		now: time.Now, memo: map[string]memoEntry{}, progress: map[string]*Progress{}}
 	for _, o := range opts {
 		o(s)
@@ -80,10 +88,10 @@ type state struct {
 }
 
 func (s *Service) defaults() []Source {
-	return []Source{
+	return append([]Source{
 		{ID: "crosswire", Name: "CrossWire", Kind: KindSWORD, URL: s.crosswire},
 		{ID: "ebible", Name: "eBible.org", Kind: KindEBible, URL: s.ebible},
-	}
+	}, s.dataSources()...)
 }
 
 func (s *Service) statePath() string { return filepath.Join(s.dir, "state.json") }
@@ -106,6 +114,11 @@ func (s *Service) load() (*state, error) {
 	}
 	if len(st.Sources) == 0 {
 		st.Sources = s.defaults()
+	}
+	for _, d := range s.dataSources() {
+		if !hasSource(st.Sources, d.ID) {
+			st.Sources = append(st.Sources, d)
+		}
 	}
 	s.stateCache = st
 	return st, nil
@@ -212,6 +225,9 @@ func (s *Service) do(ctx context.Context, method, url string) (*http.Response, e
 
 // items reads a source's cached catalogue, parsing it again only when the file changed.
 func (s *Service) items(src Source) ([]Item, error) {
+	if src.Kind == KindData {
+		return s.dataItems(src), nil
+	}
 	path := s.cacheFile(src)
 	info, err := os.Stat(path)
 	if errors.Is(err, fs.ErrNotExist) {

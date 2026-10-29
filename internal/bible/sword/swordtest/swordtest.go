@@ -126,3 +126,50 @@ func ID(k Key) verse.ID {
 
 // K makes a Key.
 func K(book, chapter, verse int) Key { return Key{Book: book, Chapter: chapter, Verse: verse} }
+
+// ZLD writes a zLD dictionary, keys in the order given, into dir as <prefix>.idx, .dat, .zdx and
+// .zdt, with every entry in one zlib block.
+func ZLD(dir, prefix string, entries [][2]string) error {
+	var idx, dat, block bytes.Buffer
+	head := make([]byte, 4+8*len(entries))
+	binary.LittleEndian.PutUint32(head, uint32(len(entries)))
+	var texts bytes.Buffer
+	for i, e := range entries {
+		binary.LittleEndian.PutUint32(head[4+8*i:], uint32(len(head)+texts.Len()))
+		binary.LittleEndian.PutUint32(head[8+8*i:], uint32(len(e[1])))
+		texts.WriteString(e[1])
+		rec := []byte(e[0] + "\r\n")
+		rec = binary.LittleEndian.AppendUint32(rec, 0)
+		rec = binary.LittleEndian.AppendUint32(rec, uint32(i))
+		idx.Write(binary.LittleEndian.AppendUint32(binary.LittleEndian.AppendUint32(nil, uint32(dat.Len())), uint32(len(rec))))
+		dat.Write(rec)
+		dat.WriteString("\r\n")
+	}
+	block.Write(head)
+	block.Write(texts.Bytes())
+	var z bytes.Buffer
+	zw := zlib.NewWriter(&z)
+	zw.Write(block.Bytes())
+	zw.Close()
+	zdx := binary.LittleEndian.AppendUint32(binary.LittleEndian.AppendUint32(nil, 0), uint32(z.Len()))
+	for ext, data := range map[string][]byte{".idx": idx.Bytes(), ".dat": dat.Bytes(), ".zdx": zdx, ".zdt": z.Bytes()} {
+		if err := os.WriteFile(filepath.Join(dir, prefix+ext), data, 0o644); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// RawLD writes a RawLD dictionary into dir as <prefix>.idx and <prefix>.dat.
+func RawLD(dir, prefix string, entries [][2]string) error {
+	var idx, dat bytes.Buffer
+	for _, e := range entries {
+		rec := e[0] + "\r\n" + e[1]
+		idx.Write(binary.LittleEndian.AppendUint16(binary.LittleEndian.AppendUint32(nil, uint32(dat.Len())), uint16(len(rec))))
+		dat.WriteString(rec + "\r\n")
+	}
+	if err := os.WriteFile(filepath.Join(dir, prefix+".idx"), idx.Bytes(), 0o644); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, prefix+".dat"), dat.Bytes(), 0o644)
+}

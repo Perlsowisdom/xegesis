@@ -142,6 +142,7 @@ func (l *Library) Close() {
 
 // InstallOptions describe a module to create. The licence is the one the user stated.
 type InstallOptions struct {
+	Kind          string // bible (default), commentary, crossref, dictionary or lexicon
 	Path          string // a file, or a folder of files
 	Format        string // osis, usfm or usx; empty to detect from each file
 	ID            string
@@ -152,7 +153,8 @@ type InstallOptions struct {
 	Source        string
 	Version       string
 	Licence       licence.Licence
-	MappingFile   string // optional full versification table
+	MappingFile   string    // optional full versification table
+	Mappings      []Mapping // versification rows supplied by the importer, such as a SWORD numbering's
 	Replace       bool
 }
 
@@ -178,6 +180,9 @@ func (l *Library) Install(ctx context.Context, o InstallOptions) (Meta, []string
 // finish turns what an importer collected into an installed module.
 func (l *Library) finish(ctx context.Context, o InstallOptions, hints Doc, b *builder) (Meta, []string, error) {
 	d := b.doc()
+	if o.Kind == KindCommentary || o.Kind == KindCrossRef {
+		d.Verses = joinRepeats(d.Verses)
+	}
 	if len(d.Verses) == 0 {
 		return Meta{}, d.Warnings, fmt.Errorf("bible: no verses found in %s", o.Path)
 	}
@@ -185,11 +190,13 @@ func (l *Library) finish(ctx context.Context, o InstallOptions, hints Doc, b *bu
 	if err != nil {
 		return Meta{}, d.Warnings, err
 	}
-	var maps []Mapping
+	maps := o.Mappings
 	if o.MappingFile != "" {
-		if maps, err = readMapping(o.MappingFile); err != nil {
+		more, err := readMapping(o.MappingFile)
+		if err != nil {
 			return Meta{}, d.Warnings, err
 		}
+		maps = append(maps, more...)
 	}
 	if err := l.place(ctx, m, d.Verses, maps, o.Replace); err != nil {
 		return Meta{}, d.Warnings, err
@@ -214,7 +221,7 @@ func (l *Library) place(ctx context.Context, m Meta, verses []Verse, maps []Mapp
 }
 
 func (o InstallOptions) meta(hints Doc, d *Doc) (Meta, error) {
-	m := Meta{Kind: "bible", Name: o.Name, Abbreviation: o.Abbreviation, Language: o.Language,
+	m := Meta{Kind: firstNonEmpty(o.Kind, KindBible), Name: o.Name, Abbreviation: o.Abbreviation, Language: o.Language,
 		Versification: strings.ToLower(o.Versification), Licence: o.Licence, Source: o.Source,
 		Version: o.Version, VerseCount: len(d.Verses), CreatedAt: now()}
 	if m.Name == "" {

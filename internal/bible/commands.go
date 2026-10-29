@@ -20,7 +20,8 @@ func Register(r *command.Registry, dir string) { RegisterLibrary(r, NewLibrary(d
 func RegisterLibrary(r *command.Registry, l *Library) {
 	c := cmds{l}
 	r.Add(
-		command.Define("bible.modules", "List the installed Bibles with their licences.", false, c.modules),
+		command.Define("bible.modules", "List the installed Bibles with their licences; with kind, the installed commentaries, "+
+			"cross-reference sets, dictionaries or lexicons, or all modules.", false, c.modules),
 		command.Define("bible.install", "Import an OSIS, USFM or USX file or folder as a new Bible module. "+
 			"Its licence is the one the file states, or Personal copy; give licence_type to set another.", false, c.install),
 		command.Define("bible.set_licence", "Change the licence recorded for an installed Bible.", false, c.setLicence),
@@ -29,6 +30,7 @@ func RegisterLibrary(r *command.Registry, l *Library) {
 		command.Define("bible.parallel", "Read the same passage from several Bibles, matching verse numbering.", false, c.parallel),
 		command.Define("bible.search", "Search the text of one or more Bibles, best matches first.", false, c.search),
 	)
+	registerReference(r, c)
 }
 
 type cmds struct{ l *Library }
@@ -41,7 +43,23 @@ func (c cmds) module(id string) (*Module, error) {
 	return m, err
 }
 
-func (c cmds) modules(context.Context, *command.Env, struct{}) ([]Meta, error) { return c.l.List() }
+type ModulesParams struct {
+	Kind string `json:"kind,omitempty" enum:"bible,commentary,crossref,dictionary,lexicon,all" desc:"Kind of module (default bible)"`
+}
+
+func (c cmds) modules(_ context.Context, _ *command.Env, p ModulesParams) ([]Meta, error) {
+	all, err := c.l.List()
+	if err != nil || p.Kind == "all" {
+		return all, err
+	}
+	out := []Meta{}
+	for _, m := range all {
+		if m.Kind == firstNonEmpty(p.Kind, KindBible) {
+			out = append(out, m)
+		}
+	}
+	return out, nil
+}
 
 type InstallParams struct {
 	Path          string `json:"path" required:"true" desc:"An OSIS, USFM or USX file, a folder of them, or a .zip archive of them"`
@@ -337,7 +355,9 @@ func (c cmds) searchModules(ids []string) ([]string, error) {
 		return nil, err
 	}
 	for _, m := range all {
-		ids = append(ids, m.ID)
+		if m.Kind == KindBible {
+			ids = append(ids, m.ID)
+		}
 	}
 	return ids, nil
 }

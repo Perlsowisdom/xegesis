@@ -86,7 +86,7 @@ func (s *Service) getCmd(ctx context.Context, _ *command.Env, p GetParams) (GetR
 	if err := s.online(); err != nil {
 		return GetResult{}, err
 	}
-	if it.conf == nil {
+	if it.conf == nil && it.Source != "" && !isData(it) {
 		s.resolveEBible(ctx, &it)
 	}
 	res := GetResult{Item: it, Preview: p.Preview, Warnings: []string{}}
@@ -122,9 +122,12 @@ func (s *Service) getCmd(ctx context.Context, _ *command.Env, p GetParams) (GetR
 		Source: it.Origin, Version: it.Version, Licence: lic, Replace: p.Replace}
 	var m bible.Meta
 	var warnings []string
-	if it.conf != nil {
+	switch {
+	case isData(it):
+		m, warnings, err = s.installData(ctx, key, it, opts)
+	case it.conf != nil:
 		m, warnings, err = s.installSWORD(ctx, key, it, opts)
-	} else {
+	default:
 		m, warnings, err = s.installEBible(ctx, key, it, res.Size, opts)
 	}
 	if err != nil {
@@ -285,12 +288,19 @@ func (s *Service) installSWORD(ctx context.Context, key string, it Item, o bible
 		total += n
 	}
 	s.setProgress(key, func(p *Progress) { p.Phase = "checking" })
+	if it.conf.Kind() == "dictionary" {
+		return s.installSWORDDict(ctx, key, dir, it, o)
+	}
+	if it.conf.Kind() == "commentary" {
+		o.Kind = bible.KindCommentary
+	}
 	text, err := sword.Open(dir, *it.conf)
 	if err != nil {
 		return bible.Meta{}, nil, err
 	}
 	s.setProgress(key, func(p *Progress) { p.Phase = "converting" })
 	o.Versification = string(text.System())
+	o.Mappings = englishRows(text.Versification())
 	return s.lib.InstallEntries(ctx, o, bible.EntryMarkup(it.conf.Get("SourceType")), func(emit func(bible.Entry) error) error {
 		return text.Walk(func(id verse.ID, intro bool, markup string) error {
 			return emit(bible.Entry{ID: id, Intro: intro, Markup: markup})
@@ -331,4 +341,62 @@ func checkZip(path string) error {
 		}
 	}
 	return errors.New("the download holds no USFM files")
+}
+
+// englishRows turns a SWORD numbering's english table into module mapping rows.
+func englishRows(v *sword.Versification) []bible.Mapping {
+	pairs := v.EnglishMap()
+	out := make([]bible.Mapping, 0, len(pairs))
+	for _, p := range pairs {
+		out = append(out, bible.Mapping{System: verse.English, Module: p.Module, SystemID: p.English})
+	}
+	return out
+}
+
+func isData(it Item) bool {
+	_, ok := findDataset(it.Source, it.ID)
+	return ok && it.conf == nil
+}
+
+// installSWORDDict installs a SWORD dictionary. Modules marked as Strong's dictionaries
+// (Feature=GreekDef or HebrewDef), whose keys are numbers, become lexicons keyed by Strong's number.
+func (s *Service) installSWORDDict(ctx context.Context, key, dir string, it Item, o bible.InstallOptions) (bible.Meta, []string, error) {
+	c := *it.conf
+	d, err := sword.OpenDict(dir, c)
+	if err != nil {
+		return bible.Meta{}, nil, err
+	}
+	prefix := ""
+	for _, f := range c.All("Feature") {
+		switch strings.TrimSpace(f) {
+		case "GreekDef":
+			prefix = "G"
+		case "HebrewDef":
+			prefix = "H"
+		}
+	}
+	s.setProgress(key, func(p *Progress) { p.Phase = "converting" })
+	var heads []bible.Headword
+	err = d.Walk(func(k, text string) error {
+		h := bible.DictMarkup(text, c.Get("SourceType"))
+		h.Key = k
+		if prefix != "" {
+			num := strings.TrimLeft(strings.TrimRight(k, `\ `), "0")
+			if num == "" || strings.Trim(num, "0123456789") != "" {
+				return nil // the introduction and other non-numbered entries
+			}
+			h.Strong = prefix + num
+		}
+		heads = append(heads, h)
+		return nil
+	})
+	if err != nil {
+		return bible.Meta{}, nil, err
+	}
+	o.Kind = bible.KindDictionary
+	if prefix != "" {
+		o.Kind = bible.KindLexicon
+	}
+	m, err := s.lib.InstallHeadwords(ctx, o, heads)
+	return m, nil, err
 }
