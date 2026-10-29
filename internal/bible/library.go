@@ -152,7 +152,7 @@ type InstallOptions struct {
 	Source        string
 	Version       string
 	Licence       licence.Licence
-	MappingFile   string // optional full versification table
+	MappingFile   string    // optional full versification table
 	Mappings      []Mapping // versification rows supplied by the importer, such as a SWORD numbering's
 	Replace       bool
 }
