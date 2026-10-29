@@ -51,6 +51,8 @@ var objTypes = []objType{
 	{name: "note", table: "notes", group: "note", key: []string{"id"}, anchor: true, fields: []field{
 		{name: "title", col: "title", kind: fText}, {name: "body", col: "body_md", kind: fBody},
 		ts("created_at"), ts("updated_at"), ts("deleted_at")}},
+	{name: "note_tag", table: "note_tags", group: "note", key: []string{"note_id", "tag"}, fields: []field{
+		{name: "note", col: "note_id", kind: fRelation, rel: "note"}, {name: "tag", col: "tag", kind: fText}}},
 	{name: "highlight", table: "highlights", group: "highlight", key: []string{"id"}, anchor: true, fields: []field{
 		{name: "style", col: "style", kind: fText}, ts("created_at"), ts("deleted_at")}},
 	{name: "list", table: "lists", group: "list", key: []string{"id"}, fields: []field{
@@ -59,7 +61,9 @@ var objTypes = []objType{
 	{name: "list_entry", table: "list_entries", group: "list", key: []string{"id"}, anchor: true, fields: []field{
 		{name: "list", col: "list_id", kind: fRelation, rel: "list"},
 		{name: "word", col: "word", kind: fText}, {name: "language", col: "language", kind: fText},
-		{name: "note", col: "note", kind: fText}, {name: "position", col: "position", kind: fNumber}}},
+		{name: "note", col: "note", kind: fText}, {name: "position", col: "position", kind: fNumber},
+		{name: "strong", col: "strong", kind: fText}, {name: "lemma", col: "lemma", kind: fText},
+		{name: "attribution", col: "attribution", kind: fText}}},
 	{name: "collection", table: "collections", group: "collection", key: []string{"id"}, fields: []field{
 		{name: "parent", col: "parent_id", kind: fRelation, rel: "collection"},
 		{name: "name", col: "name", kind: fText},

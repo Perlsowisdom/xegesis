@@ -182,12 +182,12 @@ func noteSearch(ctx context.Context, env *command.Env, p NoteSearchParams) ([]No
 		args = append(args, tag)
 	}
 	if p.Book != "" {
-		r, err := verse.Parse(p.Book)
-		if err != nil {
-			return nil, command.Errorf("bad_params", "%v", err)
+		b, ok := verse.LookupBook(strings.TrimSpace(p.Book))
+		if !ok {
+			return nil, command.Errorf("bad_params", "note.search: no book of the Bible called %q", p.Book)
 		}
 		q += ` AND a.verse_start >= ? AND a.verse_start < ?`
-		args = append(args, int64(r.Start.Book())*1_000_000, int64(r.Start.Book()+1)*1_000_000)
+		args = append(args, int64(b.Number)*1_000_000, int64(b.Number+1)*1_000_000)
 	}
 	if p.ItemID != "" {
 		q += ` AND a.item_id = ?`
