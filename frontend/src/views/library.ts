@@ -168,10 +168,13 @@ function catalogue(getFolders: () => Folder[], getSide: () => ReturnType<typeof 
   let since = 0;
   let collection: CollectionNode | null = null;
 
-  const filters = h("form", { class: "filters", role: "search", "aria-label": "Filter books" },
-    field("Title", text), field("Author", author), field("Folder", folder),
-    field("Type", typeSel), field("Tradition", tradSel), field("Chosen", bySel),
-    h("button", { type: "submit", class: "primary" }, "Filter"));
+  // Title search stays in view; the rest is one step away, and the collections tree covers type,
+  // tradition, year and author for browsing.
+  const more = h("details", { class: "more-filters" }, h("summary", {}, "More filters"),
+    h("div", { class: "filters" }, field("Author", author), field("Folder", folder),
+      field("Type", typeSel), field("Tradition", tradSel), field("Chosen", bySel)));
+  const filters = h("form", { role: "search", "aria-label": "Filter books" },
+    h("div", { class: "row wrap" }, field("Title", text), h("button", { type: "submit", class: "primary" }, "Search")), more);
   filters.addEventListener("submit", (e) => {
     e.preventDefault();
     offset = 0;

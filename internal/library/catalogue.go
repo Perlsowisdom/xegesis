@@ -189,7 +189,16 @@ func itemsConds(p ItemsParams) ([]string, []any) {
 		add("i.created_at >= ?", p.AddedSince)
 	}
 	if p.LicenceType != "" {
-		add("i.id IN (SELECT item_id FROM licences WHERE type = ?)", p.LicenceType)
+		// Match the four plain groups the interface shows: open licences that allow sharing count as
+		// Free to share, and an unknown licence counts as Personal copy.
+		switch p.LicenceType {
+		case "creative_commons":
+			add("i.id IN (SELECT item_id FROM licences WHERE type = 'creative_commons' OR (type = 'open_other' AND share_allowed = 1))")
+		case "personal_purchase":
+			add("i.id IN (SELECT item_id FROM licences WHERE type IN ('personal_purchase', 'unknown') OR (type = 'open_other' AND share_allowed = 0))")
+		default:
+			add("i.id IN (SELECT item_id FROM licences WHERE type = ?)", p.LicenceType)
+		}
 	}
 	facetFilter(p, add)
 	if p.authorAny {
