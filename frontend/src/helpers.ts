@@ -14,7 +14,7 @@ export interface Schema {
   enum?: string[];
 }
 
-const KNOWN_CODES = ["bad_params", "not_found", "unknown_command", "unavailable", "failed", "bad_request"];
+const KNOWN_CODES = ["bad_params", "not_found", "unknown_command", "unavailable", "failed", "bad_request", "not_allowed"];
 
 // parseError turns whatever a rejected App.Run gives ("code: message", an Error, or an object)
 // into a code and message.
@@ -34,6 +34,7 @@ export function parseError(e: unknown): CommandError {
 const CODE_TITLES: Record<string, string> = {
   bad_params: "Please check the details",
   bad_request: "Please check the details",
+  not_allowed: "Not allowed by the licence",
   not_found: "Not found",
   unknown_command: "This action is not available",
   unavailable: "Not available right now",
@@ -164,4 +165,43 @@ export function markSegments(snippet: string): { text: string; mark: boolean }[]
   }
   if (last < snippet.length) out.push({ text: snippet.slice(last), mark: false });
   return out;
+}
+
+// selectionRuns groups selected verses into runs of neighbours in the order they are shown, so
+// "John 3:16, 17 and 20" becomes two ranges. order lists the verse IDs on screen.
+export function selectionRuns(order: number[], selected: Set<number>): [number, number][] {
+  const runs: [number, number][] = [];
+  let start: number | null = null;
+  let last = 0;
+  for (const id of order) {
+    if (selected.has(id)) {
+      if (start === null) start = id;
+      last = id;
+    } else if (start !== null) {
+      runs.push([start, last]);
+      start = null;
+    }
+  }
+  if (start !== null) runs.push([start, last]);
+  return runs;
+}
+
+// verseRangeText writes a verse range as a reference the core can read, such as "Romans 8:28-9:2".
+export function verseRangeText(start: number, end: number, books: Book[]): string {
+  const a = verseParts(start);
+  const b = verseParts(end);
+  const name = books.find((x) => x.number === a.book)?.name ?? `Book ${a.book}`;
+  if (start === end) return `${name} ${a.chapter}:${a.verse}`;
+  if (a.book !== b.book) return `${name} ${a.chapter}:${a.verse}`;
+  if (a.chapter === b.chapter) return `${name} ${a.chapter}:${a.verse}-${b.verse}`;
+  return `${name} ${a.chapter}:${a.verse}-${b.chapter}:${b.verse}`;
+}
+
+// highlightFor finds the newest highlight covering a verse (in English numbering).
+export function highlightFor<T extends { verse_start?: number; verse_end?: number }>(list: T[], base: number): T | undefined {
+  for (let i = list.length - 1; i >= 0; i--) {
+    const x = list[i];
+    if (x.verse_start !== undefined && x.verse_end !== undefined && x.verse_start <= base && base <= x.verse_end) return x;
+  }
+  return undefined;
 }

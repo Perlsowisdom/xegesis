@@ -3,11 +3,12 @@
 
 import { bound, onEvent } from "./api";
 import { button, h } from "./dom";
-import { notesPanel } from "./notes";
 import { setNavigator } from "./state";
 import { biblesView } from "./views/bibles";
 import { commandsView } from "./views/commands";
 import { libraryView } from "./views/library";
+import { listsView } from "./views/lists";
+import { notesSectionView } from "./views/notes";
 import { readerView } from "./views/reader";
 import { searchView } from "./views/search";
 import { settingsView } from "./views/settings";
@@ -20,16 +21,12 @@ interface View {
   changed?(): void;
 }
 
-function notesView(): View {
-  const panel = notesPanel({ heading: "All notes", scope: () => null, headingLevel: "h2" });
-  return { el: h("div", { class: "view" }, h("h1", {}, "Notes"), panel.el), show: panel.refresh };
-}
-
 const sections: { id: string; label: string; make: () => View }[] = [
   { id: "reader", label: "Reader", make: readerView },
   { id: "bibles", label: "Bibles", make: biblesView },
   { id: "library", label: "Library", make: libraryView },
-  { id: "notes", label: "Notes", make: notesView },
+  { id: "notes", label: "Notes", make: notesSectionView },
+  { id: "lists", label: "Lists", make: listsView },
   { id: "search", label: "Search", make: searchView },
   { id: "commands", label: "Commands", make: commandsView },
   { id: "settings", label: "Settings", make: settingsView },
@@ -89,7 +86,7 @@ function boot(tries = 10) {
       links.set(s.id, a);
       return h("li", {}, a);
     })),
-    h("p", { class: "hint shortcuts" }, "Alt+1–7 sections · Ctrl+L passage · Alt+N new note"));
+    h("p", { class: "hint shortcuts" }, "Alt+1–8 sections · Ctrl+L passage · Alt+N new note"));
   app.replaceChildren(h("div", { class: "shell" }, nav, main));
   setNavigator((id) => show(id));
 

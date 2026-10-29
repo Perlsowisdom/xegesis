@@ -1,9 +1,10 @@
 // Reader: a passage box, the Bible text (one Bible or parallel columns), an optional library book
 // (views/book.ts) and the notes on that passage side by side.
 
-import { Message, Module, Ref, run } from "../api";
+import { Highlight, Message, Module, Ref, run } from "../api";
 import { button, clear, h } from "../dom";
-import { Book, Column, Verse, alignColumns, neighbourChapters, verseParts } from "../helpers";
+import { Book, Column, Verse, alignColumns, highlightFor, neighbourChapters, selectionRuns, verseParts, verseRangeText } from "../helpers";
+import { addToList } from "../listpicker";
 import { notesPanel } from "../notes";
 import { lastRef, onPassage, setModules, setPassage, state } from "../state";
 import { bookPane } from "./book";
@@ -19,6 +20,7 @@ export function readerView() {
   const next = button("Next chapter ›", () => step("next"), { disabled: true, "aria-keyshortcuts": "Alt+ArrowRight" });
   const picker = h("div", { class: "module-picker", role: "group", "aria-label": "Bibles to show" });
   const text = h("article", { class: "bible-text", "aria-live": "polite", tabindex: "-1", "aria-label": "Bible text" });
+  const selbar = h("div", { class: "selbar", role: "toolbar", "aria-label": "Selected verses", hidden: true });
   const showNotes = h("input", { type: "checkbox", id: "show-notes", checked: true });
   const notes = notesPanel({
     heading: "Notes on this passage",
@@ -26,11 +28,16 @@ export function readerView() {
   });
   const study = studyPanel((ref) => go(ref), () => layout());
   const book = bookPane((open) => panes.classList.toggle("with-book", open));
-  const panes = h("div", { class: "panes" }, h("section", { class: "pane", "aria-label": "Text" }, text), book.el, h("aside", { class: "pane" }, study.el, notes.el));
+  const panes = h("div", { class: "panes" }, h("section", { class: "pane", "aria-label": "Text" }, selbar, text), book.el, h("aside", { class: "pane" }, study.el, notes.el));
   const words = { onWord: study.showWord, onRef: (osis: string) => go(osis) };
   let modules: Module[] = [];
   let books: Book[] = [];
   let neighbours: { prev: string | null; next: string | null } = { prev: null, next: null };
+  // Verses are selected and highlighted by their English-numbered ID (base_id), so a highlight shows
+  // in every Bible that has those verses, whatever its own numbering.
+  const selected = new Set<number>();
+  let shown: number[] = [];
+  let highlights: Highlight[] = [];
 
   const form = h("form", { class: "passage-bar", role: "search" },
     h("label", { for: "passage" }, "Passage"), input, h("button", { type: "submit", class: "primary" }, "Read"), parsed);
@@ -74,15 +81,19 @@ export function readerView() {
     prev.disabled = !neighbours.prev;
     next.disabled = !neighbours.next;
     const chosen = state.modules.filter((m) => modules.some((x) => x.id === m));
+    selected.clear();
+    updateSelbar();
     if (chosen.length === 0) {
+      shown = [];
       clear(text, h("p", { class: "empty" }, modules.length
         ? "Choose a Bible above to read this passage."
         : "No Bibles are installed yet. Install one in the Bibles section."));
       return;
     }
+    await loadHighlights();
     if (chosen.length === 1) {
-      const r = await msg.attempt(() => run<Column>("bible.read", { module: chosen[0], ref: p.osis, markup: true }));
-      if (r) renderSingle(r);
+      const r = await msg.attempt(() => run<{ ref: string; columns: Column[] }>("bible.parallel", { modules: chosen, ref: p.osis, markup: true }));
+      if (r) renderSingle(r.columns[0]);
     } else {
       const r = await msg.attempt(() => run<{ ref: string; columns: Column[] }>("bible.parallel", { modules: chosen, ref: p.osis, markup: true }));
       if (r) renderParallel(r.columns);
@@ -101,35 +112,140 @@ export function readerView() {
     return v.markup ? renderMarkup(v.markup, words) : v.text;
   }
 
+  function pick(base: number) {
+    if (selected.has(base)) selected.delete(base);
+    else selected.add(base);
+    paint();
+    updateSelbar();
+  }
+
   function verseEl(v: Verse) {
     const n = verseParts(v.id).verse;
     const end = v.end && v.end !== v.id ? `–${verseParts(v.end).verse}` : "";
-    return h("span", { class: "verse", id: `v${v.id}` }, h("sup", { class: "vnum", "aria-label": `verse ${n}${end}` }, `${n}${end}`), " ", content(v), " ");
+    const base = v.base_id || v.id;
+    const num = h("button", { type: "button", class: "vnum", "aria-label": `verse ${n}${end}`, "aria-pressed": "false",
+      title: "Select this verse to highlight it, note it or add it to a list" }, `${n}${end}`);
+    num.addEventListener("click", () => pick(base));
+    return h("span", { class: "verse", id: `v${v.id}`, "data-base": base }, num, " ", content(v), " ");
   }
 
   function renderSingle(c: Column) {
     const last = { chapter: -1 };
+    shown = c.verses.map((v) => v.base_id || v.id);
     const m = modules.find((x) => x.id === c.module);
     clear(text,
       h("header", {}, h("h2", { class: "module-name" }, m?.name || c.module)),
       c.verses.length === 0 ? h("p", { class: "empty" }, "This Bible has no text for this passage.") : null,
       c.verses.map((v) => [heading(v, last), verseEl(v)]),
       c.attribution ? h("footer", { class: "attribution" }, c.attribution) : null);
+    paint();
   }
 
   function renderParallel(columns: Column[]) {
     const rows = alignColumns(columns);
+    shown = rows.map((r) => r.base);
     const names = columns.map((c) => modules.find((x) => x.id === c.module)?.abbreviation || c.module);
     clear(text, h("table", { class: "parallel" },
       h("caption", { class: "sr-only" }, `Parallel reading of ${state.parsed?.display ?? ""}`),
       h("thead", {}, h("tr", {}, h("th", { scope: "col" }, h("span", { class: "sr-only" }, "Verse")), names.map((n) => h("th", { scope: "col" }, n)))),
       h("tbody", {}, rows.map((r) =>
-        h("tr", {},
-          h("th", { scope: "row", class: "vnum" }, `${verseParts(r.base).chapter}:${verseParts(r.base).verse}`),
+        h("tr", { "data-base": r.base },
+          h("th", { scope: "row" }, verseButton(r.base)),
           r.cells.map((v) => h("td", { lang: "" }, v ? content(v) : "")))))),
     columns.some((c) => c.attribution)
       ? h("footer", { class: "attribution" }, columns.filter((c) => c.attribution).map((c) => h("p", {}, `${c.module}: ${c.attribution}`)))
       : null);
+    paint();
+  }
+
+  function verseButton(base: number) {
+    const label = `${verseParts(base).chapter}:${verseParts(base).verse}`;
+    const b = h("button", { type: "button", class: "vnum", "aria-pressed": "false", "aria-label": `verse ${label}`,
+      title: "Select this verse to highlight it, note it or add it to a list" }, label);
+    b.addEventListener("click", () => pick(base));
+    return b;
+  }
+
+  // paint marks selected and highlighted verses; it runs after the text is drawn and on every change.
+  function paint() {
+    for (const e of text.querySelectorAll<HTMLElement>("[data-base]")) {
+      const base = Number(e.dataset.base);
+      e.className = e.className.replace(/hl(-w+)?|picked/g, "").trim();
+      const hl = highlightFor(highlights, base);
+      if (hl) e.classList.add("hl", `hl-${hl.style}`);
+      const on = selected.has(base);
+      if (on) e.classList.add("picked");
+      e.querySelector(".vnum")?.setAttribute("aria-pressed", String(on));
+    }
+  }
+
+  async function loadHighlights() {
+    const p = state.parsed;
+    highlights = p ? (await run<Highlight[]>("highlight.list", { ref: p.osis }).catch(() => [])) : [];
+    paint();
+  }
+
+  function runs() {
+    return selectionRuns(shown, selected);
+  }
+
+  async function colour(style: string) {
+    const rs = runs();
+    const ok = await msg.attempt(async () => {
+      for (const [a, b] of rs) {
+        // A highlight wholly inside the selection is replaced by the new colour.
+        for (const hl of highlights) {
+          if (hl.verse_start !== undefined && hl.verse_end !== undefined && hl.verse_start >= a && hl.verse_end <= b) {
+            await run("highlight.delete", { id: hl.id });
+          }
+        }
+        await run("highlight.create", { verse_start: a, verse_end: b, style });
+      }
+      return true;
+    });
+    if (ok) {
+      selected.clear();
+      await loadHighlights();
+      updateSelbar();
+    }
+  }
+
+  async function unhighlight() {
+    const ok = await msg.attempt(async () => {
+      for (const hl of highlights) {
+        if ([...selected].some((v) => hl.verse_start !== undefined && hl.verse_end !== undefined && hl.verse_start <= v && v <= hl.verse_end)) {
+          await run("highlight.delete", { id: hl.id });
+        }
+      }
+      return true;
+    });
+    if (ok) {
+      selected.clear();
+      await loadHighlights();
+      updateSelbar();
+    }
+  }
+
+  function updateSelbar() {
+    paint();
+    selbar.hidden = selected.size === 0;
+    if (selected.size === 0) return clear(selbar);
+    const rs = runs();
+    const label = rs.map(([a, b]) => verseRangeText(a, b, books)).join("; ");
+    const swatch = (style: string, name: string) =>
+      h("button", { type: "button", class: `swatch-btn hl-${style}`, title: `Highlight ${name}`, "aria-label": `Highlight ${name}`, onclick: () => colour(style) }, style === "underline" ? "U" : "");
+    clear(selbar,
+      h("span", { class: "sel-label" }, `Selected: ${label}`),
+      h("span", { class: "row", role: "group", "aria-label": "Highlight colour" },
+        swatch("yellow", "yellow"), swatch("green", "green"), swatch("blue", "blue"), swatch("pink", "pink"), swatch("purple", "purple"), swatch("underline", "with an underline")),
+      button("Remove highlight", () => unhighlight()),
+      button("Note", () => {
+        showNotes.checked = true;
+        layout();
+        notes.create(verseRangeText(rs[0][0], rs[0][1], books));
+      }),
+      button("Add to list", () => addToList("verses", "these verses", rs.map(([a, b]) => ({ verse_start: a, verse_end: b })))),
+      button("Clear selection", () => { selected.clear(); updateSelbar(); }));
   }
 
   function renderPicker() {

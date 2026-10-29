@@ -11,6 +11,7 @@ import {
 } from "../bookhelpers";
 import { button, clear, field, h, select } from "../dom";
 import { setPassage } from "../state";
+import { addToList } from "../listpicker";
 import type { PdfDoc, RenderedPage } from "../pdfview";
 
 // Locator is where a search hit starts (search.query's locator).
@@ -134,8 +135,9 @@ export function bookPane(onState: (open: boolean) => void) {
   const styleSel = select(STYLES, "yellow", { "aria-label": "Highlight colour" });
   const hlBtn = button("Highlight", () => addHighlight(), { disabled: true });
   const noteBtn = button("Note", () => addNote(), { disabled: true });
+  const listBtn = button("Add to list", () => addExcerpt(), { disabled: true, title: "Keep the selected text in a list of excerpts" });
   const actions = h("div", { class: "row wrap book-actions", role: "group", "aria-label": "Selected text" },
-    h("span", { class: "hint" }, "Selection:"), styleSel, hlBtn, noteBtn);
+    h("span", { class: "hint" }, "Selection:"), styleSel, hlBtn, noteBtn, listBtn);
   const editor = h("div", {});
   const marks = h("ul", { class: "book-marks" });
   const picker = h("div", { class: "card book-picker", hidden: true });
@@ -499,6 +501,7 @@ export function bookPane(onState: (open: boolean) => void) {
     const has = !!book && !!selection();
     hlBtn.disabled = !has;
     noteBtn.disabled = !has;
+    listBtn.disabled = !has;
   });
 
   function anchorOf(r: Range): Anchor | null {
@@ -531,26 +534,37 @@ export function bookPane(onState: (open: boolean) => void) {
     const a = r && anchorOf(r);
     if (!book || !a) return msg.info("Select some text in the book first.");
     const t = h("input", { type: "text" });
-    const b = h("textarea", { rows: 4 });
+    const b = h("div", { class: "editor-host" });
+    let ed: { getMarkdown(): string; destroy(): void } | null = null;
+    import("../editor").then(({ createEditor }) => { ed = createEditor(b, { placeholder: "Write your note…", label: "Text of the note" }); });
     const form = h("form", { class: "card", "aria-label": "New note on the selection" },
       h("p", { class: "hint" }, `On: “${(a.text ?? "").slice(0, 160)}”`),
-      field("Title", t), field("Text", b),
-      h("div", { class: "row" }, h("button", { type: "submit", class: "primary" }, "Create note"), button("Cancel", () => clear(editor))));
+      field("Title", t), h("div", { class: "field" }, h("label", {}, "Text"), b),
+      h("div", { class: "row" }, h("button", { type: "submit", class: "primary" }, "Create note"), button("Cancel", () => { ed?.destroy(); clear(editor); })));
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const ok = await msg.attempt(() => run<Note>("note.create", { title: t.value, body: b.value, item_id: book!.item_id, locator: a }));
+      const ok = await msg.attempt(() => run<Note>("note.create", { title: t.value, body: ed?.getMarkdown() ?? "", item_id: book!.item_id, locator: a }));
       if (ok) {
+        ed?.destroy();
         clear(editor);
         msg.ok("Note created.");
         loadMarks();
       }
     });
     form.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") clear(editor);
+      if (e.key === "Escape" && !(e.target as HTMLElement).closest(".rich-link")) { ed?.destroy(); clear(editor); }
       if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) form.requestSubmit();
     });
     clear(editor, form);
     t.focus();
+  }
+
+  // Selected text goes into a list of excerpts as a copy: the book's licence limits and credit apply.
+  function addExcerpt() {
+    const r = selection();
+    const a = r && anchorOf(r);
+    if (!book || !a) return msg.info("Select some text in the book first.");
+    addToList("excerpts", "this text", { item_id: book.item_id, file_id: book.file_id, locator: a, text: a.text ?? r!.toString() });
   }
 
   // Copying, links and keys -------------------------------------------------------------------------
