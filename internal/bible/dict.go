@@ -108,7 +108,7 @@ func (m *Module) Lookup(ctx context.Context, strong, word string, limit int) ([]
 	return m.lookup(ctx, strong, word, false, limit)
 }
 
-// LookupPrefix also finds headwords that begin with word ("GRACE OF GOD" for "grace"), shortest first.
+// LookupPrefix also finds headwords that begin with word: "grace" finds GRACE, then GRACE OF GOD, then GRACES.
 func (m *Module) LookupPrefix(ctx context.Context, word string, limit int) ([]Headword, error) {
 	return m.lookup(ctx, "", word, true, limit)
 }
@@ -126,7 +126,8 @@ func (m *Module) lookup(ctx context.Context, strong, word string, prefix bool, l
 			ORDER BY strong = ? DESC, rowid LIMIT ?`, strong, base, base+"A", base+"[", strong, limit)
 	} else if f := fold(word); prefix && f != "" {
 		rows, err = m.db.QueryContext(ctx, cols+` WHERE lemma_fold = ? OR (fold >= ? AND fold < ?)
-			ORDER BY fold != ?, length(fold), rowid LIMIT ?`, f, f, f+"\U0010FFFF", f, limit)
+			ORDER BY fold != ?, substr(fold, ?, 1) != ' ', length(fold), rowid LIMIT ?`,
+			f, f, f+"\U0010FFFF", f, len([]rune(f))+1, limit)
 	} else {
 		rows, err = m.db.QueryContext(ctx, cols+` WHERE lemma_fold = ? OR fold = ? ORDER BY rowid LIMIT ?`, f, f, limit)
 	}
