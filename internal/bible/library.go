@@ -153,6 +153,7 @@ type InstallOptions struct {
 	Version       string
 	Licence       licence.Licence
 	MappingFile   string // optional full versification table
+	Mappings      []Mapping // versification rows supplied by the importer, such as a SWORD numbering's
 	Replace       bool
 }
 
@@ -185,11 +186,13 @@ func (l *Library) finish(ctx context.Context, o InstallOptions, hints Doc, b *bu
 	if err != nil {
 		return Meta{}, d.Warnings, err
 	}
-	var maps []Mapping
+	maps := o.Mappings
 	if o.MappingFile != "" {
-		if maps, err = readMapping(o.MappingFile); err != nil {
+		more, err := readMapping(o.MappingFile)
+		if err != nil {
 			return Meta{}, d.Warnings, err
 		}
+		maps = append(maps, more...)
 	}
 	if err := l.place(ctx, m, d.Verses, maps, o.Replace); err != nil {
 		return Meta{}, d.Warnings, err

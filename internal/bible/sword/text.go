@@ -162,6 +162,14 @@ func (t *Text) entries(i int) (int, bool, error) {
 	if err != nil {
 		return 0, false, err
 	}
+	// Some modules carry an empty testament: a one-record index and no text. That testament is absent.
+	data := filepath.Join(t.dir, testaments[i])
+	if t.drv.compressed {
+		data += ".bzz"
+	}
+	if d, err := os.Stat(data); err == nil && d.Size() == 0 {
+		return 0, false, nil
+	}
 	rs := int64(t.drv.recordSize())
 	if info.Size()%rs != 0 {
 		return 0, false, fmt.Errorf("sword: %s is %d bytes, not a whole number of %d-byte entries",
@@ -203,7 +211,7 @@ func (t *Text) walkTestament(i int, emit func(verse.ID, bool, string) error) err
 			return fmt.Errorf("entry %d (%s): %w", n, s.id, err)
 		}
 		text := t.decode(raw)
-		if strings.TrimSpace(text) == "" {
+		if s.id == 0 || strings.TrimSpace(text) == "" {
 			continue
 		}
 		if err := emit(s.id, s.intro, text); err != nil {
@@ -354,3 +362,6 @@ func (s *zSource) load(b int) error {
 }
 
 func (s *zSource) close() { s.f.Close() }
+
+// Versification is the module's verse numbering.
+func (t *Text) Versification() *Versification { return t.v11n }

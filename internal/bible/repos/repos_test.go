@@ -128,7 +128,7 @@ func newFake(t *testing.T, tinyVersion string) *fake {
 		"mods.d/asv.conf":    string(readFixture(t, "../../sword/testdata/asv.conf")),
 		"mods.d/tiny.conf":   tiny,
 		"mods.d/locked.conf": swordtest.Conf("Locked", "zText", "CipherKey=\nDistributionLicense=Copyrighted; Permission to distribute granted to CrossWire\n"),
-		"mods.d/nrsv.conf":   strings.Replace(swordtest.Conf("Other", "zText", ""), "Versification=KJV", "Versification=NRSV", 1),
+		"mods.d/nrsv.conf":   strings.Replace(swordtest.Conf("Other", "zText", ""), "Versification=KJV", "Versification=LXX", 1),
 		"mods.d/unclear.conf": strings.Replace(swordtest.Conf("Unclear", "zText", ""),
 			"DistributionLicense=Public Domain", "DistributionLicense=See README file", 1),
 		"mods.d/dict.conf": swordtest.Conf("Dict", "zLD", ""),
@@ -260,8 +260,8 @@ func TestRefreshAndList(t *testing.T) {
 	if l := e.item("crosswire", "Locked"); !l.Locked || l.Supported {
 		t.Errorf("locked module: %+v", l)
 	}
-	if o := e.item("crosswire", "Other"); o.Supported || !strings.Contains(o.Reason, "NRSV") {
-		t.Errorf("NRSV module: %+v", o)
+	if o := e.item("crosswire", "Other"); o.Supported || !strings.Contains(o.Reason, "LXX") {
+		t.Errorf("LXX module: %+v", o)
 	}
 	if a := e.item("ebible", "aai"); a.Language != "aai" || a.LicenceClear || !strings.Contains(a.Rights, "Wyclyffe") {
 		t.Errorf("aai: %+v", a)

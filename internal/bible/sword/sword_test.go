@@ -76,7 +76,7 @@ func TestConfSyntax(t *testing.T) {
 func TestSupported(t *testing.T) {
 	for _, tc := range []struct{ extra, want string }{
 		{"", ""},
-		{"Versification=NRSV\n", "NRSV verse numbering"},
+		{"Versification=LXX\n", "LXX verse numbering"},
 		{"CompressType=LZSS\n", "LZSS compression"},
 		{"Encoding=SCSU\n", "encoding"},
 	} {

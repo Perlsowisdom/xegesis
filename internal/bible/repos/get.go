@@ -291,6 +291,7 @@ func (s *Service) installSWORD(ctx context.Context, key string, it Item, o bible
 	}
 	s.setProgress(key, func(p *Progress) { p.Phase = "converting" })
 	o.Versification = string(text.System())
+	o.Mappings = englishRows(text.Versification())
 	return s.lib.InstallEntries(ctx, o, bible.EntryMarkup(it.conf.Get("SourceType")), func(emit func(bible.Entry) error) error {
 		return text.Walk(func(id verse.ID, intro bool, markup string) error {
 			return emit(bible.Entry{ID: id, Intro: intro, Markup: markup})
@@ -331,4 +332,14 @@ func checkZip(path string) error {
 		}
 	}
 	return errors.New("the download holds no USFM files")
+}
+
+// englishRows turns a SWORD numbering's english table into module mapping rows.
+func englishRows(v *sword.Versification) []bible.Mapping {
+	pairs := v.EnglishMap()
+	out := make([]bible.Mapping, 0, len(pairs))
+	for _, p := range pairs {
+		out = append(out, bible.Mapping{System: verse.English, Module: p.Module, SystemID: p.English})
+	}
+	return out
 }
