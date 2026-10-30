@@ -28,7 +28,8 @@ function inline(spans: Span[]): Node[] {
     if (s.code) n = h("code", {}, n);
     if (s.italic) n = h("em", {}, n);
     if (s.bold) n = h("strong", {}, n);
-    if (s.link) n = h("span", { class: "md-link", title: s.link }, n);
+    // Links to app addresses (#passage/…, as saved reports have) can be followed; others only show.
+    if (s.link) n = s.link.startsWith("#") ? h("a", { class: "md-link", href: s.link }, n) : h("span", { class: "md-link", title: s.link }, n);
     return n;
   });
 }

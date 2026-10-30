@@ -6,6 +6,7 @@ import { Message, run } from "../api";
 import { button, clear, h } from "../dom";
 import { addToList } from "../listpicker";
 import { WordInfo, paragraphs } from "../markup";
+import { openReport } from "./report";
 
 interface Commentary { module: string; name: string; attribution?: string; entries: { ref: string; markup?: string; text: string }[] }
 interface CrossRef { from: number; from_ref: string; to: string; to_ref: string; sources: string[] }
@@ -87,9 +88,11 @@ export function studyPanel(go: (ref: string) => void, changed: () => void) {
         button("Close", () => closeWord(), { "aria-label": "Close the word panel" })),
       h("p", { class: "word-facts" },
         [head?.transliteration, w.gloss || head?.gloss, number, w.morph].filter(Boolean).join(" · ")),
-      button("Add to a word list", () => addToList("words", `“${head?.lemma || w.text}”`, {
-        word: w.text, strong: number, lemma: head?.lemma ?? "", language: number.startsWith("H") ? "hbo" : "grc" }),
-        { title: "Keep this word, with its Strong's number, in a list" }),
+      h("div", { class: "row wrap" },
+        button("Word report", () => openReport("word", number), { title: "Everything your library holds about this word, in one place" }),
+        button("Add to a word list", () => addToList("words", `“${head?.lemma || w.text}”`, {
+          word: w.text, strong: number, lemma: head?.lemma ?? "", language: number.startsWith("H") ? "hbo" : "grc" }),
+          { title: "Keep this word, with its Strong's number, in a list" })),
       others.length ? h("p", { class: "hint" }, "Also tagged: ",
         others.map((n, i) => [i ? ", " : "", button(n, () => showWord(w, n), { class: "link" })])) : null,
       entries.length === 0 ? h("p", { class: "hint" }, "No lexicon installed has this word. Lexicons are in Bibles → Get Bibles, under Dictionaries and lexicons.") :
