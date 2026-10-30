@@ -114,7 +114,8 @@ export function sourceText(sources: ReportSource[]): string {
 export function countText(s: ReportSection): string {
   const n = Math.max(s.total, s.entries.length);
   if (n <= 1) return "";
-  return s.more ? `${s.entries.length} of ${n}+` : String(n);
+  if (!s.more) return String(n);
+  return s.total > s.entries.length ? `${s.entries.length} of ${s.total}` : `${s.entries.length}+`;
 }
 
 // barWidths scales a chart's bars to the longest, as percentages of at least 2 so a bar of one shows.

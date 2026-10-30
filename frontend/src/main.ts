@@ -91,7 +91,7 @@ function boot(tries = 10) {
       links.set(s.id, a);
       return h("li", {}, a);
     })),
-    h("p", { class: "hint shortcuts" }, `Alt+1–${Math.min(sections.length, 9)}${sections.length > 9 ? ", 0" : ""} sections · Ctrl+L passage · Alt+N new note`));
+    h("p", { class: "hint shortcuts" }, `Alt+1–${sections.length > 9 ? 0 : sections.length} sections · Ctrl+L passage · Alt+N new note`));
   app.replaceChildren(h("div", { class: "shell" }, nav, main));
   setNavigator((id) => show(id));
 

@@ -260,6 +260,7 @@ func TestScale(t *testing.T) {
 		}
 	}
 	runSearches("")
+	timeReports(t, l, root, add)
 
 	var items library.ItemsResult
 	l.must("library.items", map[string]any{"text": strings.TrimSuffix(filepath.Base(gen.LargestBook), ".epub")[6:]}, &items)
@@ -351,6 +352,50 @@ func TestScale(t *testing.T) {
 		if err := os.WriteFile(out, b, 0o644); err != nil {
 			t.Error(err)
 		}
+	}
+}
+
+// usfmTagged is Romans 8:28 (World English Bible, public domain) with a Strong's number,
+// so that word reports have occurrences to count.
+const usfmTagged = `\id ROM Tagged test
+\c 8
+\p
+\v 28 We know that all things work together for good for those who \w love|strong="G25"\w* God.
+`
+
+// timeReports measures each report with a Bible installed, the median of five, and checks that the
+// library sections are there.
+func timeReports(t *testing.T, l *lib, root string, add func(string, time.Duration, string)) {
+	path := filepath.Join(root, "ROM-tagged.usfm")
+	if err := os.WriteFile(path, []byte(usfmTagged), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	l.must("bible.install", map[string]any{"path": path, "id": "tagged", "name": "Tagged test", "licence_type": "public_domain"}, nil)
+	type section struct {
+		ID      string            `json:"id"`
+		Entries []json.RawMessage `json:"entries"`
+	}
+	for _, c := range []struct{ name, cmd, key, value, want string }{
+		{"passage report, Rom 8:28", "report.passage", "ref", "Rom 8:28", "citing"},
+		{"word report, G25", "report.word", "word", "G25", "occurrences"},
+		{"topic report, grace", "report.topic", "topic", "grace", "books"},
+	} {
+		var ds []time.Duration
+		var rep struct{ Sections []section `json:"sections"` }
+		for range 5 {
+			ds = append(ds, l.timed(c.cmd, map[string]any{c.key: c.value}, &rep))
+		}
+		med, worst := median(ds)
+		ids := []string{}
+		found := false
+		for _, s := range rep.Sections {
+			ids = append(ids, fmt.Sprintf("%s:%d", s.ID, len(s.Entries)))
+			found = found || s.ID == c.want && len(s.Entries) > 0
+		}
+		if !found {
+			t.Errorf("%s: no %s section in %v", c.name, c.want, ids)
+		}
+		add(c.name, med, fmt.Sprintf("worst %.3fs; %s", worst.Seconds(), strings.Join(ids, " ")))
 	}
 }
 

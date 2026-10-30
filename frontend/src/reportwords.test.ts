@@ -35,7 +35,8 @@ describe("sections", () => {
   it("counts entries", () => {
     expect(countText(sec("x", { total: 1, entries: [{}] }))).toBe("");
     expect(countText(sec("x", { total: 12, entries: Array(12).fill({}) }))).toBe("12");
-    expect(countText(sec("x", { total: 20, entries: Array(20).fill({}), more: "x@20" }))).toBe("20 of 20+");
+    expect(countText(sec("x", { total: 20, entries: Array(20).fill({}), more: "x@20" }))).toBe("20+");
+    expect(countText(sec("x", { total: 110, entries: Array(20).fill({}), more: "x@20" }))).toBe("20 of 110");
   });
   it("scales bars", () => {
     expect(barWidths([{ label: "John", book: "John", count: 27 }, { label: "Jude", book: "Jude", count: 1 }, { label: "Rom", book: "Rom", count: 0 }])).toEqual([100, 4, 2]);

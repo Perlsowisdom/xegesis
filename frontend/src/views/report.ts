@@ -115,6 +115,7 @@ export function reportView() {
     if (mine !== seq) return;
     if (!rep) return void clear(head);
     current = rep;
+    if (rep.kind === "passage") input.value = rep.subject;
     render(rep);
   }
 
@@ -158,7 +159,7 @@ export function reportView() {
   }
 
   function credit(s: ReportSection) {
-    const text = sourceText(s.sources);
+    const text = sourceText(s.sources.filter((x) => x.licence !== "own_work"));
     return text ? h("p", { class: "attribution" }, text) : null;
   }
 
