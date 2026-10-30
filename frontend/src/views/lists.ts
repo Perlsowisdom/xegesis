@@ -1,10 +1,11 @@
 // The Lists section: saved lists of verses, words and book excerpts. A list opens, can be renamed,
 // reordered and emptied, and its verses and excerpts open where they came from.
 
+import { printExportButton } from "../printexport";
 import { ListEntry, Message, Ref, SavedList, run } from "../api";
 import { button, clear, field, h, select } from "../dom";
 import { Locator, openBook } from "./book";
-import { setPassage } from "../state";
+import { setPassage, state } from "../state";
 import { navigate } from "../state";
 import { flash } from "../listpicker";
 
@@ -89,7 +90,8 @@ export function listsView() {
     }
 
     clear(detail,
-      (clear(titleRow, h("h2", {}, list.name), h("div", { class: "row" }, rename, del)), titleRow),
+      (clear(titleRow, h("h2", {}, list.name), h("div", { class: "row" }, printExportButton(() => ({ title: list.name,
+        sources: [{ kind: "list", id: list.id, ...(list.kind === "verses" && state.modules[0] ? { module: state.modules[0] } : {}) }] })), rename, del)), titleRow),
       h("p", { class: "hint" }, `${KIND_NAME[list.kind]} · ${entries.length} ${entries.length === 1 ? "entry" : "entries"}`),
       entries.length === 0 ? h("p", { class: "empty" }, emptyHint(list.kind)) :
         h("ol", { class: "entries" }, entries.map((e, i) => h("li", { class: "entry-row" },

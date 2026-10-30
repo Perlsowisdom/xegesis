@@ -18,6 +18,7 @@ interface Bound {
   PickFile?(title: string): Promise<string>;
   PickFiles?(title: string): Promise<string[] | null>;
   PickFolder?(title: string): Promise<string>;
+  SaveFile?(title: string, name: string, format: string): Promise<string>;
 }
 
 export function bound(): Bound | null {
@@ -373,4 +374,11 @@ export interface CollectionNode {
 export interface RulePreview {
   count: number;
   examples: { id: string; title: string; authors: string[]; year?: number }[];
+}
+
+// saveFile opens the native save dialog for an export; it returns "" when cancelled.
+export async function saveFile(title: string, name: string, format: string): Promise<string> {
+  const app = bound();
+  if (!app?.SaveFile) throw new RunError({ code: "unavailable", message: "file dialogs need the desktop app" });
+  return (await app.SaveFile(title, name, format)) ?? "";
 }

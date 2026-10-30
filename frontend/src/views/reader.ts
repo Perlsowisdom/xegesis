@@ -1,6 +1,7 @@
 // Reader: a passage box, the Bible text (one Bible or parallel columns), an optional library book
 // (views/book.ts) and the notes on that passage side by side.
 
+import { printExportButton } from "../printexport";
 import { Highlight, Message, Module, Ref, run } from "../api";
 import { button, clear, h } from "../dom";
 import { Book, Column, Verse, alignColumns, highlightFor, neighbourChapters, selectionRuns, verseParts, verseRangeText } from "../helpers";
@@ -59,6 +60,14 @@ export function readerView() {
     form,
     h("div", { class: "row wrap" }, picker, h("span", { class: "spacer" }),
       h("label", { class: "check" }, showNotes, " Notes beside the text"),
+      printExportButton(() => {
+        const chosen = state.modules.filter((m) => modules.some((x) => x.id === m));
+        if (!state.parsed || chosen.length === 0) {
+          msg.info("Choose a passage and at least one Bible to print.");
+          return null;
+        }
+        return { title: state.parsed.display, sources: [{ kind: "passage", ref: state.parsed.osis, modules: chosen }] };
+      }),
       button("Open a book", () => book.choose(), { title: "Read a library book beside the Bible" }), prev, next),
     today.el, msg.el, panes);
 

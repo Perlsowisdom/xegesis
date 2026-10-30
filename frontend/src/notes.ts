@@ -2,6 +2,7 @@
 // (views/notes.ts): the note form with its formatted-text editor and tags, a note's card, and the
 // history drawer that restores earlier versions.
 
+import { printExportButton } from "./printexport";
 import { Change, Message, Note, TagCount, run } from "./api";
 import { button, clear, field, h } from "./dom";
 import { renderMarkdown } from "./editor/render";
@@ -171,6 +172,7 @@ export function noteCard(n: Note, a: CardActions): HTMLElement {
       h("span", { class: "hint" }, `Changed ${formatTime(n.updated_at)}`),
       button("Edit", () => a.edit(n), { "aria-label": `Edit ${noteName(n)}` }),
       button("History", () => a.history(n), { "aria-label": `History of ${noteName(n)}` }),
+      printExportButton(() => ({ title: noteName(n), sources: [{ kind: "note", id: n.id }] }), "Print or save…"),
       button("Delete", () => a.remove(n), { class: "danger", "aria-label": `Delete ${noteName(n)}` })));
 }
 
