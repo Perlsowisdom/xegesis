@@ -28,6 +28,7 @@ func register(r *command.Registry, s *service) {
 		command.Define("book.locate", "Turn a search locator from search.query or search.refs into a section and paragraph to open at.", false, s.locateCmd),
 		command.Define("book.set_position", "Remember where the user is reading in a book.", true, s.setPositionCmd),
 		command.Define("book.copy", "Copy text from a book within its licence: the per-copy and per-day export limit applies and the attribution line is added.", true, s.copyCmd),
+		command.Define("book.excerpt", "Read part of a book for printing or exporting: a selection or whole sections, with its licence and length.", false, s.excerptCmd),
 		command.Define("book.refs", "Find Bible references in pieces of text, such as the lines of a PDF page, so they can become links.", false, s.refsCmd),
 		command.Define("highlight.create", "Highlight a passage in a book or Bible verses.", true, s.highlightCreate),
 		command.Define("highlight.list", "List highlights in a book or on Bible verses.", false, s.highlightList),

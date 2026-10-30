@@ -4,6 +4,7 @@
 // markers in the HTML (or rectangles on a PDF page), copying goes through book.copy so the licence
 // applies, and Bible references in the text open in the Bible pane.
 
+import { printExportButton } from "../printexport";
 import { ItemSummary, Message, Note, Ref, run } from "../api";
 import {
   CopyResult, DEFAULT_PREFS, ReadingPrefs, TOCEntry, base64ToBytes, concatBytes, copyMessage, currentEntry,
@@ -141,13 +142,22 @@ export function bookPane(onState: (open: boolean) => void) {
   const editor = h("div", {});
   const marks = h("ul", { class: "book-marks" });
   const picker = h("div", { class: "card book-picker", hidden: true });
+  const printBtn = printExportButton(() => {
+    if (!book) return null;
+    const r = selection();
+    const where = book.reflowable ? `section ${section}` : `page ${section}`;
+    return r
+      ? { title: book.title, sources: [{ kind: "book", item_id: book.item_id, file_id: book.file_id, text: r.toString() }] }
+      : { title: `${book.title}, ${where}`, sources: [{ kind: "book", item_id: book.item_id, file_id: book.file_id, from: section, to: section }] };
+  });
+  printBtn.title = "Print or save the selected text, or else this section";
 
   const settings = textSettings();
   const el = h("section", { class: "pane book-pane", "aria-label": "Book", hidden: true },
     h("div", { class: "row between" }, title, button("Close", close, { "aria-label": "Close the book" })),
     byline,
     picker,
-    h("div", { class: "row wrap book-nav" }, contents, prev, where, next, backBtn),
+    h("div", { class: "row wrap book-nav" }, contents, prev, where, next, backBtn, printBtn),
     settings.el,
     msg.el,
     actions, editor, copyMsg.el,

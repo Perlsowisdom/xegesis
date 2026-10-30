@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Perlsowisdom/xegesis/internal/licence"
@@ -200,6 +201,10 @@ type Module struct {
 	Meta
 	db      *sql.DB
 	systems map[verse.System]bool // systems with rows in versification_map
+
+	charsOnce sync.Once
+	chars     int
+	charsErr  error
 }
 
 func openModule(path string) (*Module, error) {
@@ -373,3 +378,12 @@ func refString(id, end verse.ID) string {
 }
 
 func now() int64 { return time.Now().UnixMilli() }
+
+// TextChars is the length of the module's text in characters, for licence limits measured against
+// the whole work. It is counted once per open module.
+func (m *Module) TextChars(ctx context.Context) (int, error) {
+	m.charsOnce.Do(func() {
+		m.charsErr = m.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(length(text)), 0) FROM verses`).Scan(&m.chars)
+	})
+	return m.chars, m.charsErr
+}

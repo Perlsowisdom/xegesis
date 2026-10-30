@@ -1,6 +1,7 @@
 // Plans: the reading plans you follow (today's reading, catching up, progress), and a short form to
 // start a new one. Everything beyond the plan and the start date is under More options.
 
+import { printExportButton } from "../printexport";
 import { ItemSummary, Message, run } from "../api";
 import { button, clear, field, h, select } from "../dom";
 import { todayBlock, openReading } from "../plancard";
@@ -61,6 +62,7 @@ export function plansView() {
       h("div", { class: "row wrap" },
         button(open === p.id ? "Hide days" : "Show all days", () => toggleDays(p), { "aria-expanded": String(open === p.id) }),
         p.behind === 0 && !p.finished ? button("Reschedule from today", () => reschedule(p), { title: "Spread the days not yet read over the coming days, starting today" }) : null,
+        printExportButton(() => ({ title: p.name, sources: [{ kind: "plan", id: p.id }] })),
         h("span", { class: "spacer" }),
         button("Delete", () => remove(p), { class: "danger", "aria-label": `Delete ${p.name}` })),
       days);

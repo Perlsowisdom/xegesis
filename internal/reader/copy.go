@@ -98,7 +98,7 @@ func pages(n int) int { return (n + charsPerPage - 1) / charsPerPage }
 
 func copiedOn(ctx context.Context, st *store.Store, itemID, day string) (int, error) {
 	var n int
-	err := st.QueryRow(ctx, `SELECT COALESCE(SUM(chars), 0) FROM copy_log WHERE item_id = ? AND day = ?`, itemID, day).Scan(&n)
+	err := st.QueryRow(ctx, `SELECT COALESCE(SUM(chars), 0) FROM copy_log WHERE item_id = ? AND day = ? AND action = 'export'`, itemID, day).Scan(&n)
 	return n, err
 }
 
