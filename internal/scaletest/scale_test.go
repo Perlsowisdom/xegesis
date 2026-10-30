@@ -381,7 +381,9 @@ func timeReports(t *testing.T, l *lib, root string, add func(string, time.Durati
 		{"topic report, grace", "report.topic", "topic", "grace", "books"},
 	} {
 		var ds []time.Duration
-		var rep struct{ Sections []section `json:"sections"` }
+		var rep struct {
+			Sections []section `json:"sections"`
+		}
 		for range 5 {
 			ds = append(ds, l.timed(c.cmd, map[string]any{c.key: c.value}, &rep))
 		}
