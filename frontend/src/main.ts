@@ -11,6 +11,7 @@ import { listsView } from "./views/lists";
 import { notesSectionView } from "./views/notes";
 import { plansView } from "./views/plans";
 import { readerView } from "./views/reader";
+import { follow, reportView } from "./views/report";
 import { searchView } from "./views/search";
 import { settingsView } from "./views/settings";
 
@@ -29,6 +30,7 @@ const sections: { id: string; label: string; make: () => View }[] = [
   { id: "notes", label: "Notes", make: notesSectionView },
   { id: "lists", label: "Lists", make: listsView },
   { id: "plans", label: "Plans", make: plansView },
+  { id: "reports", label: "Reports", make: reportView },
   { id: "search", label: "Search", make: searchView },
   { id: "commands", label: "Commands", make: commandsView },
   { id: "settings", label: "Settings", make: settingsView },
@@ -80,7 +82,8 @@ function boot(tries = 10) {
   const nav = h("nav", { class: "sidebar", "aria-label": "Sections" },
     h("div", { class: "brand" }, "Xegesis"),
     h("ul", {}, sections.map((s, i) => {
-      const a = h("a", { href: `#${s.id}`, "aria-keyshortcuts": `Alt+${i + 1}`, title: `${s.label} (Alt+${i + 1})` }, s.label);
+      const k = i === 9 ? 0 : i + 1;
+      const a = h("a", { href: `#${s.id}`, "aria-keyshortcuts": i < 10 ? `Alt+${k}` : undefined, title: i < 10 ? `${s.label} (Alt+${k})` : s.label }, s.label);
       a.addEventListener("click", (e) => {
         e.preventDefault();
         show(s.id, true);
@@ -88,13 +91,13 @@ function boot(tries = 10) {
       links.set(s.id, a);
       return h("li", {}, a);
     })),
-    h("p", { class: "hint shortcuts" }, `Alt+1–${sections.length} sections · Ctrl+L passage · Alt+N new note`));
+    h("p", { class: "hint shortcuts" }, `Alt+1–${sections.length > 9 ? 0 : sections.length} sections · Ctrl+L passage · Alt+N new note`));
   app.replaceChildren(h("div", { class: "shell" }, nav, main));
   setNavigator((id) => show(id));
 
   document.addEventListener("keydown", (e) => {
-    if (e.altKey && !e.ctrlKey && /^[1-9]$/.test(e.key)) {
-      const s = sections[Number(e.key) - 1];
+    if (e.altKey && !e.ctrlKey && /^[0-9]$/.test(e.key)) {
+      const s = sections[e.key === "0" ? 9 : Number(e.key) - 1];
       if (s) {
         e.preventDefault();
         show(s.id, true);
@@ -105,7 +108,10 @@ function boot(tries = 10) {
       show("reader", true);
     }
   });
-  window.addEventListener("hashchange", () => show(location.hash.slice(1)));
+  // Links in reports and saved notes are app addresses such as #passage/Rom.8.28 (views/report.ts).
+  window.addEventListener("hashchange", () => {
+    if (!follow(location.hash)) show(location.hash.slice(1));
+  });
   // Files and folders dropped on the window are added to the library.
   onEvent("files:dropped", (paths) => {
     if (!Array.isArray(paths) || paths.length === 0) return;
@@ -113,7 +119,7 @@ function boot(tries = 10) {
     view("library").drop?.(paths as string[]);
   });
   onEvent("library:changed", () => views.get("library")?.changed?.());
-  show(location.hash.slice(1) || "reader");
+  if (!follow(location.hash)) show(location.hash.slice(1) || "reader");
 }
 
 window.addEventListener("load", () => boot());

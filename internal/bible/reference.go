@@ -204,10 +204,12 @@ type LookupParams struct {
 	Word    string   `json:"word,omitempty" desc:"An original-language word or a headword; accents and vowel points are ignored"`
 	Modules []string `json:"modules,omitempty" desc:"Lexicons and dictionaries to use; all installed ones when omitted"`
 	Limit   int      `json:"limit,omitempty" desc:"Most entries per module (default 20)"`
+	Prefix  bool     `json:"prefix,omitempty" desc:"With word, also find headwords that begin with it, e.g. GRACE OF GOD for grace"`
 }
 
 type LookupEntry struct {
 	Module      string `json:"module"`
+	Kind        string `json:"kind" desc:"lexicon or dictionary"`
 	Name        string `json:"name"`
 	Attribution string `json:"attribution,omitempty"`
 	Headword
@@ -235,12 +237,17 @@ func (c cmds) lookup(ctx context.Context, _ *command.Env, p LookupParams) ([]Loo
 		if strong != "" && m.Kind != KindLexicon {
 			continue
 		}
-		hs, err := m.Lookup(ctx, strong, p.Word, p.Limit)
+		var hs []Headword
+		if p.Prefix && strong == "" {
+			hs, err = m.LookupPrefix(ctx, p.Word, p.Limit)
+		} else {
+			hs, err = m.Lookup(ctx, strong, p.Word, p.Limit)
+		}
 		if err != nil {
 			return nil, command.Errorf("failed", "%s: %v", m.ID, err)
 		}
 		for _, h := range hs {
-			out = append(out, LookupEntry{Module: m.ID, Name: m.Name, Attribution: m.Licence.AttributionLine(), Headword: h})
+			out = append(out, LookupEntry{Module: m.ID, Kind: m.Kind, Name: m.Name, Attribution: m.Licence.AttributionLine(), Headword: h})
 		}
 	}
 	for i := range out {
@@ -267,7 +274,7 @@ func (c cmds) followLink(ctx context.Context, mods []*Module, e *LookupEntry) er
 		}
 		if len(hs) == 1 && !strings.HasPrefix(strings.TrimSpace(hs[0].Text), "@LINK") {
 			strong := e.Strong
-			*e = LookupEntry{Module: m.ID, Name: m.Name, Attribution: m.Licence.AttributionLine(), Headword: hs[0]}
+			*e = LookupEntry{Module: m.ID, Kind: m.Kind, Name: m.Name, Attribution: m.Licence.AttributionLine(), Headword: hs[0]}
 			e.Strong = strong
 			return nil
 		}

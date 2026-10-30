@@ -9,6 +9,7 @@ import { notesPanel } from "../notes";
 import { todayCard } from "../plancard";
 import { lastRef, onPassage, setModules, setPassage, state } from "../state";
 import { bookPane } from "./book";
+import { openReport } from "./report";
 import { studyPanel } from "./study";
 import { renderMarkup } from "../markup";
 
@@ -42,7 +43,9 @@ export function readerView() {
   let highlights: Highlight[] = [];
 
   const form = h("form", { class: "passage-bar", role: "search" },
-    h("label", { for: "passage" }, "Passage"), input, h("button", { type: "submit", class: "primary" }, "Read"), parsed);
+    h("label", { for: "passage" }, "Passage"), input, h("button", { type: "submit", class: "primary" }, "Read"),
+    button("Passage report", () => state.parsed && openReport("passage", state.parsed.osis),
+      { title: "Everything your library holds about this passage, in one place" }), parsed);
   form.addEventListener("submit", (e) => {
     e.preventDefault();
     go(input.value);
