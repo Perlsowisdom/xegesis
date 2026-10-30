@@ -204,7 +204,7 @@ func docxBody(d Doc, links *relList) string {
 		b.WriteString(para("Title", isRTL(d.Title), run(d.Title, runStyle{})))
 	}
 	for _, p := range d.Pieces {
-		if p.Title != "" && (p.Title != d.Title || len(d.Pieces) > 1) {
+		if d.showTitle(p) {
 			b.WriteString(para("Heading1", isRTL(p.Title), run(p.Title, runStyle{})))
 		}
 		if p.Subtitle != "" {

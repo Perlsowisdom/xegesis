@@ -58,7 +58,7 @@ export function fileName(title: string, format: string): string {
 
 // summary says in one line what the result holds.
 export function summary(p: ExportPreview): string {
-  const pages = p.pieces.reduce((n, x) => n + x.pages, 0);
+  const pages = p.pieces.reduce((n, x) => n + (x.cut ? x.cut.kept_pages : x.pages), 0);
   const parts = p.pieces.length === 1 ? "1 item" : `${p.pieces.length} items`;
   const size = pages < 0.1 ? "" : `, about ${pages < 1 ? "1 page" : `${Math.round(pages)} page${Math.round(pages) === 1 ? "" : "s"}`} of text`;
   const cut = p.cuts.length ? ` · ${p.cuts.length === 1 ? "1 item shortened" : `${p.cuts.length} items shortened`} by its licence` : "";

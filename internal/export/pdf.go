@@ -440,7 +440,7 @@ func (l *layout) document() {
 		l.para(l.text(d.Title, true, false, 1.6, 0), 0, l.base*0.6, nil)
 	}
 	for _, p := range d.Pieces {
-		if p.Title != "" && (p.Title != d.Title || len(d.Pieces) > 1) {
+		if d.showTitle(p) {
 			l.heading(l.text(p.Title, true, false, 1.3, 0), l.base*0.9)
 		}
 		if p.Subtitle != "" {

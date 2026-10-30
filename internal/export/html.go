@@ -19,7 +19,7 @@ func Body(d Doc) string {
 	}
 	for _, p := range d.Pieces {
 		b.WriteString(`<section class="xd-piece">`)
-		if p.Title != "" && p.Title != d.Title || len(d.Pieces) > 1 {
+		if d.showTitle(p) {
 			fmt.Fprintf(&b, `<h2 dir="auto">%s</h2>`, esc(p.Title))
 		}
 		if p.Subtitle != "" {

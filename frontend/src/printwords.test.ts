@@ -13,7 +13,7 @@ describe("print words", () => {
     expect(summary({ ...base, pieces: [{ title: "a", licence: "Public domain", pages: 0.3 }] })).toBe("1 item, about 1 page of text");
     const cut = { reason: "Personal copy", kept_pages: 3, total_pages: 12, rest: { kind: "book" as const, item_id: "x", skip: 6 } };
     const p = { ...base, pieces: [{ title: "a", licence: "Personal copy", pages: 12, cut }, { title: "b", licence: "Public domain", pages: 2 }], cuts: ["a: Personal copy"] };
-    expect(summary(p)).toBe("2 items, about 14 pages of text · 1 item shortened by its licence");
+    expect(summary(p)).toBe("2 items, about 5 pages of text · 1 item shortened by its licence");
     expect(rests(p)).toEqual([{ title: "a", source: cut.rest }]);
   });
 

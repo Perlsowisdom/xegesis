@@ -98,3 +98,9 @@ func (d Doc) credits() []string {
 
 // creditsAtEnd reports whether credits go in one section at the end rather than under each piece.
 func (d Doc) creditsAtEnd() bool { return d.Opt.Credits == "end" }
+
+// showTitle reports whether a piece's title is shown: always when there are several pieces, and
+// otherwise only when the document's title does not already say it.
+func (d Doc) showTitle(p Piece) bool {
+	return p.Title != "" && (len(d.Pieces) > 1 || !strings.HasPrefix(d.Title, p.Title))
+}

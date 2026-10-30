@@ -217,7 +217,7 @@ func Markdown(d Doc) []byte {
 		blocks = append(blocks, "# "+oneLine(d.Title))
 	}
 	for _, p := range d.Pieces {
-		if p.Title != "" && (p.Title != d.Title || len(d.Pieces) > 1) {
+		if d.showTitle(p) {
 			blocks = append(blocks, "## "+oneLine(p.Title))
 		}
 		if p.Subtitle != "" {
