@@ -31,3 +31,22 @@ Small issues to fold into the next task that touches each area, or a tidy-up pas
 - Narrow panes (under 440px) are meant to wrap their tabs; this hasn't been confirmed on screen.
 - Next stages: T34c (Library and My work: Filter popover, folders holding notes and sermons,
   collapsible sections, bin) and T36 (the AI assistant).
+
+## User testing of T34a/T34b (3 November 2026): fix first
+
+1. **The study grid doesn't fill the window.** Three panes are squeezed into about 300px on the left,
+   with the header controls wrapping, text one word per line, and horizontal scrollbars in each pane.
+   The grid container (or its columns) isn't growing to the main area's width and height.
+2. **Installed Bibles don't open in the Reader or Study panes.** Panes say "No Bibles are installed
+   yet. Get one in Library → Get Bibles", but the installed Bible does show in the sidebar's Compare
+   tool. The pane Bible list must use the same source Compare uses.
+3. **Controls look unfinished.** The user wants the toggles, switches, segmented controls and chips
+   from the approved mock-up instead of plain checkboxes. Their words: it makes the app "feel like a
+   linux opensource weekend project". Apply them across Settings, Rail settings, the sidebar tool
+   list and the filters.
+4. **Light mode.** Only the dark theme shows. Add Light and Dark plus "Match the system" in Settings →
+   Appearance, using the colour tokens.
+5. The pane header is too tall in narrow panes: the tabs, place box, Bibles picker, link and ⋯ are
+   stacked on four rows. Keep it to one row, with overflow in ⋯.
+
+The user liked the Library ("looks good so far").
