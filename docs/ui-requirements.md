@@ -52,6 +52,33 @@ copied.
 - **Avoid:** the screenshot puts two rows of toolbar in every pane. That is the clutter the user
   objected to. Xegesis puts one slim row per pane and moves the rest into a ⋯ menu.
 
+### Round 3 feedback (3 November 2026)
+
+- **Drag tabs** between panes. Dropping on a pane's edge splits it, and the grid changes to fit.
+  Keep the preset grids as well.
+- **Drop the Open… button.** Each pane gets its own + for a new tab.
+- **Everything except Read mode can sit in the grid:** passages, books, notes, sermons, lists, and
+  the library itself. For example, a note beside a sermon beside a commentary.
+- **Settings at the bottom of the rail.**
+- **Library and My work need real sample content** to judge.
+
+### What the Any app does (looked at 3 November 2026)
+
+- **Rail:** auto-hide slides the rail over the content when you reach the left edge, so the layout
+  doesn't jump.
+- **Bottom of the rail:** three small icons, for Settings, Sidebar settings and Help.
+  - The sidebar settings popover holds a Compact or Regular switch, an eye toggle to show or hide
+    each rail section, and an Auto-hide switch.
+- **Settings:** opens in the left panel as a grouped list (Personal, then Agent), with a back
+  arrow. The page is in the middle, and the AI panel stays open on the right.
+- **AI model settings:**
+  - a Provider row with Change;
+  - online providers as chips (Claude, OpenAI, Gemini, OpenRouter), using your key, kept under
+    Credentials;
+  - "On this computer" chips (Claude Code, Codex) with a Ready status;
+  - the model chosen as chips.
+- **Right panel:** an "Agent" chat panel, opened from an icon at the top right and collapsible.
+
 ## Library and My work (from the earlier round)
 
 - **Library filters:** one Filter button that opens all the facets, with several choices allowed
