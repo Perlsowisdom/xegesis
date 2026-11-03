@@ -88,8 +88,8 @@ dl.keys { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; 
 dl.keys dd { margin: 0; }
 kbd { font-family: inherit; font-size: .8rem; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; background: var(--panel); }
 .menu-list { display: flex; flex-direction: column; padding: 6px; }
-.menu-list button { text-align: left; border: 0; background: none; padding: 6px 10px; }
-.menu-list button:hover, .menu-list button:focus-visible { background: var(--panel); }
+.menu-list button:not(.swatch-btn) { text-align: left; border: 0; background: none; padding: 6px 10px; }
+.menu-list button:not(.swatch-btn):hover, .menu-list button:not(.swatch-btn):focus-visible { background: var(--panel); }
 .find-results { max-width: 380px; }
 .find-results .results { padding-left: 18px; }
 
@@ -278,7 +278,7 @@ td.actions button { margin: 0 2px 2px 0; }
 .reader[data-font="sans"] .bible-text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
 .reader[data-width="wide"] .bible-text { max-width: none; }
 .module-picker { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.bible-text { font-family: var(--reading); font-size: calc(1.12rem * var(--text-size, 1)); line-height: 1.75; max-width: 46rem; }
+.bible-text { font-family: var(--reading); font-size: calc(1.12rem * var(--text-size, 1)); line-height: var(--line-height, 1.75); max-width: 46rem; }
 .bible-text:focus { outline: none; }
 .bible-text .module-name { font-family: system-ui, sans-serif; font-size: .9rem; color: var(--muted); margin: 4px 0; }
 .bible-text .chapter { font-size: 1.25rem; margin: 18px 0 6px; }
@@ -345,13 +345,23 @@ dl.info dd { margin: 0; }
 .book-body { --book-bg: var(--bg); --book-fg: var(--fg); --book-link: var(--accent);
   background: var(--book-bg); color: var(--book-fg); border: 1px solid var(--line); border-radius: 8px;
   max-height: calc(100vh - 260px); min-height: 240px; overflow: auto; padding: 12px 18px; }
-.book-body[data-theme="light"] { --book-bg: #fffefb; --book-fg: #1f1d1a; --book-link: #7a4b1e; }
-.book-body[data-theme="sepia"] { --book-bg: #f4ecd8; --book-fg: #3b2f20; --book-link: #7a4b1e; }
-.book-body[data-theme="dark"] { --book-bg: #161514; --book-fg: #e6e1d8; --book-link: #e0a868; }
 .book-body:focus-visible { outline: 2px solid var(--focus); }
-.book-text { font-family: var(--reading); max-width: 42rem; margin: 0 auto; overflow-wrap: break-word; }
-.book-text[data-font="sans"] { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
-.book-text[data-font="mono"] { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; }
+.book-text { font-family: var(--reading); max-width: 42rem; margin: 0 auto; overflow-wrap: break-word;
+  font-size: calc(1.06rem * var(--text-size, 1)); line-height: var(--line-height, 1.7); }
+.reader[data-font="sans"] .book-text, .reader[data-font="sans"] .commentary-text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+.reader[data-width="wide"] .book-text { max-width: none; }
+.commentary-text { font-family: var(--reading); font-size: calc(1rem * var(--text-size, 1)); line-height: var(--line-height, 1.7); max-width: 46rem; }
+/* Read mode's page colour, for every kind of text. */
+.reader[data-mode="read"][data-theme="light"] .grid-body, .reader[data-mode="read"][data-theme="light"] .book-body { --book-bg: #fffefb; --book-fg: #1f1d1a; --book-link: #7a4b1e; background: #fffefb; color: #1f1d1a; }
+.reader[data-mode="read"][data-theme="sepia"] .grid-body, .reader[data-mode="read"][data-theme="sepia"] .book-body { --book-bg: #f4ecd8; --book-fg: #3b2f20; --book-link: #7a4b1e; background: #f4ecd8; color: #3b2f20; }
+.reader[data-mode="read"][data-theme="dark"] .grid-body, .reader[data-mode="read"][data-theme="dark"] .book-body { --book-bg: #161514; --book-fg: #e6e1d8; --book-link: #e0a868; background: #161514; color: #e6e1d8; }
+.reader[data-mode="read"] .book-body { border: 0; }
+/* The right-click menu (document/contextmenu.ts). */
+.ctx-anchor { position: fixed; width: 1px; height: 1px; pointer-events: none; }
+.ctx-menu .ctx-label { font-size: .75rem; color: var(--muted); padding: 4px 12px 0; }
+.ctx-swatches { padding: 2px 10px 6px; gap: 4px; }
+.ctx-swatches .swatch-btn { border: 1px solid var(--line); }
+.lookup .lex-entry h3 { font-size: .95rem; margin: 6px 0 2px; }
 .book-text a { color: var(--book-link); }
 .book-text a.external { text-decoration: underline dotted; cursor: help; }
 .book-text a.vref { text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 2px; }
@@ -683,3 +693,4 @@ details.more summary { cursor: pointer; color: var(--accent); }
 .browse-list li .hint { margin: 0; font-size: .8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .browse-list li:hover { background: var(--panel); }
 .drags-tab { cursor: grab; }
+.study-grid[data-mode="read"] .grid-place { flex: 0 1 28rem; }

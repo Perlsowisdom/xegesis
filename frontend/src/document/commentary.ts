@@ -3,6 +3,8 @@
 import { Message, run } from "../api";
 import { clear, h } from "../dom";
 import { paragraphs } from "../markup";
+import { sidebar } from "../views/sidebar";
+import { attachContextMenu } from "./contextmenu";
 import { DocHost, DocView } from "./view";
 
 interface Commentary { module: string; name: string; attribution?: string; entries: { ref: string; markup?: string; text: string }[] }
@@ -36,6 +38,11 @@ export function commentaryDoc(host: DocHost): DocView {
         c.entries.map((e) => h("section", { class: "entry" }, h("h3", {}, e.ref), paragraphs(e.markup || e.text, { onRef: (osis: string) => host.go(osis) }))),
         c.attribution ? h("footer", { class: "attribution" }, c.attribution) : null]);
   }
+
+  attachContextMenu(text, {
+    note: () => sidebar().newNote(shown),
+    go: (ref) => host.go(ref),
+  });
 
   void read(host.ref());
   return {

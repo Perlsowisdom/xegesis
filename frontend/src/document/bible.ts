@@ -15,6 +15,7 @@ import { openExport } from "../printexport";
 import { setModules, state } from "../state";
 import { searchFor } from "../views/search";
 import { sidebar } from "../views/sidebar";
+import { attachContextMenu, selectedIn } from "./contextmenu";
 import { DocHost, DocView, bibleBooks, bibleModules } from "./view";
 
 interface Hit { id: number; module: string; ref: string; text: string; snippet?: string }
@@ -274,6 +275,57 @@ export function bibleDoc(host: DocHost): DocView {
       e.preventDefault();
       step(e.key === "ArrowLeft" ? "prev" : "next");
     }
+  });
+
+  // Selected text: the right-click menu, and copying within each Bible's licence ----------------
+
+  // versesIn finds the verses a text selection touches.
+  function versesIn(r: Range): Set<number> {
+    const out = new Set<number>();
+    for (const e of text.querySelectorAll<HTMLElement>("[data-base]")) if (r.intersectsNode(e)) out.add(Number(e.dataset.base));
+    const at = (r.startContainer.parentElement?.closest("[data-base]") as HTMLElement | null);
+    if (at) out.add(Number(at.dataset.base));
+    return out;
+  }
+
+  async function copy(t: string) {
+    const ids = chosen();
+    const decisions = await msg.attempt(() => Promise.all(ids.map((id) => {
+      const m = modules.find((x) => x.id === id);
+      return run<{ allowed: boolean; attribution?: string; reason?: string }>("licence.check", { licence: m?.licence ?? {}, request: { action: "share" } });
+    })));
+    if (!decisions) return;
+    const refused = decisions.find((d) => !d.allowed);
+    if (refused) return msg.info(`This Bible's licence does not allow copying${refused.reason ? `: ${refused.reason}` : "."}`);
+    const credit = [...new Set(decisions.map((d) => d.attribution).filter(Boolean))].join("\n");
+    const out = credit ? `${t}\n\n${credit}` : t;
+    try {
+      await navigator.clipboard.writeText(out);
+      msg.ok(credit ? "Copied, with the Bible's credit line." : "Copied.");
+    } catch {
+      msg.info("The clipboard is not available here.");
+    }
+  }
+
+  text.addEventListener("copy", (e) => {
+    const r = selectedIn(text);
+    if (!r) return;
+    e.preventDefault(); // nothing reaches the clipboard unless the licence allows it
+    void copy(r.toString());
+  });
+
+  attachContextMenu(text, {
+    highlight: (style) => {
+      const r = selectedIn(text);
+      if (r) return colour(style, selectionRuns(shown, versesIn(r)));
+    },
+    note: () => {
+      const r = selectedIn(text);
+      const rs = r ? selectionRuns(shown, versesIn(r)) : [];
+      side.newNote(rs.length ? verseRangeText(rs[0][0], rs[0][1], books) : parsed?.display ?? "");
+    },
+    copy: (t) => copy(t),
+    go: (ref) => void go(ref),
   });
 
   // The ⋯ menu ---------------------------------------------------------------------------------------

@@ -16,6 +16,7 @@ import type { PdfDoc, RenderedPage } from "./pdf";
 import { closePopover, togglePopover } from "../popover";
 import { markSegments } from "../helpers";
 import type { Locator } from "./open";
+import { attachContextMenu } from "./contextmenu";
 import { DocHost, DocView } from "./view";
 
 interface BookInfo {
@@ -121,7 +122,7 @@ export function bookDoc(host: DocHost): DocView {
   const body = h("div", { class: "book-body", tabindex: "0", role: "document", "aria-label": "Book text" }, text, pdfBox);
   const attribution = h("footer", { class: "attribution" });
   const styleSel = select(STYLES, "yellow", { "aria-label": "Highlight colour" });
-  const hlBtn = button("Highlight", () => addHighlight(), { disabled: true });
+  const hlBtn = button("Highlight", () => void addHighlight(), { disabled: true });
   const noteBtn = button("Note", () => addNote(), { disabled: true });
   const listBtn = button("Add to list", () => addExcerpt(), { disabled: true, title: "Keep the selected text in a list of excerpts" });
   const actions = h("div", { class: "row wrap book-actions", role: "group", "aria-label": "Selected text", hidden: true },
@@ -505,11 +506,11 @@ export function bookDoc(host: DocHost): DocView {
     return rects.length ? { section, page: section, rects, text: quote } : null;
   }
 
-  async function addHighlight() {
+  async function addHighlight(style = styleSel.value) {
     const r = selection();
     const a = r && anchorOf(r);
     if (!book || !a) return msg.info("Select some text in the book first.");
-    const ok = await msg.attempt(() => run("highlight.create", { item_id: book!.item_id, locator: a, style: styleSel.value }));
+    const ok = await msg.attempt(() => run("highlight.create", { item_id: book!.item_id, locator: a, style }));
     if (ok !== undefined) {
       document.getSelection()?.removeAllRanges();
       loadMarks();
@@ -630,49 +631,35 @@ export function bookDoc(host: DocHost): DocView {
 
   // Text settings -----------------------------------------------------------------------------------
 
+  // Text settings: the zoom for PDF pages. Typeface, size, spacing and the page colour are the
+  // reading settings every pane shares (Aa in Read mode, and Settings → Appearance).
   function textSettings() {
-    const font = select([["serif", "Serif"], ["sans", "Sans-serif"], ["mono", "Monospace"]], prefs.font);
-    const theme = select([["auto", "Match the app"], ["light", "Light"], ["sepia", "Sepia"], ["dark", "Dark"]], prefs.theme);
-    const spacing = select([["1.4", "Tight"], ["1.7", "Normal"], ["2.1", "Loose"]], String(prefs.spacing));
-    const size = h("output", {}, `${prefs.size}%`);
     const zoom = h("output", {}, `${Math.round(prefs.zoom * 100)}%`);
-    const reflow = h("div", { class: "row wrap" },
-      field("Font", font), field("Line spacing", spacing), field("Theme", theme),
-      h("div", { class: "field" }, h("span", { class: "label" }, "Text size"),
-        h("div", { class: "row" }, button("A−", () => set({ size: prefs.size - 10 }), { "aria-label": "Smaller text" }), size,
-          button("A+", () => set({ size: prefs.size + 10 }), { "aria-label": "Larger text" }))));
     const fixed = h("div", { class: "row" }, h("span", {}, "Zoom"),
-      button("−", () => set({ zoom: Math.round((prefs.zoom - 0.1) * 10) / 10 }), { "aria-label": "Zoom out" }), zoom,
-      button("+", () => set({ zoom: Math.round((prefs.zoom + 0.1) * 10) / 10 }), { "aria-label": "Zoom in" }));
-    font.addEventListener("change", () => set({ font: font.value as ReadingPrefs["font"] }));
-    theme.addEventListener("change", () => set({ theme: theme.value as ReadingPrefs["theme"] }));
-    spacing.addEventListener("change", () => set({ spacing: Number(spacing.value) }));
-
-    function set(p: Partial<ReadingPrefs>) {
-      const zoomed = p.zoom !== undefined && p.zoom !== prefs.zoom;
-      prefs = tidyPrefs({ ...prefs, ...p });
+      button("−", () => set(Math.round((prefs.zoom - 0.1) * 10) / 10), { "aria-label": "Zoom out" }), zoom,
+      button("+", () => set(Math.round((prefs.zoom + 0.1) * 10) / 10), { "aria-label": "Zoom in" }));
+    function set(z: number) {
+      const zoomed = z !== prefs.zoom;
+      prefs = tidyPrefs({ ...prefs, zoom: z });
       savePrefs(prefs);
-      apply();
-      if (zoomed && book && !book.reflowable) show(section, {});
-    }
-    function apply() {
-      size.textContent = `${prefs.size}%`;
       zoom.textContent = `${Math.round(prefs.zoom * 100)}%`;
-      text.dataset.font = prefs.font;
-      body.dataset.theme = prefs.theme;
-      text.style.fontSize = `${(prefs.size / 100) * 1.06}rem`;
-      text.style.lineHeight = String(prefs.spacing);
+      if (zoomed && book && !book.reflowable) void show(section, {});
     }
-    apply();
-    const el = h("details", { class: "book-settings" }, h("summary", {}, "Text settings"), reflow, fixed);
+    const el = h("details", { class: "book-settings", hidden: true }, h("summary", {}, "Page size"), fixed);
     return {
       el,
       update() {
-        reflow.hidden = !book?.reflowable;
-        fixed.hidden = !!book?.reflowable;
+        el.hidden = !!book?.reflowable;
       },
     };
   }
+
+  attachContextMenu(body, {
+    highlight: (style) => addHighlight(style),
+    note: () => addNote(),
+    copy: (t) => copyText(t),
+    go: (ref) => host.go(ref),
+  });
 
   // The ⋯ menu ----------------------------------------------------------------------------------------
 

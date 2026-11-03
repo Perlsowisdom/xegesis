@@ -11,7 +11,7 @@ import { openGridPresets, setGridPresets } from "../gridhook";
 import { icon } from "../icons";
 import { todayCard } from "../plancard";
 import { togglePopover } from "../popover";
-import { ReaderMode, ReadingPrefs, TEXT_SIZES, gridButtonPlace, stepSize } from "../shellwords";
+import { ReaderMode, ReadingPrefs, SPACINGS, TEXT_SIZES, gridButtonPlace, stepSize } from "../shellwords";
 import { navigate, onPrefs, prefs, setPrefs, state } from "../state";
 import { openReport } from "./report";
 import { sidebar } from "./sidebar";
@@ -101,6 +101,8 @@ export function readerView() {
     el.style.setProperty("--text-size", `${r.size / 100}`);
     el.dataset.font = r.font;
     el.dataset.width = r.width;
+    el.dataset.theme = r.theme;
+    el.style.setProperty("--line-height", String(SPACINGS[r.spacing]));
     sideBtn.setAttribute("aria-pressed", String(prefs.sidebar.open));
     if (r.mode !== lastMode) {
       lastMode = r.mode;
@@ -126,7 +128,7 @@ export function readingControls(): HTMLElement {
     size.textContent = `${prefs.reading.size}%`;
   };
   const group = ++radios;
-  const choice = (key: "font" | "width", label: string, options: [string, string][]) =>
+  const choice = (key: "font" | "width" | "spacing" | "theme", label: string, options: [string, string][]) =>
     h("fieldset", {}, h("legend", {}, label), options.map(([v, l]) => {
       const b = h("input", { type: "radio", name: `reading-${key}-${group}`, checked: prefs.reading[key] === v });
       b.addEventListener("change", () => set({ [key]: v } as Partial<ReadingPrefs>));
@@ -140,5 +142,7 @@ export function readingControls(): HTMLElement {
       size,
       button("A+", () => set({ size: stepSize(prefs.reading.size, 1) }), { "aria-label": "Larger text", title: `Larger (up to ${TEXT_SIZES[TEXT_SIZES.length - 1]}%)` })),
     choice("font", "Typeface", [["serif", "Book (serif)"], ["sans", "Plain (sans serif)"]]),
-    choice("width", "Line length", [["narrow", "Comfortable"], ["wide", "Full width"]]));
+    choice("width", "Line length", [["narrow", "Comfortable"], ["wide", "Full width"]]),
+    choice("spacing", "Line spacing", [["tight", "Tight"], ["normal", "Normal"], ["loose", "Loose"]]),
+    choice("theme", "Page", [["auto", "Match the app"], ["light", "Light"], ["sepia", "Sepia"], ["dark", "Dark"]]));
 }
