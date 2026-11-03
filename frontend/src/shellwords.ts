@@ -173,9 +173,16 @@ export interface ReadingPrefs {
   size: number; // text size in percent
   font: "serif" | "sans";
   width: "narrow" | "wide";
+  spacing: Spacing;
+  theme: PageTheme; // the page colour in Read mode; "auto" follows the app
 }
 
-export const READING_DEFAULTS: ReadingPrefs = { mode: "read", size: 100, font: "serif", width: "narrow" };
+export type Spacing = "tight" | "normal" | "loose";
+export type PageTheme = "auto" | "light" | "sepia" | "dark";
+export const SPACINGS: Record<Spacing, number> = { tight: 1.45, normal: 1.75, loose: 2.1 };
+const THEMES: PageTheme[] = ["auto", "light", "sepia", "dark"];
+
+export const READING_DEFAULTS: ReadingPrefs = { mode: "read", size: 100, font: "serif", width: "narrow", spacing: "normal", theme: "auto" };
 export const TEXT_SIZES = [85, 100, 115, 130, 150];
 
 export function normalizeReading(v: unknown): ReadingPrefs {
@@ -185,6 +192,8 @@ export function normalizeReading(v: unknown): ReadingPrefs {
     size: TEXT_SIZES.includes(o.size as number) ? (o.size as number) : 100,
     font: o.font === "sans" ? "sans" : "serif",
     width: o.width === "wide" ? "wide" : "narrow",
+    spacing: o.spacing === "tight" || o.spacing === "loose" ? o.spacing : "normal",
+    theme: THEMES.includes(o.theme as PageTheme) ? (o.theme as PageTheme) : "auto",
   };
 }
 

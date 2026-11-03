@@ -6,7 +6,7 @@ import { collectionPicker } from "../collections";
 import { clear, field, h, select } from "../dom";
 import { markSegments } from "../helpers";
 import { navigate, state } from "../state";
-import { Locator, openBook } from "./book";
+import { Locator, openBook } from "../document/open";
 
 interface BookHit {
   item_id: string;

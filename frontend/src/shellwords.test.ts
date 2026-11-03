@@ -76,8 +76,10 @@ describe("right sidebar tools", () => {
 
 describe("reading preferences", () => {
   it("defaults to Read mode and normal text", () => {
-    expect(normalizeReading({ mode: "x", size: 3 })).toEqual({ mode: "read", size: 100, font: "serif", width: "narrow" });
-    expect(normalizeReading({ mode: "study", size: 130, font: "sans", width: "wide" })).toEqual({ mode: "study", size: 130, font: "sans", width: "wide" });
+    expect(normalizeReading({ mode: "x", size: 3, spacing: "huge", theme: "neon" }))
+      .toEqual({ mode: "read", size: 100, font: "serif", width: "narrow", spacing: "normal", theme: "auto" });
+    expect(normalizeReading({ mode: "study", size: 130, font: "sans", width: "wide", spacing: "loose", theme: "sepia" }))
+      .toEqual({ mode: "study", size: 130, font: "sans", width: "wide", spacing: "loose", theme: "sepia" });
   });
   it("steps text sizes", () => {
     expect(stepSize(100, 1)).toBe(115);

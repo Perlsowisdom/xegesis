@@ -7,6 +7,8 @@ import { button, clear, h } from "../dom";
 import { addToList } from "../listpicker";
 import { WordInfo, paragraphs } from "../markup";
 import { openReport } from "./report";
+import { draggableSpec } from "../document/drag";
+import type { TabSpec } from "../document/grid";
 
 interface Commentary { module: string; name: string; attribution?: string; entries: { ref: string; markup?: string; text: string }[] }
 interface CrossRef { from: number; from_ref: string; to: string; to_ref: string; sources: string[] }
@@ -20,6 +22,13 @@ interface StudyBible { module: string; name: string; occurrences: number; verses
 interface Study { strong: string; occurrences: number; bibles: StudyBible[] }
 
 const MAX_REFS = 12;
+
+// card lets a Related card be dragged into the study grid, where it opens as a tab.
+function card(el: HTMLElement, spec: TabSpec): HTMLElement {
+  draggableSpec(el, () => spec);
+  el.title = "Drag into a pane to open it there";
+  return el;
+}
 
 export function relatedPanel(go: (ref: string) => void) {
   const passageBox = h("div", { class: "study-passage", "aria-live": "polite" });
@@ -48,12 +57,12 @@ export function relatedPanel(go: (ref: string) => void) {
     for (const x of r.cross_references) byVerse.set(x.from_ref, [...(byVerse.get(x.from_ref) ?? []), x]);
     clear(passageBox,
       h("h3", {}, display ? `On ${display}` : "On this passage"),
-      r.commentaries.map((c, i) => h("details", { class: "commentary", open: i === 0 },
-        h("summary", {}, c.name),
+      r.commentaries.map((c, i) => card(h("details", { class: "commentary", open: i === 0 },
+        h("summary", {}, c.name, h("span", { class: "sr-only" }, " (drag into the grid to open it in a pane)")),
         c.entries.map((e) => h("div", { class: "entry" },
           h("h4", {}, e.ref),
           paragraphs(e.markup || e.text, handlers))),
-        c.attribution ? h("p", { class: "attribution" }, c.attribution) : null)),
+        c.attribution ? h("p", { class: "attribution" }, c.attribution) : null), { kind: "commentary", modules: [c.module], title: c.name })),
       byVerse.size ? h("details", { class: "crossrefs", open: r.commentaries.length === 0 },
         h("summary", {}, `Cross-references (${r.cross_references.length})`),
         h("dl", {}, [...byVerse].map(([from, xs]) => [
