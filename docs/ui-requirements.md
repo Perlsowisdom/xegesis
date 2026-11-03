@@ -36,6 +36,22 @@ brief (T34, widened to the whole interface).
   - each cell's tab can change its resource from within the tab, from a menu bar, or by dragging from
     the library.
 
+### From the user's own screenshot (3 November 2026)
+
+The user showed a screenshot of their own desktop setup to show what they want to work. Only these
+functional ideas are taken from it, in our own words. The layout, look, icons and wording are not
+copied.
+
+- **Each pane has its own reference box:** a resource picker and a passage box, plus Back.
+- **Linked panes:** panes in a group follow each other to the same passage. A pane can leave the group.
+- **"Related at this verse" panel:** for the current verse, a short excerpt from each commentary or
+  study Bible in the library, with a link to open it in full. In Xegesis this is the Passage study tool
+  in the right sidebar, not a third column inside the pane.
+- **Search inside one resource,** with results grouped by verse.
+- **In-pane navigation:** contents, history, and next or previous article.
+- **Avoid:** the screenshot puts two rows of toolbar in every pane. That is the clutter the user
+  objected to. Xegesis puts one slim row per pane and moves the rest into a ⋯ menu.
+
 ## Library and My work (from the earlier round)
 
 - **Library filters:** one Filter button that opens all the facets, with several choices allowed
