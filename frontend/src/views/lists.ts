@@ -4,7 +4,7 @@
 import { printExportButton } from "../printexport";
 import { ListEntry, Message, Ref, SavedList, run } from "../api";
 import { button, clear, field, h, select } from "../dom";
-import { Locator, openBook } from "./book";
+import { Locator, openBook } from "../document/open";
 import { setPassage, state } from "../state";
 import { navigate } from "../state";
 import { flash } from "../listpicker";

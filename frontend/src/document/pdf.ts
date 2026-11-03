@@ -5,7 +5,7 @@
 import { GlobalWorkerOptions, TextLayer, getDocument } from "pdfjs-dist";
 import type { PDFDocumentProxy, RenderTask } from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-import type { OutlineItem } from "./bookhelpers";
+import type { OutlineItem } from "../bookhelpers";
 
 GlobalWorkerOptions.workerSrc = workerUrl;
 

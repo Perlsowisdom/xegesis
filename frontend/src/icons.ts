@@ -17,6 +17,9 @@ const PATHS: Record<string, string> = {
   rail: '<rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M9.5 4.5v15"/>',
   up: '<path d="M6 14.5l6-6 6 6"/>',
   down: '<path d="M6 9.5l6 6 6-6"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
+  unlink: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/><path d="M4 4l16 16"/>',
 };
 
 export function icon(name: keyof typeof PATHS | string): SVGSVGElement {

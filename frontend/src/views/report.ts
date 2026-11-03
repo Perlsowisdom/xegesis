@@ -11,7 +11,7 @@ import {
   runs, sourceText, wordFacts,
 } from "../reportwords";
 import { navigate, setPassage, state } from "../state";
-import { openBook } from "./book";
+import { openBook } from "../document/open";
 
 // Other views start reports through openReport; the Reports view makes it when it is shown.
 let pending: { kind: ReportKind; query: string } | null = null;

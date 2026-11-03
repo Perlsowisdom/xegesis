@@ -21,6 +21,7 @@ export interface Tab {
   section?: number; // the book's section or PDF page
   para?: number;
   target?: string; // the note, sermon or list shown
+  locator?: Record<string, unknown>; // where a book opens, used once and not saved
 }
 
 // TabSpec is a tab before it has an id, as a drop or a + creates it.

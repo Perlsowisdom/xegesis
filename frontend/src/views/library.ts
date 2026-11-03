@@ -10,7 +10,7 @@ import { facetChooser, traditionsPanel } from "../facets";
 import { NOT_SET, countText, facetValue, reasonText } from "../facetwords";
 import { licenceChooser, licenceLine, originText, plainName, termsText } from "../licence";
 import { navigate } from "../state";
-import { openBook } from "./book";
+import { openBook } from "../document/open";
 
 const PAGE = 50;
 

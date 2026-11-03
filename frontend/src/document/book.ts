@@ -1,43 +1,22 @@
-// The book pane: a library book beside the Bible text. Reflowable books (EPUB, DOCX, HTML,
-// Markdown, text) are shown one section at a time as HTML the core has already sanitised; PDF pages
-// are drawn by pdf.js from bytes the core sends. Highlights and notes are anchored to paragraph
-// markers in the HTML (or rectangles on a PDF page), copying goes through book.copy so the licence
-// applies, and Bible references in the text open in the Bible pane.
+// A library book in one pane. Reflowable books (EPUB, DOCX, HTML, Markdown, text) are shown one
+// section at a time as HTML the core has already sanitised; PDF pages are drawn by pdf.js from bytes
+// the core sends (document/pdf.ts). Highlights and notes are anchored to paragraph markers in the
+// HTML (or rectangles on a PDF page), copying goes through book.copy so the licence applies, and
+// Bible references in the text move the pane's linked Bibles. A tab with no book shows a picker.
 
-import { printExportButton } from "../printexport";
+import { openExport } from "../printexport";
 import { ItemSummary, Message, Note, Ref, run } from "../api";
 import {
   CopyResult, DEFAULT_PREFS, ReadingPrefs, TOCEntry, base64ToBytes, concatBytes, copyMessage, currentEntry,
   pageRects, tidyPrefs, tocOptions,
 } from "../bookhelpers";
 import { button, clear, field, h, select } from "../dom";
-import { setPassage } from "../state";
 import { addToList } from "../listpicker";
-import type { PdfDoc, RenderedPage } from "../pdfview";
-
-// Locator is where a search hit starts (search.query's locator).
-export interface Locator {
-  spine?: number;
-  href?: string;
-  cfi?: string;
-  page?: number;
-  para?: number;
-  offset?: number;
-}
-
-export interface BookRequest {
-  itemId: string;
-  fileId?: string;
-  locator?: Locator;
-}
-
-// Other views open books through openBook; the reader's book pane takes the request.
-let listener: ((r: BookRequest) => void) | null = null;
-let pending: BookRequest | null = null;
-export function openBook(r: BookRequest) {
-  if (listener) listener(r);
-  else pending = r;
-}
+import type { PdfDoc, RenderedPage } from "./pdf";
+import { closePopover, togglePopover } from "../popover";
+import { markSegments } from "../helpers";
+import type { Locator } from "./open";
+import { DocHost, DocView } from "./view";
 
 interface BookInfo {
   item_id: string;
@@ -106,7 +85,15 @@ function savePrefs(p: ReadingPrefs) {
   }
 }
 
-export function bookPane(onState: (open: boolean) => void) {
+interface OpenRequest {
+  itemId: string;
+  fileId?: string;
+  locator?: Locator;
+  section?: number;
+  para?: number;
+}
+
+export function bookDoc(host: DocHost): DocView {
   const msg = new Message();
   const copyMsg = new Message();
   let prefs = loadPrefs();
@@ -121,49 +108,42 @@ export function bookPane(onState: (open: boolean) => void) {
   const back: { section: number; para: number }[] = [];
   let saveTimer = 0;
   let loadSeq = 0;
+  let alive = true;
 
-  const title = h("h2", { class: "book-title", tabindex: "-1" }, "Book");
-  const byline = h("p", { class: "hint" });
+  const byline = h("p", { class: "hint book-byline" });
   const contents = select([], "", { "aria-label": "Contents", class: "book-toc" });
   const prev = button("‹", () => go(section - 1), { "aria-label": "Previous section", title: "Previous section (Alt+Page Up)", "aria-keyshortcuts": "Alt+PageUp" });
   const next = button("›", () => go(section + 1), { "aria-label": "Next section", title: "Next section (Alt+Page Down)", "aria-keyshortcuts": "Alt+PageDown" });
   const where = h("span", { class: "hint book-where", "aria-live": "polite" });
-  const backBtn = button("Back", () => goBack(), { disabled: true, title: "Return to where you were before the last jump" });
-  const text = h("article", { class: "book-text", lang: "" });
-  const pdfBox = h("div", { class: "pdf-box" });
+  const placeBox = h("div", { class: "book-nav", role: "group", "aria-label": "Place in the book", hidden: true }, contents, prev, where, next);
+  const text = h("article", { class: "book-text doc-text", lang: "" });
+  const pdfBox = h("div", { class: "pdf-box doc-text" });
   const body = h("div", { class: "book-body", tabindex: "0", role: "document", "aria-label": "Book text" }, text, pdfBox);
   const attribution = h("footer", { class: "attribution" });
   const styleSel = select(STYLES, "yellow", { "aria-label": "Highlight colour" });
   const hlBtn = button("Highlight", () => addHighlight(), { disabled: true });
   const noteBtn = button("Note", () => addNote(), { disabled: true });
   const listBtn = button("Add to list", () => addExcerpt(), { disabled: true, title: "Keep the selected text in a list of excerpts" });
-  const actions = h("div", { class: "row wrap book-actions", role: "group", "aria-label": "Selected text" },
+  const actions = h("div", { class: "row wrap book-actions", role: "group", "aria-label": "Selected text", hidden: true },
     h("span", { class: "hint" }, "Selection:"), styleSel, hlBtn, noteBtn, listBtn);
   const editor = h("div", {});
   const marks = h("ul", { class: "book-marks" });
   const picker = h("div", { class: "card book-picker", hidden: true });
-  const printBtn = printExportButton(() => {
-    if (!book) return null;
+
+  function print() {
+    if (!book) return;
     const r = selection();
     const where = book.reflowable ? `section ${section}` : `page ${section}`;
-    return r
+    openExport(r
       ? { title: book.title, sources: [{ kind: "book", item_id: book.item_id, file_id: book.file_id, text: r.toString() }] }
-      : { title: `${book.title}, ${where}`, sources: [{ kind: "book", item_id: book.item_id, file_id: book.file_id, from: section, to: section }] };
-  });
-  printBtn.title = "Print or save the selected text, or else this section";
+      : { title: `${book.title}, ${where}`, sources: [{ kind: "book", item_id: book.item_id, file_id: book.file_id, from: section, to: section }] });
+  }
 
   const settings = textSettings();
-  const el = h("section", { class: "pane book-pane", "aria-label": "Book", hidden: true },
-    h("div", { class: "row between" }, title, button("Close", close, { "aria-label": "Close the book" })),
-    byline,
-    picker,
-    h("div", { class: "row wrap book-nav" }, contents, prev, where, next, backBtn, printBtn),
-    settings.el,
-    msg.el,
-    actions, editor, copyMsg.el,
-    body,
-    attribution,
+  const reader = h("div", { class: "book-reader", hidden: true },
+    byline, settings.el, actions, editor, copyMsg.el, body, attribution,
     h("details", { class: "book-marks-box" }, h("summary", {}, "Highlights and notes in this section"), marks));
+  const el = h("div", { class: "doc doc-book" }, picker, msg.el, reader);
 
   contents.addEventListener("change", () => {
     const t = toc[Number(contents.value)];
@@ -173,52 +153,47 @@ export function bookPane(onState: (open: boolean) => void) {
   // Choosing a book ---------------------------------------------------------------------------------
 
   function choose() {
-    el.hidden = false;
-    onState(true);
     const q = h("input", { type: "search", placeholder: "Title", autocomplete: "off", "aria-label": "Find a book by title" });
     const list = h("ul", { class: "results" });
     const pmsg = new Message();
     async function find() {
       const r = await pmsg.attempt(() => run<{ items: ItemSummary[] }>("library.items", { text: q.value.trim(), limit: 30 }));
-      if (!r) return;
+      if (!r || !alive) return;
       const books = r.items.filter((it) => it.kind !== "bible");
       clear(list, books.length === 0 ? h("li", { class: "empty" }, "No books found.") : books.map((it) =>
         h("li", {}, button(it.title || "Untitled", () => {
           picker.hidden = true;
-          open({ itemId: it.id });
+          host.update({ itemId: it.id, title: it.title || "Untitled" });
+          void open({ itemId: it.id });
         }, { class: "link", disabled: it.status !== "online" }),
         it.authors.length ? h("span", { class: "hint" }, ` ${it.authors.join(", ")}`) : null,
         it.status !== "online" ? h("span", { class: "badge warn" }, it.status) : null)));
     }
-    const form = h("form", { role: "search", class: "row" }, q, h("button", { type: "submit", class: "primary" }, "Find"),
-      button("Cancel", () => {
-        picker.hidden = true;
-        if (!book) close();
-      }));
+    const form = h("form", { role: "search", class: "row" }, q, h("button", { type: "submit", class: "primary" }, "Find"));
     form.addEventListener("submit", (e) => {
       e.preventDefault();
-      find();
+      void find();
     });
     clear(picker, h("h3", {}, "Open a book"), form, pmsg.el, list);
     picker.hidden = false;
-    q.focus();
-    find();
+    queueMicrotask(() => q.focus());
+    void find();
   }
 
   // Opening and moving ------------------------------------------------------------------------------
 
-  async function open(r: BookRequest) {
-    el.hidden = false;
-    onState(true);
+  async function open(r: OpenRequest) {
     picker.hidden = true;
     msg.clear();
     copyMsg.clear();
     const b = await msg.attempt(() => run<BookInfo>("book.open", { item_id: r.itemId, ...(r.fileId ? { file_id: r.fileId } : {}) }));
-    if (!b) return;
+    if (!b || !alive) return;
     book = b;
     back.length = 0;
-    backBtn.disabled = true;
-    title.textContent = b.title || "Untitled";
+    reader.hidden = false;
+    placeBox.hidden = false;
+    const name = b.title || "Untitled";
+    if (host.tab().title !== name || host.tab().fileId !== b.file_id) host.update({ title: name, fileId: b.file_id });
     byline.textContent = [b.authors.join(", "), b.format.toUpperCase()].filter(Boolean).join(" · ");
     attribution.textContent = b.attribution ?? "";
     attribution.hidden = !b.attribution;
@@ -231,7 +206,7 @@ export function bookPane(onState: (open: boolean) => void) {
     }
     renderTOC();
     let target: Target = {};
-    let start = b.position?.section ?? 1;
+    let start = r.section ?? b.position?.section ?? 1;
     if (r.locator) {
       const loc = await msg.attempt(() => run<{ section: number; para?: number; anchor?: string }>("book.locate",
         { item_id: b.item_id, file_id: b.file_id, locator: r.locator }));
@@ -239,11 +214,10 @@ export function bookPane(onState: (open: boolean) => void) {
         start = loc.section;
         target = { anchor: loc.anchor, para: loc.para, flash: true };
       }
-    } else if (b.position?.para) {
-      target = { para: b.position.para };
+    } else if (r.para || b.position?.para) {
+      target = { para: r.para ?? b.position?.para };
     }
     await show(Math.min(Math.max(1, start), b.sections), target);
-    title.focus();
   }
 
   async function loadPdf(b: BookInfo): Promise<boolean> {
@@ -263,7 +237,7 @@ export function bookPane(onState: (open: boolean) => void) {
       msg.info(`Loading the PDF… ${Math.round((offset / c.size) * 100)}%`);
     }
     const ok = await msg.attempt(async () => {
-      const view = await import("../pdfview");
+      const view = await import("./pdf");
       const doc = await view.openPdf(concatBytes(parts));
       pdf = { fileId: b.file_id, doc };
       const items = await view.outline(doc);
@@ -288,15 +262,10 @@ export function bookPane(onState: (open: boolean) => void) {
   // jump moves somewhere else in the book, remembering where the user was.
   function jump(n: number, target: Target) {
     back.push({ section, para: visiblePara() });
-    backBtn.disabled = false;
+    back.splice(0, back.length - 30);
     go(n, target);
   }
 
-  function goBack() {
-    const p = back.pop();
-    backBtn.disabled = back.length === 0;
-    if (p) go(p.section, { para: p.para });
-  }
 
   async function show(n: number, target: Target) {
     if (!book) return;
@@ -305,13 +274,14 @@ export function bookPane(onState: (open: boolean) => void) {
     section = n;
     const unit = b.format === "pdf" ? "Page" : "Section";
     where.textContent = `${unit} ${n} of ${b.sections}`;
+    if (host.tab().section !== n) host.update({ section: n });
     prev.disabled = n <= 1;
     next.disabled = n >= b.sections;
     const ci = currentEntry(toc, n);
     contents.value = ci >= 0 ? String(ci) : "";
     if (b.reflowable) {
       const s = await msg.attempt(() => run<SectionData>("book.section", { item_id: b.item_id, file_id: b.file_id, section: n }));
-      if (!s || seq !== loadSeq) return;
+      if (!s || seq !== loadSeq || !alive) return;
       cfi = s.cfi ?? "";
       // The core sanitised this HTML: no scripts, styles, event attributes or remote resources.
       text.innerHTML = s.html || `<p class="empty">This section has no text.</p>`;
@@ -332,7 +302,7 @@ export function bookPane(onState: (open: boolean) => void) {
     const doc = pdf.doc;
     const width = Math.max(200, body.clientWidth - 24);
     const r = await msg.attempt(async () => {
-      const view = await import("../pdfview");
+      const view = await import("./pdf");
       return view.renderPage(doc, n, width, prefs.zoom);
     });
     if (!r) return;
@@ -399,16 +369,21 @@ export function bookPane(onState: (open: boolean) => void) {
   }
   body.addEventListener("scroll", savePosition, { passive: true });
 
-  function close() {
-    savePosition();
-    el.hidden = true;
+  // destroy frees the pane's book: a PDF's pages and the document pdf.js holds go with it.
+  function destroy() {
+    if (book) run("book.set_position", { item_id: book.item_id, file_id: book.file_id, section, para: visiblePara() }).catch(() => {});
+    alive = false;
+    loadSeq++;
+    clearTimeout(saveTimer);
+    document.removeEventListener("selectionchange", onSelection);
+    resizer.disconnect();
     book = null;
     page?.cancel();
-    pdf?.doc.destroy();
+    page = null;
+    void pdf?.doc.destroy();
     pdf = null;
     clear(text);
     clear(pdfBox);
-    onState(false);
   }
 
   // Highlights and notes ----------------------------------------------------------------------------
@@ -507,12 +482,14 @@ export function bookPane(onState: (open: boolean) => void) {
     return r.collapsed || !r.toString().trim() ? null : r;
   }
 
-  document.addEventListener("selectionchange", () => {
+  function onSelection() {
     const has = !!book && !!selection();
     hlBtn.disabled = !has;
     noteBtn.disabled = !has;
     listBtn.disabled = !has;
-  });
+    actions.hidden = !has && !editor.childElementCount;
+  }
+  document.addEventListener("selectionchange", onSelection);
 
   function anchorOf(r: Range): Anchor | null {
     if (!book) return null;
@@ -625,7 +602,7 @@ export function bookPane(onState: (open: boolean) => void) {
     e.preventDefault();
     if (a.classList.contains("vref") && a.dataset.ref) {
       const p = await msg.attempt(() => run<Ref>("verse.parse", { ref: a.dataset.ref }));
-      if (p) setPassage(p.display, p);
+      if (p) host.go(p.display);
     } else if (a.dataset.section) {
       jump(Number(a.dataset.section), { anchor: a.dataset.anchor, flash: !!a.dataset.anchor });
     } else if (a.dataset.url) {
@@ -639,13 +616,17 @@ export function bookPane(onState: (open: boolean) => void) {
     go(section + (e.key === "PageDown" ? 1 : -1));
   });
 
+  // A PDF page is redrawn to fit when the pane changes width.
   let resizeTimer = 0;
-  window.addEventListener("resize", () => {
-    if (book && !book.reflowable && !el.hidden) {
-      clearTimeout(resizeTimer);
-      resizeTimer = window.setTimeout(() => show(section, {}), 300);
-    }
+  let lastWidth = 0;
+  const resizer = new ResizeObserver(() => {
+    const w = body.clientWidth;
+    if (!book || book.reflowable || Math.abs(w - lastWidth) < 24) return;
+    lastWidth = w;
+    clearTimeout(resizeTimer);
+    resizeTimer = window.setTimeout(() => alive && show(section, {}), 300);
   });
+  resizer.observe(body);
 
   // Text settings -----------------------------------------------------------------------------------
 
@@ -693,14 +674,59 @@ export function bookPane(onState: (open: boolean) => void) {
     };
   }
 
-  listener = open;
-  if (pending) {
-    const r = pending;
-    pending = null;
-    queueMicrotask(() => open(r));
-  }
+  // The ⋯ menu ----------------------------------------------------------------------------------------
 
-  return { el, open, choose, isOpen: () => !!book };
+  const menu = {
+    contents(anchor: HTMLElement) {
+      if (toc.length === 0) return msg.info("This book has no contents list.");
+      togglePopover(anchor, () => h("div", { class: "menu-list toc-list" }, tocOptions(toc).map(([v, label]) =>
+        button(label, () => {
+          const t = toc[Number(v)];
+          if (t) jump(t.section, { anchor: t.anchor, flash: !!t.anchor });
+        }))), { label: "Contents", side: "below", menu: true });
+    },
+    history(anchor: HTMLElement) {
+      togglePopover(anchor, () => h("div", { class: "menu-list" }, back.length === 0
+        ? h("p", { class: "hint pop-body" }, "No earlier places yet. Following a link or a contents entry adds one.")
+        : [...back].reverse().map((p, i) => button(`${book?.reflowable ? "Section" : "Page"} ${p.section}`, () => {
+          back.splice(back.length - 1 - i);
+          go(p.section, { para: p.para });
+        }))), { label: "History", side: "below", menu: true });
+    },
+    print,
+    search(anchor: HTMLElement) {
+      const q = h("input", { type: "search", "aria-label": "Search in this book", placeholder: "Words to find", autocomplete: "off" });
+      const form = h("form", { class: "pop-body", role: "search" }, h("h2", { class: "pop-title" }, "Search in this"), q);
+      form.addEventListener("submit", (e) => { e.preventDefault(); void menu.find(q.value.trim(), anchor); });
+      togglePopover(anchor, () => form, { label: "Search in this", side: "below" });
+    },
+    async find(q: string, anchor: HTMLElement) {
+      if (!book || !q) return;
+      const b = book;
+      const r = await msg.attempt(() => run<{ hits: { heading?: string; snippet: string; locator: Locator }[] }>("search.query",
+        { query: q, item_ids: [b.item_id], limit: 30 }));
+      if (!r || !alive) return;
+      closePopover();
+      togglePopover(anchor, () => h("div", { class: "pop-body find-results" },
+        h("p", { class: "hint", role: "status" }, r.hits.length ? `${r.hits.length} ${r.hits.length === 1 ? "match" : "matches"} in ${b.title}` : `No matches in ${b.title}.`),
+        h("ol", { class: "results" }, r.hits.map((hit) => h("li", {},
+          button(hit.locator.page ? `Page ${hit.locator.page}` : hit.heading || "Show", async () => {
+            closePopover();
+            const loc = await msg.attempt(() => run<{ section: number; para?: number; anchor?: string }>("book.locate",
+              { item_id: b.item_id, file_id: b.file_id, locator: hit.locator }));
+            if (loc && alive) jump(loc.section, { anchor: loc.anchor, para: loc.para, flash: true });
+          }, { class: "link" }),
+          h("p", {}, markSegments(hit.snippet).map((s) => (s.mark ? h("mark", {}, s.text) : s.text))))))),
+      { label: "Matches", side: "below" });
+    },
+  };
+
+  const t = host.tab();
+  if (t.itemId) void open({ itemId: t.itemId, fileId: t.fileId, locator: t.locator as Locator | undefined, section: t.locator ? undefined : t.section });
+  else choose();
+  if (t.locator) queueMicrotask(() => host.update({ locator: undefined }));
+
+  return { el, placeBox, menu, destroy, focus: () => body.focus() };
 }
 
 // Positions in sanitised book HTML ------------------------------------------------------------------

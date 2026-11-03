@@ -6,7 +6,7 @@ import { Message, Ref, run } from "./api";
 import { button, clear, h } from "./dom";
 import { DayInfo, PlanInfo, ReadingInfo, TodayInfo, behindText, friendlyDate, statusText, todayLine } from "./planwords";
 import { navigate, setPassage } from "./state";
-import { openBook } from "./views/book";
+import { openBook } from "./document/open";
 
 // openReading shows a reading in the Reader: Bible passages in the text, library books in the book
 // pane. stay is true when the Reader itself is asking, so it need not be switched to.
