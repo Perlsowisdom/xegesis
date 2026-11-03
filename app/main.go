@@ -35,6 +35,7 @@ type App struct {
 	stop  context.CancelFunc
 	wg    sync.WaitGroup
 	typed sync.Once // fills in missing book types once per run
+	shot  string    // --screenshot: save the window's picture here, then quit
 }
 
 // rescanEvery is how often library folders are rescanned. Unchanged files are skipped, so it is cheap.
@@ -59,6 +60,9 @@ func (a *App) startup(ctx context.Context) {
 	})
 	// Files and folders dropped on the window are added to the library by the interface.
 	runtime.OnFileDrop(ctx, func(_, _ int, paths []string) { runtime.EventsEmit(ctx, "files:dropped", paths) })
+	if a.shot != "" {
+		takeScreenshot(ctx, a.shot)
+	}
 }
 
 func (a *App) shutdown(context.Context) {
@@ -160,7 +164,7 @@ func main() {
 	}
 	defer s.Close()
 	reg := all.Registry(filepath.Dir(lib), secrets.OS())
-	app := &App{reg: reg, env: &command.Env{Store: s}}
+	app := &App{reg: reg, env: &command.Env{Store: s}, shot: screenshotArg(os.Args[1:])}
 
 	err = wails.Run(&options.App{
 		Title:       "Xegesis",

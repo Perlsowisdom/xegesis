@@ -385,6 +385,38 @@ ul.plain { list-style: none; margin: 0; padding: 0; }
 .list-pick { display: block; width: 100%; text-align: left; margin: 2px 0; }
 .list-pick[aria-current="true"] { background: var(--accent); color: #fff; }
 .list-pick[aria-current="true"] .hint { color: inherit; }
+/* Sermons and lessons */
+.doc-filters { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.doc-index { margin-bottom: 12px; }
+.doc-meta { display: block; font-size: 0.85em; }
+.doc-row { border-top: 1px solid var(--line); padding: 6px 0; }
+.doc-empty { padding: 24px 0; }
+.doc-title { display: block; width: 100%; box-sizing: border-box; font-size: 1.5rem; font-weight: 600; font-family: var(--reading); padding: 6px 10px; }
+.doc-props { gap: 16px; align-items: flex-end; margin: 8px 0 14px; }
+.doc-props .field { margin: 0; }
+.doc-props .grow { flex: 1; min-width: 14rem; }
+.doc-props .grow input { flex: 1; }
+.doc-actions { gap: 8px; align-items: center; margin-left: auto; }
+.doc-columns { display: grid; grid-template-columns: minmax(240px, 310px) 1fr; gap: 20px; align-items: start; }
+@media (max-width: 1000px) { .doc-columns { grid-template-columns: 1fr; } }
+.doc-outline h2, .doc-body h2 { font-size: 1.05rem; margin: 0 0 8px; }
+.doc-outline h3 { font-size: 0.95rem; margin: 16px 0 6px; }
+.outline { list-style: none; margin: 0 0 8px; padding: 0; counter-reset: point; }
+.outline .point { display: grid; grid-template-columns: 1.4rem 7.5rem 1fr; gap: 4px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); }
+.outline .point > input:first-child { grid-column: 2 / 4; }
+.outline .point > .point-ref { grid-column: 2; }
+.outline .point input { min-width: 0; padding: 4px 6px; }
+.outline .point.level-1 { counter-increment: point; }
+.outline .point.level-1::before { content: counter(point) "."; font-weight: 600; color: var(--accent); font-size: 0.85em; }
+.outline .point.level-2::before { content: "–"; color: var(--muted); text-align: right; padding-right: 2px; }
+.outline .point.level-2 { padding-left: 1rem; }
+.outline .point-ref { font-size: 0.85em; }
+.outline .point-actions { grid-column: 3; gap: 3px; flex-wrap: wrap; }
+.outline .point-actions button { padding: 0 7px; font-size: 0.85em; min-height: 0; }
+.quote-row select { max-width: 9rem; }
+.doc-text .editor-root, .doc-text [contenteditable] { min-height: 420px; font-family: var(--reading); }
+.save-state { white-space: nowrap; }
+
 .entries { padding-left: 1.4rem; }
 .entry-row { display: flex; justify-content: space-between; gap: 10px; border-top: 1px solid var(--line); padding: 8px 0; }
 .entry-main { flex: 1; min-width: 0; }

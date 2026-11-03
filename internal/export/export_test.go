@@ -391,6 +391,33 @@ func TestNotesListsAndPlansExport(t *testing.T) {
 	}
 }
 
+func TestSermonExport(t *testing.T) {
+	e := setup(t)
+	var doc struct{ ID string }
+	e.must("document.create", map[string]any{"title": "God so loved", "passage": "John 3:16-18",
+		"points": []map[string]any{{"h": "The giver", "ref": "John 3:16"}, {"h": "A gift, not a verdict", "ref": "John 3:17", "level": 2}},
+		"body":   "## Opening\n\nWhat does it mean to be **loved**?"}, &doc)
+	var q struct {
+		Allowed bool
+		Reason  string
+	}
+	e.must("document.quote", map[string]any{"id": doc.ID, "ref": "John 3:16", "module": "web"}, &q)
+	if !q.Allowed {
+		t.Fatalf("quote refused: %s", q.Reason)
+	}
+	_, md := e.make("md", []map[string]any{{"kind": "document", "id": doc.ID}}, nil)
+	for _, w := range []string{"Sermon · John 3:16-18", "Outline", "1. The giver *(John 3:16)*", "- A gift, not a verdict",
+		"Opening", "What does it mean to be **loved**?", "For God so loved the world", webCredit} {
+		if !bytes.Contains(md, []byte(w)) {
+			t.Errorf("Markdown lacks %q:\n%s", w, md)
+		}
+	}
+	_, docx := e.make("docx", []map[string]any{{"kind": "document", "id": doc.ID}}, nil)
+	if d := checkDOCX(t, docx); !strings.Contains(d, "The giver") {
+		t.Errorf("Word document lacks the outline")
+	}
+}
+
 func TestReports(t *testing.T) {
 	e := setup(t)
 	// The real report.passage, on the test library.

@@ -13,6 +13,7 @@ import { plansView } from "./views/plans";
 import { readerView } from "./views/reader";
 import { follow, reportView } from "./views/report";
 import { searchView } from "./views/search";
+import { sermonsView } from "./views/sermons";
 import { settingsView } from "./views/settings";
 
 interface View {
@@ -30,10 +31,11 @@ const sections: { id: string; label: string; make: () => View }[] = [
   { id: "notes", label: "Notes", make: notesSectionView },
   { id: "lists", label: "Lists", make: listsView },
   { id: "plans", label: "Plans", make: plansView },
+  { id: "sermons", label: "Sermons", make: sermonsView },
   { id: "reports", label: "Reports", make: reportView },
   { id: "search", label: "Search", make: searchView },
-  { id: "commands", label: "Commands", make: commandsView },
   { id: "settings", label: "Settings", make: settingsView },
+  { id: "commands", label: "Commands", make: commandsView },
 ];
 
 const views = new Map<string, View>();
@@ -60,7 +62,8 @@ function show(id: string, focus = false) {
     else a.removeAttribute("aria-current");
   }
   document.title = `${s.label} · Xegesis`;
-  if (location.hash !== `#${s.id}`) history.replaceState(null, "", `#${s.id}`);
+  // An address inside a section (#sermons/<id>) is kept for the section to open.
+  if (location.hash !== `#${s.id}` && !location.hash.startsWith(`#${s.id}/`)) history.replaceState(null, "", `#${s.id}`);
   v.show();
   if (focus) (v.focus ? v.focus() : main.focus());
 }
@@ -110,7 +113,7 @@ function boot(tries = 10) {
   });
   // Links in reports and saved notes are app addresses such as #passage/Rom.8.28 (views/report.ts).
   window.addEventListener("hashchange", () => {
-    if (!follow(location.hash)) show(location.hash.slice(1));
+    if (!follow(location.hash)) show(location.hash.slice(1).split("/")[0]);
   });
   // Files and folders dropped on the window are added to the library.
   onEvent("files:dropped", (paths) => {
@@ -119,7 +122,7 @@ function boot(tries = 10) {
     view("library").drop?.(paths as string[]);
   });
   onEvent("library:changed", () => views.get("library")?.changed?.());
-  if (!follow(location.hash)) show(location.hash.slice(1) || "reader");
+  if (!follow(location.hash)) show(location.hash.slice(1).split("/")[0] || "reader");
 }
 
 window.addEventListener("load", () => boot());

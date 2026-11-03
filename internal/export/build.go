@@ -11,6 +11,7 @@ import (
 	"github.com/Perlsowisdom/xegesis/internal/bible"
 	"github.com/Perlsowisdom/xegesis/internal/command"
 	"github.com/Perlsowisdom/xegesis/internal/command/core"
+	"github.com/Perlsowisdom/xegesis/internal/document"
 	"github.com/Perlsowisdom/xegesis/internal/library"
 	"github.com/Perlsowisdom/xegesis/internal/licence"
 	"github.com/Perlsowisdom/xegesis/internal/lists"
@@ -439,8 +440,10 @@ func (bd *builder) source(src Source) ([]draft, error) {
 		return bd.plan(src)
 	case "report":
 		return bd.report(src)
+	case "document":
+		return bd.document(src)
 	}
-	return nil, command.Errorf("bad_params", "unknown kind %q (use passage, book, note, list, plan or report)", src.Kind)
+	return nil, command.Errorf("bad_params", "unknown kind %q (use passage, book, note, list, plan, report or document)", src.Kind)
 }
 
 func chars(s string) int { return utf8.RuneCountInString(s) }
@@ -669,6 +672,50 @@ func (bd *builder) note(src Source) ([]draft, error) {
 	}
 	if len(n.Tags) > 0 {
 		d.units = append(d.units, unit{block: Block{Kind: Para, Spans: []Span{{Text: "Tags: " + strings.Join(n.Tags, ", "), Italic: true}}}})
+	}
+	return []draft{d}, nil
+}
+
+// document is a sermon, lesson or study: its outline as a numbered list, then its text. Bible text
+// quoted into it already passed its licence check (document.quote) and carries its credit.
+func (bd *builder) document(src Source) ([]draft, error) {
+	if src.ID == "" {
+		return nil, command.Errorf("bad_params", "a document needs id")
+	}
+	var doc document.Document
+	if err := bd.run("document.get", map[string]any{"id": src.ID}, &doc); err != nil {
+		return nil, err
+	}
+	sub := []string{map[string]string{"sermon": "Sermon", "lesson": "Lesson", "study": "Bible study"}[doc.Kind]}
+	if doc.Passage != nil {
+		sub = append(sub, doc.Passage.Display)
+	}
+	d := draft{piece: Piece{Title: doc.Title, Subtitle: strings.Join(sub, " · ")}}
+	if len(doc.Points) > 0 {
+		d.units = append(d.units, unit{block: Block{Kind: Heading, Level: 2, Spans: plain("Outline")}})
+		main := 0
+		for _, p := range doc.Points {
+			spans := plain(p.Heading)
+			if p.Ref != "" {
+				if len(spans) > 0 {
+					spans = append(spans, Span{Text: " "})
+				}
+				spans = append(spans, Span{Text: "(" + p.Ref + ")", Italic: true})
+			}
+			if p.Level == 2 {
+				d.units = append(d.units, unit{block: Block{Kind: Bullet, Spans: spans}})
+				continue
+			}
+			main++
+			d.units = append(d.units, unit{block: Block{Kind: Numbered, Num: fmt.Sprint(main), Spans: spans}})
+		}
+	}
+	blocks := parseNote(doc.Body)
+	if len(blocks) > 0 && len(doc.Points) > 0 {
+		d.units = append(d.units, unit{block: Block{Kind: Heading, Level: 2, Spans: plain("Text")}})
+	}
+	for _, b := range blocks {
+		d.units = append(d.units, unit{block: b})
 	}
 	return []draft{d}, nil
 }

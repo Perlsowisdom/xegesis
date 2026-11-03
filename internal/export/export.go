@@ -40,7 +40,7 @@ type service struct {
 
 // Source is one thing to print or export.
 type Source struct {
-	Kind string `json:"kind" required:"true" enum:"passage,book,note,list,plan,report" desc:"What to include"`
+	Kind string `json:"kind" required:"true" enum:"passage,book,note,list,plan,report,document" desc:"What to include"`
 
 	Ref           string   `json:"ref,omitempty" desc:"passage: the reference, e.g. \"John 3:16-18\""`
 	Modules       []string `json:"modules,omitempty" desc:"passage: Bible module IDs, in column order"`
@@ -53,7 +53,7 @@ type Source struct {
 	To     int    `json:"to,omitempty" desc:"book: last section or PDF page"`
 	Skip   int    `json:"skip,omitempty" desc:"book: paragraphs at the start to leave out (the part already printed)"`
 
-	ID     string `json:"id,omitempty" desc:"note, list or plan: its ID"`
+	ID     string `json:"id,omitempty" desc:"note, list, plan or document: its ID"`
 	Module string `json:"module,omitempty" desc:"list: a Bible to quote a verse list's verses from"`
 
 	Report string          `json:"report,omitempty" desc:"report: passage, word or topic"`

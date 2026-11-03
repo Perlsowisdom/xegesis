@@ -2,7 +2,7 @@
 // tested on their own.
 
 export interface ExportSource {
-  kind: "passage" | "book" | "note" | "list" | "plan" | "report";
+  kind: "passage" | "book" | "note" | "list" | "plan" | "report" | "document";
   [key: string]: unknown;
 }
 
