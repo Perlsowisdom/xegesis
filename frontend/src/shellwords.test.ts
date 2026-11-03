@@ -1,0 +1,103 @@
+import { describe, expect, it } from "vitest";
+import {
+  RAIL_DEFAULTS, SIDEBAR_DEFAULTS, activeTool, addRecent, gridButtonPlace, isView, moveTool, normalizeProvider, normalizeRail,
+  normalizeReading, normalizeSidebar, normalizeTools, placeForKey, placeOf, providerText, railPlaces, showTool, stepSize,
+  toggleHidden, visibleTools,
+} from "./shellwords";
+
+describe("places", () => {
+  it("puts every former section in a place", () => {
+    const where = Object.fromEntries(["bibles", "library", "notes", "lists", "plans", "sermons", "reports", "search", "settings", "commands", "reader"]
+      .map((v) => [v, placeOf(v).id]));
+    expect(where).toEqual({
+      bibles: "library", library: "library", notes: "work", lists: "work", plans: "reader", sermons: "work",
+      reports: "work", search: "search", settings: "settings", commands: "settings", reader: "reader",
+    });
+  });
+  it("falls back to the Reader", () => {
+    expect(placeOf("nowhere").id).toBe("reader");
+    expect(isView("nowhere")).toBe(false);
+    expect(isView("sermons")).toBe(true);
+  });
+  it("maps Alt+1 to Alt+4 to the rail places", () => {
+    expect(["1", "2", "3", "4", "5", "0", "x"].map(placeForKey)).toEqual(["search", "library", "reader", "work", null, null, null]);
+  });
+});
+
+describe("rail preferences", () => {
+  it("defaults to condensed, not hiding, with the grid on the rail", () => {
+    expect(normalizeRail(undefined)).toEqual(RAIL_DEFAULTS);
+    expect(normalizeRail("junk")).toEqual(RAIL_DEFAULTS);
+  });
+  it("keeps valid values and drops the rest", () => {
+    expect(normalizeRail({ width: "expanded", autoHide: true, hidden: ["work", "reader", "x", "search"], gridOnRail: false }))
+      .toEqual({ width: "expanded", autoHide: true, hidden: ["search", "work"], gridOnRail: false });
+  });
+  it("hides places but never the Reader", () => {
+    let p = toggleHidden(RAIL_DEFAULTS, "library", true);
+    expect(railPlaces(p)).toEqual(["search", "reader", "work"]);
+    p = toggleHidden(p, "reader", true);
+    expect(railPlaces(p)).toEqual(["search", "reader", "work"]);
+    p = toggleHidden(p, "library", false);
+    expect(railPlaces(p)).toEqual(["search", "library", "reader", "work"]);
+  });
+  it("puts the grid button on the rail or the toolbar in Study mode only", () => {
+    expect(gridButtonPlace("read", RAIL_DEFAULTS)).toBeNull();
+    expect(gridButtonPlace("study", RAIL_DEFAULTS)).toBe("rail");
+    expect(gridButtonPlace("study", { ...RAIL_DEFAULTS, gridOnRail: false })).toBe("toolbar");
+  });
+});
+
+describe("right sidebar tools", () => {
+  it("shows every tool by default, starting closed", () => {
+    expect(normalizeSidebar(null)).toEqual(SIDEBAR_DEFAULTS);
+    expect(visibleTools(SIDEBAR_DEFAULTS.tools)).toEqual(["chat", "related", "notes", "word", "compare"]);
+  });
+  it("keeps the saved order, drops unknown and repeated tools, adds new ones", () => {
+    const t = normalizeTools([{ id: "word", shown: false }, { id: "nope" }, { id: "chat" }, { id: "word" }]);
+    expect(t).toEqual([
+      { id: "word", shown: false }, { id: "chat", shown: true }, { id: "related", shown: true },
+      { id: "notes", shown: true }, { id: "compare", shown: true },
+    ]);
+  });
+  it("moves tools up and down within bounds", () => {
+    const t = SIDEBAR_DEFAULTS.tools;
+    expect(visibleTools(moveTool(t, "notes", -1))).toEqual(["chat", "notes", "related", "word", "compare"]);
+    expect(moveTool(t, "chat", -1)).toBe(t);
+    expect(moveTool(t, "compare", 1)).toBe(t);
+  });
+  it("chooses a shown tool", () => {
+    const t = showTool(SIDEBAR_DEFAULTS.tools, "related", false);
+    expect(activeTool(t, "related")).toBe("chat");
+    expect(activeTool(t, "word")).toBe("word");
+    expect(normalizeSidebar({ open: true, tool: "related", tools: t }).tool).toBe("chat");
+  });
+});
+
+describe("reading preferences", () => {
+  it("defaults to Read mode and normal text", () => {
+    expect(normalizeReading({ mode: "x", size: 3 })).toEqual({ mode: "read", size: 100, font: "serif", width: "narrow" });
+    expect(normalizeReading({ mode: "study", size: 130, font: "sans", width: "wide" })).toEqual({ mode: "study", size: 130, font: "sans", width: "wide" });
+  });
+  it("steps text sizes", () => {
+    expect(stepSize(100, 1)).toBe(115);
+    expect(stepSize(85, -1)).toBe(85);
+    expect(stepSize(150, 1)).toBe(150);
+    expect(stepSize(99, 1)).toBe(115);
+  });
+});
+
+describe("assistant and recent searches", () => {
+  it("only accepts known providers", () => {
+    expect(normalizeProvider("codex")).toBe("codex");
+    expect(normalizeProvider("skynet")).toBe("off");
+    expect(providerText("claude")).toBe("Claude, with your own key");
+    expect(providerText("local")).toBe("Local model, on this computer");
+    expect(providerText("off")).toBe("Off");
+  });
+  it("keeps recent searches unique and short", () => {
+    let r: string[] = [];
+    for (const q of ["love", "grace", "  Love  ", "", "a", "b", "c", "d", "e", "f"]) r = addRecent(r, q);
+    expect(r).toEqual(["f", "e", "d", "c", "b", "a", "Love", "grace"]);
+  });
+});

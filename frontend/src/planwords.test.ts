@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DayInfo, PlanInfo, TodayInfo, behindText, finishText, friendlyDate, handDays, isoDate, localDate, progressText, readingText, splitList, statusText } from "./planwords";
+import { DayInfo, PlanInfo, TodayInfo, behindText, finishText, friendlyDate, handDays, isoDate, localDate, progressText, readingText, splitList, statusText, todayLine } from "./planwords";
 
 const plan = (over: Partial<PlanInfo> = {}): PlanInfo => ({ id: "P", name: "Gospels", start_date: "2026-03-02", weekdays: [],
   days: 30, days_done: 12, days_left: 18, behind: 0, finish: "2026-03-31", finished: false, ...over });
@@ -49,5 +49,15 @@ describe("typed lists", () => {
   });
   it("reads days listed by hand", () => {
     expect(handDays("John 1; Ps 23\n\nRom 8")).toEqual([{ refs: ["John 1", "Ps 23"] }, { refs: ["Rom 8"] }]);
+  });
+});
+
+describe("today line", () => {
+  const day = (n: number, done = false): DayInfo => ({ day: n, date: "2026-03-05", readings: [{ ref: "John 3" }, { ref: "John 4" }], done });
+  it("sums up today's reading in one line", () => {
+    const t: TodayInfo = { plan: plan(), date: "2026-03-05", status: "behind", today: day(7), missed: [day(5), day(6)] };
+    expect(todayLine([t])).toBe("Gospels · Day 7: John 3, John 4 · 2 behind");
+    expect(todayLine([{ ...t, missed: [], today: day(7, true), status: "done_for_today" }, t])).toBe("Gospels · Day 7: John 3, John 4 (done) · and 1 more plan");
+    expect(todayLine([])).toBe("");
   });
 });
