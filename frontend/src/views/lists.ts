@@ -10,7 +10,7 @@ import { navigate } from "../state";
 import { flash } from "../listpicker";
 
 const KINDS: [SavedList["kind"], string][] = [["verses", "Verses"], ["words", "Words"], ["excerpts", "Excerpts from books"]];
-const KIND_NAME: Record<string, string> = { verses: "Verse list", words: "Word list", excerpts: "Excerpt list" };
+export const KIND_NAME: Record<string, string> = { verses: "Verse list", words: "Word list", excerpts: "Excerpt list" };
 
 export function listsView() {
   const msg = new Message();
@@ -108,7 +108,7 @@ export function listsView() {
   return { el, show };
 }
 
-function emptyHint(kind: string): string {
+export function emptyHint(kind: string): string {
   return kind === "verses" ? "Empty. In the Reader, select verses and choose Add to list."
     : kind === "words" ? "Empty. In the Reader, select a word and choose Add to a word list."
       : "Empty. In a book, select some text and choose Add to list.";
@@ -118,11 +118,14 @@ function entryName(e: ListEntry): string {
   return e.ref?.display ?? e.lemma ?? e.word ?? (e.text ? e.text.slice(0, 30) : "entry");
 }
 
-function entryBody(kind: string, e: ListEntry): Node[] {
+// entryBody draws one entry of a list. go, when given, shows a passage there (a list tab in the
+// study grid moves its linked panes); otherwise verses open in the Reader.
+export function entryBody(kind: string, e: ListEntry, go?: (display: string) => void): Node[] {
   const note = e.note ? [h("p", { class: "hint" }, e.note)] : [];
   if (kind === "verses" && e.ref) {
     const ref = e.ref;
     return [button(ref.display, async () => {
+      if (go) return go(ref.display);
       const p = await run<Ref>("verse.parse", { ref: ref.osis }).catch(() => null);
       if (!p) return;
       navigate("reader");

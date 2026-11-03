@@ -5,7 +5,7 @@
 
 import { Message } from "../api";
 import { button, h } from "../dom";
-import { draggableSpec, studyGrid } from "../document/studygrid";
+import { studyGrid } from "../document/studygrid";
 import { setOpener } from "../document/open";
 import { openGridPresets, setGridPresets } from "../gridhook";
 import { icon } from "../icons";
@@ -15,8 +15,6 @@ import { ReaderMode, ReadingPrefs, TEXT_SIZES, gridButtonPlace, stepSize } from 
 import { navigate, onPrefs, prefs, setPrefs, state } from "../state";
 import { openReport } from "./report";
 import { sidebar } from "./sidebar";
-
-export { draggableSpec };
 
 function iconButton(name: string, label: string, onclick: (e: Event) => void, attrs: Record<string, unknown> = {}): HTMLButtonElement {
   return h("button", { type: "button", class: "icon-btn", "aria-label": label, title: label, ...attrs, onclick }, icon(name));

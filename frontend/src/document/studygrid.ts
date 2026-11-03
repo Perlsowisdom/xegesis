@@ -15,31 +15,12 @@ import {
   equalise, findPane, findTab, insertTab, moveTab, openTab, paneRef, panes, resizeColumns, resizePanes, restore,
   selectPane, selectTab, setLinked, setRef, shape, updateTab,
 } from "./grid";
+import { DRAG_TYPE, dragging, setDragging } from "./drag";
 import { mountDoc } from "./mount";
 import { DocHost, DocView, followsPassage, tabLabel } from "./view";
 
 const GRID_KEY = "xegesis.grid";
 const STEP = 0.05;
-
-// Dragging ---------------------------------------------------------------------------------------------
-// HTML5 drag and drop only shows a drag's data on drop, so what is being dragged is kept here too.
-
-let dragging: { tabId?: string; spec?: TabSpec } | null = null;
-const DRAG_TYPE = "application/x-xegesis-tab";
-
-// draggableSpec makes an element outside the grid (a Library row, a Related card) drag a new tab in.
-export function draggableSpec(el: HTMLElement, spec: () => TabSpec | null): void {
-  el.draggable = true;
-  el.addEventListener("dragstart", (e) => {
-    const s = spec();
-    if (!s || !e.dataTransfer) return;
-    dragging = { spec: s };
-    e.dataTransfer.setData(DRAG_TYPE, JSON.stringify(s));
-    e.dataTransfer.setData("text/plain", s.title ?? "");
-    e.dataTransfer.effectAllowed = "copy";
-  });
-  el.addEventListener("dragend", () => { dragging = null; });
-}
 
 // zoneAt picks where a drop lands from the pointer's place in the pane: near an edge splits it,
 // the middle (or the tab strip) moves the tab into it.
@@ -92,6 +73,10 @@ export function studyGrid(o: StudyGridOptions) {
     if (!n || n === g) return;
     g = n;
     savePref(GRID_KEY, g);
+    render();
+  }
+
+  function render() {
     if (rendering) {
       again = true;
       return;
@@ -100,7 +85,7 @@ export function studyGrid(o: StudyGridOptions) {
     try {
       do {
         again = false;
-        render();
+        draw();
       } while (again);
     } finally {
       rendering = false;
@@ -147,7 +132,7 @@ export function studyGrid(o: StudyGridOptions) {
     parent.replaceChildren(...kids);
   }
 
-  function render() {
+  function draw() {
     const read = o.mode() === "read";
     el.dataset.mode = read ? "read" : "study";
     const sel = findPane(g, g.selected)?.pane ?? panes(g)[0];
@@ -213,6 +198,13 @@ export function studyGrid(o: StudyGridOptions) {
     ui.el.dataset.row = String(pi);
 
     clear(ui.tabs, p.tabs.map((t) => tabButton(p, t)));
+    const strip = ui.tabs.parentElement!;
+    const on = ui.tabs.querySelector<HTMLElement>(".grid-tab.on");
+    // Keep the current tab in view when the strip is too narrow for all of them.
+    if (on) requestAnimationFrame(() => {
+      const a = on.offsetLeft - strip.offsetLeft;
+      if (a < strip.scrollLeft || a + on.offsetWidth > strip.scrollLeft + strip.clientWidth) strip.scrollLeft = a - 8;
+    });
     ui.link.setAttribute("aria-pressed", String(p.linked));
     ui.link.replaceChildren(icon(p.linked ? "link" : "unlink"));
     const linkText = p.linked ? "Linked: follows the shared passage. Press to keep its own." : "Not linked: keeps its own passage. Press to follow the shared one.";
@@ -256,7 +248,7 @@ export function studyGrid(o: StudyGridOptions) {
       }
     });
     b.addEventListener("dragstart", (e) => {
-      dragging = { tabId: t.id };
+      setDragging({ tabId: t.id });
       e.dataTransfer?.setData(DRAG_TYPE, t.id);
       e.dataTransfer?.setData("text/plain", label);
       if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
@@ -319,7 +311,7 @@ export function studyGrid(o: StudyGridOptions) {
   }
 
   function endDrag() {
-    dragging = null;
+    setDragging(null);
     for (const ui of uis.values()) ui.preview.hidden = true;
   }
 

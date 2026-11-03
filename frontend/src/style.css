@@ -229,6 +229,7 @@ td.actions button { margin: 0 2px 2px 0; }
 .grid-tab-close { border: 0; background: none; padding: 2px 4px; color: var(--muted); opacity: .55; cursor: pointer; display: inline-flex; }
 .grid-tab-close .icon { width: 13px; height: 13px; }
 .grid-tab:hover .grid-tab-close, .grid-tab.on .grid-tab-close { opacity: 1; }
+.grid-plus { flex: none; position: sticky; right: 0; background: var(--panel); }
 .grid-plus .icon, .grid-link .icon { width: 17px; height: 17px; }
 .grid-link[aria-pressed="true"] { color: var(--accent); }
 .grid-place { flex: 0 1 13rem; min-width: 0; display: flex; }
@@ -664,3 +665,21 @@ details.more summary { cursor: pointer; color: var(--accent); }
 .provider-chip { border-radius: 999px; }
 .provider-chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
 .privacy-list dd { margin-bottom: 8px; }
+
+/* Tabs that are not documents: notes, sermons, lists and the compact browsers (document/*.ts). */
+.doc-title { font-size: 1.1rem; font-weight: 600; flex: 1 1 12rem; }
+.doc-heading { font-size: 1.15rem; margin: 4px 0; }
+.note-head { margin-bottom: 8px; }
+.sermon-facts { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 4px 0 8px; font-size: .9rem; }
+.sermon-facts dt { color: var(--muted); }
+.sermon-facts dd { margin: 0; }
+.outline-view { margin: 0 0 8px; padding-left: 20px; }
+.outline-view .level-2 { margin-left: 18px; list-style: circle; }
+.browse-search { flex: 1 1 10rem; margin-bottom: 6px; }
+.browse-search input { width: 100%; }
+.browse-section { margin: 4px 0; }
+.browse-section > summary { cursor: pointer; font-weight: 600; font-size: .9rem; padding: 4px 0; }
+.browse-list li { display: flex; gap: 8px; align-items: baseline; padding: 3px 4px; border-radius: 6px; }
+.browse-list li .hint { margin: 0; font-size: .8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.browse-list li:hover { background: var(--panel); }
+.drags-tab { cursor: grab; }
