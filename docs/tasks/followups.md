@@ -17,3 +17,17 @@ Small issues to fold into the next task that touches each area, or a tidy-up pas
 - Tagged words cannot be reached with the keyboard.
 - Migrations are tracked by one version number, so an out-of-order merge could skip one; record each
   applied migration instead.
+
+## From the T34a/T34b redesign (3 November 2026)
+
+- Check Study mode in the real app: the grid, drag to split, presets, resizing, Move to…, and the
+  right-click menu. It was only tested in a browser with stub data, and the screenshot option can't
+  reach it.
+- Check the rail popovers, auto-hide and the right sidebar in the real app.
+- Sermons have no "date preached" or "theme" fields yet. They need a Go schema change (T17 or T34c).
+  The user named passage, date preached and theme as the three most important things.
+- The Reader shows only the verse in the passage box (Romans 8:28), not the chapter around it.
+  Decide whether a passage should show the whole chapter scrolled to the verse.
+- Narrow panes (under 440px) are meant to wrap their tabs; this hasn't been confirmed on screen.
+- Next stages: T34c (Library and My work: Filter popover, folders holding notes and sermons,
+  collapsible sections, bin) and T36 (the AI assistant).
