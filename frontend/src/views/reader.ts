@@ -1,39 +1,54 @@
-// Reader: a passage box, the Bible text (one Bible or parallel columns), an optional library book
-// (views/book.ts) and the notes on that passage side by side.
+// Reader: a slim top bar (Read | Study, search in what is open, the passage box, the Bibles shown,
+// reading settings and a ⋯ menu), today's reading as one line, then the Bible text, with a library
+// book beside it in Study mode (views/book.ts). Study tools live in the right sidebar (sidebar.ts).
 
-import { printExportButton } from "../printexport";
+import { openExport } from "../printexport";
 import { Highlight, Message, Module, Ref, run } from "../api";
 import { button, clear, h } from "../dom";
-import { Book, Column, Verse, alignColumns, highlightFor, neighbourChapters, selectionRuns, verseParts, verseRangeText } from "../helpers";
+import { openGridPresets } from "../gridhook";
+import {
+  Book, Column, Verse, alignColumns, highlightFor, markSegments, neighbourChapters, selectionRuns, verseParts, verseRangeText,
+} from "../helpers";
+import { icon } from "../icons";
 import { addToList } from "../listpicker";
-import { notesPanel } from "../notes";
 import { todayCard } from "../plancard";
-import { lastRef, onPassage, setModules, setPassage, state } from "../state";
+import { closePopover, togglePopover } from "../popover";
+import { ReaderMode, ReadingPrefs, TEXT_SIZES, gridButtonPlace, stepSize } from "../shellwords";
+import { lastRef, navigate, onPassage, onPrefs, prefs, setModules, setPassage, setPrefs, state } from "../state";
 import { bookPane } from "./book";
 import { openReport } from "./report";
-import { studyPanel } from "./study";
+import { searchFor } from "./search";
+import { sidebar } from "./sidebar";
 import { renderMarkup } from "../markup";
+
+interface Hit { id: number; module: string; ref: string; text: string; snippet?: string }
+
+const FIND_LIMIT = 30;
+
+function iconButton(name: string, label: string, onclick: (e: Event) => void, attrs: Record<string, unknown> = {}): HTMLButtonElement {
+  return h("button", { type: "button", class: "icon-btn", "aria-label": label, title: label, ...attrs, onclick }, icon(name));
+}
 
 export function readerView() {
   const msg = new Message();
+  const side = sidebar();
   const input = h("input", { type: "search", id: "passage", value: lastRef(), autocomplete: "off", spellcheck: "false",
-    placeholder: "e.g. John 3:16 or Rom 8", "aria-keyshortcuts": "Control+L", "aria-describedby": "passage-parsed" });
-  const parsed = h("span", { id: "passage-parsed", class: "hint", "aria-live": "polite" });
-  const prev = button("‹ Previous chapter", () => step("prev"), { disabled: true, "aria-keyshortcuts": "Alt+ArrowLeft" });
-  const next = button("Next chapter ›", () => step("next"), { disabled: true, "aria-keyshortcuts": "Alt+ArrowRight" });
+    placeholder: "e.g. John 3:16 or Rom 8", "aria-label": "Passage", "aria-keyshortcuts": "Control+L", "aria-describedby": "passage-parsed" });
+  const parsed = h("span", { id: "passage-parsed", class: "sr-only", "aria-live": "polite" });
+  const prev = iconButton("prev", "Previous chapter", () => step("prev"), { disabled: true, "aria-keyshortcuts": "Alt+ArrowLeft", title: "Previous chapter (Alt+←)" });
+  const next = iconButton("next", "Next chapter", () => step("next"), { disabled: true, "aria-keyshortcuts": "Alt+ArrowRight", title: "Next chapter (Alt+→)" });
   const picker = h("div", { class: "module-picker", role: "group", "aria-label": "Bibles to show" });
   const text = h("article", { class: "bible-text", "aria-live": "polite", tabindex: "-1", "aria-label": "Bible text" });
   const selbar = h("div", { class: "selbar", role: "toolbar", "aria-label": "Selected verses", hidden: true });
-  const showNotes = h("input", { type: "checkbox", id: "show-notes", checked: true });
-  const notes = notesPanel({
-    heading: "Notes on this passage",
-    scope: () => (state.parsed ? { ref: state.parsed.osis, display: state.parsed.display } : null),
-  });
   const today = todayCard();
-  const study = studyPanel((ref) => go(ref), () => layout());
-  const book = bookPane((open) => panes.classList.toggle("with-book", open));
-  const panes = h("div", { class: "panes" }, h("section", { class: "pane", "aria-label": "Text" }, selbar, text), book.el, h("aside", { class: "pane" }, study.el, notes.el));
-  const words = { onWord: study.showWord, onRef: (osis: string) => go(osis) };
+  const panes = h("div", { class: "reader-panes" }, h("section", { class: "pane", "aria-label": "Text" }, selbar, text));
+  const book = bookPane((open) => {
+    panes.classList.toggle("with-book", open);
+    // A book opens beside the Bible, which is Study mode.
+    if (open && prefs.reading.mode === "read") setMode("study");
+  });
+  panes.append(book.el);
+  const words = { onWord: side.showWord, onRef: (osis: string) => go(osis) };
   let modules: Module[] = [];
   let books: Book[] = [];
   let neighbours: { prev: string | null; next: string | null } = { prev: null, next: null };
@@ -43,36 +58,114 @@ export function readerView() {
   let shown: number[] = [];
   let highlights: Highlight[] = [];
 
-  const form = h("form", { class: "passage-bar", role: "search" },
-    h("label", { for: "passage" }, "Passage"), input, h("button", { type: "submit", class: "primary" }, "Read"),
+  // Read | Study ---------------------------------------------------------------------------------
+  const modes: ReaderMode[] = ["read", "study"];
+  const modeBtns = modes.map((m) => {
+    const b = h("button", { type: "button", "aria-pressed": "false" }, m === "read" ? "Read" : "Study");
+    b.addEventListener("click", () => setMode(m));
+    return b;
+  });
+  const modeSwitch = h("div", { class: "segmented", role: "group", "aria-label": "Mode" }, modeBtns);
+  function setMode(m: ReaderMode) {
+    if (prefs.reading.mode !== m) setPrefs({ reading: { ...prefs.reading, mode: m } });
+  }
+
+  // Search in what is open ------------------------------------------------------------------------
+  const findInput = h("input", { type: "search", "aria-label": "Search in the open Bibles", placeholder: "Search in what is open", autocomplete: "off" });
+  const findForm = h("form", { class: "find", role: "search", hidden: true }, findInput);
+  const findBtn = iconButton("search", "Search in what is open", () => {
+    findForm.hidden = !findForm.hidden;
+    findBtn.setAttribute("aria-expanded", String(!findForm.hidden));
+    if (!findForm.hidden) findInput.focus();
+  }, { "aria-expanded": "false" });
+  findInput.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !findInput.value) {
+      findForm.hidden = true;
+      findBtn.setAttribute("aria-expanded", "false");
+      findBtn.focus();
+    }
+  });
+  findForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    void find(findInput.value.trim());
+  });
+
+  async function find(q: string) {
+    if (!q) return;
+    const chosen = state.modules.filter((m) => modules.some((x) => x.id === m));
+    const hits = await msg.attempt(() => run<Hit[]>("bible.search", { query: q, mode: "all", limit: FIND_LIMIT, ...(chosen.length ? { modules: chosen } : {}) }));
+    if (!hits) return;
+    const names = chosen.map((id) => modules.find((m) => m.id === id)?.abbreviation || id).join(", ") || "your Bibles";
+    closePopover();
+    togglePopover(findInput, () => h("div", { class: "pop-body find-results" },
+      h("p", { class: "hint", role: "status" }, hits.length === 0 ? `No matches in ${names}.`
+        : `${hits.length === FIND_LIMIT ? `The first ${FIND_LIMIT} matches` : `${hits.length} ${hits.length === 1 ? "match" : "matches"}`} in ${names}`),
+      h("ol", { class: "results" }, hits.map((hit) => h("li", {},
+        button(hit.ref, () => { closePopover(); void go(hit.ref); }, { class: "link" }),
+        h("p", {}, markSegments(hit.snippet || hit.text).map((s) => (s.mark ? h("mark", {}, s.text) : s.text)))))),
+      button("Search with more options…", () => { closePopover(); searchFor(q); }, { class: "link" })),
+    { label: "Matches", side: "below" });
+  }
+
+  // Bibles, reading settings, grid and the ⋯ menu --------------------------------------------------
+  const biblesBtn = h("button", { type: "button", class: "bibles-btn", "aria-haspopup": "dialog", "aria-expanded": "false", title: "Choose the Bibles to show" }, "Bibles");
+  biblesBtn.addEventListener("click", () => togglePopover(biblesBtn, () => h("div", { class: "pop-body" },
+    h("h2", { class: "pop-title" }, "Bibles to show"),
+    h("p", { class: "hint" }, "Choose two or more to read them side by side."),
+    picker), { label: "Bibles to show", side: "below" }));
+
+  const aaBtn = h("button", { type: "button", class: "aa-btn", "aria-haspopup": "dialog", "aria-expanded": "false", "aria-label": "Reading settings", title: "Reading settings" }, "Aa");
+  aaBtn.addEventListener("click", () => togglePopover(aaBtn, () => readingControls(), { label: "Reading settings", side: "below" }));
+
+  const gridBtn: HTMLButtonElement = iconButton("grid", "Grid presets", () => openGridPresets(gridBtn), { "aria-haspopup": "dialog", "aria-expanded": "false" });
+
+  const moreBtn: HTMLButtonElement = iconButton("more", "More", () => togglePopover(moreBtn, () => h("div", { class: "menu-list" },
     button("Passage report", () => state.parsed && openReport("passage", state.parsed.osis),
-      { title: "Everything your library holds about this passage, in one place" }), parsed);
+      { title: "Everything your library holds about this passage, in one place" }),
+    button("Notes on this passage", () => side.open("notes")),
+    button("Print or save…", () => printPassage(), { title: "Print, or save as PDF, Word, a web page or Markdown" }),
+    button("Open a book beside the Bible", () => book.choose()),
+    button("Reading plans", () => navigate("plans"))), { label: "More", side: "below", menu: true }),
+  { "aria-haspopup": "menu", "aria-expanded": "false" });
+
+  const sideBtn = iconButton("panel", "Right sidebar", () => side.toggle(), { "aria-controls": "rightbar", title: "Right sidebar (Ctrl+.)", "aria-keyshortcuts": "Control+." });
+
+  function printPassage() {
+    const chosen = state.modules.filter((m) => modules.some((x) => x.id === m));
+    if (!state.parsed || chosen.length === 0) {
+      msg.info("Choose a passage and at least one Bible to print.");
+      return;
+    }
+    openExport({ title: state.parsed.display, sources: [{ kind: "passage", ref: state.parsed.osis, modules: chosen }] });
+  }
+
+  const form = h("form", { class: "passage-box" }, prev, input, next, parsed);
   form.addEventListener("submit", (e) => {
     e.preventDefault();
     go(input.value);
   });
-  // The side column holds the notes (when wanted) and the study panel (when it has something).
-  function layout() {
-    notes.el.hidden = !showNotes.checked;
-    panes.classList.toggle("single", !showNotes.checked && study.empty());
-  }
-  showNotes.addEventListener("change", layout);
 
-  const el = h("div", { class: "view" },
-    h("h1", {}, "Reader"),
-    form,
-    h("div", { class: "row wrap" }, picker, h("span", { class: "spacer" }),
-      h("label", { class: "check" }, showNotes, " Notes beside the text"),
-      printExportButton(() => {
-        const chosen = state.modules.filter((m) => modules.some((x) => x.id === m));
-        if (!state.parsed || chosen.length === 0) {
-          msg.info("Choose a passage and at least one Bible to print.");
-          return null;
-        }
-        return { title: state.parsed.display, sources: [{ kind: "passage", ref: state.parsed.osis, modules: chosen }] };
-      }),
-      button("Open a book", () => book.choose(), { title: "Read a library book beside the Bible" }), prev, next),
-    today.el, msg.el, panes);
+  const bar = h("div", { class: "topbar", role: "group", "aria-label": "Reader" },
+    modeSwitch, findBtn, findForm, form, biblesBtn, aaBtn, gridBtn, h("span", { class: "spacer" }), moreBtn, sideBtn);
+
+  const el = h("div", { class: "view reader" },
+    h("h1", { class: "sr-only" }, "Reader"),
+    bar, today.el, msg.el, panes);
+
+  // applyPrefs shows the mode, the reading settings and where the grid button goes.
+  function applyPrefs() {
+    const r = prefs.reading;
+    el.dataset.mode = r.mode;
+    modeBtns.forEach((b, i) => b.setAttribute("aria-pressed", String(modes[i] === r.mode)));
+    aaBtn.hidden = r.mode !== "read";
+    gridBtn.hidden = gridButtonPlace(r.mode, prefs.rail) !== "toolbar";
+    text.style.setProperty("--text-size", `${r.size / 100}`);
+    text.dataset.font = r.font;
+    text.dataset.width = r.width;
+    sideBtn.setAttribute("aria-pressed", String(prefs.sidebar.open));
+  }
+  onPrefs(applyPrefs);
+  applyPrefs();
 
   async function go(ref: string) {
     ref = ref.trim();
@@ -90,7 +183,6 @@ export function readerView() {
   async function read() {
     const p = state.parsed;
     if (!p) return;
-    study.showPassage(p.osis);
     neighbours = books.length ? neighbourChapters(p.start, books) : { prev: null, next: null };
     prev.disabled = !neighbours.prev;
     next.disabled = !neighbours.next;
@@ -100,18 +192,15 @@ export function readerView() {
     if (chosen.length === 0) {
       shown = [];
       clear(text, h("p", { class: "empty" }, modules.length
-        ? "Choose a Bible above to read this passage."
-        : "No Bibles are installed yet. Install one in the Bibles section."));
+        ? "Choose a Bible to read this passage, from the Bibles button in the bar above."
+        : "No Bibles are installed yet. Get one in Library → Get Bibles."));
       return;
     }
     await loadHighlights();
-    if (chosen.length === 1) {
-      const r = await msg.attempt(() => run<{ ref: string; columns: Column[] }>("bible.parallel", { modules: chosen, ref: p.osis, markup: true }));
-      if (r) renderSingle(r.columns[0]);
-    } else {
-      const r = await msg.attempt(() => run<{ ref: string; columns: Column[] }>("bible.parallel", { modules: chosen, ref: p.osis, markup: true }));
-      if (r) renderParallel(r.columns);
-    }
+    const r = await msg.attempt(() => run<{ ref: string; columns: Column[] }>("bible.parallel", { modules: chosen, ref: p.osis, markup: true }));
+    if (!r) return;
+    if (chosen.length === 1) renderSingle(r.columns[0]);
+    else renderParallel(r.columns);
   }
 
   function heading(v: Verse, last: { chapter: number }) {
@@ -184,7 +273,7 @@ export function readerView() {
   function paint() {
     for (const e of text.querySelectorAll<HTMLElement>("[data-base]")) {
       const base = Number(e.dataset.base);
-      e.className = e.className.replace(/hl(-w+)?|picked/g, "").trim();
+      e.className = e.className.replace(/hl(-w+)?|picked/g, "").trim();
       const hl = highlightFor(highlights, base);
       if (hl) e.classList.add("hl", `hl-${hl.style}`);
       const on = selected.has(base);
@@ -253,21 +342,21 @@ export function readerView() {
       h("span", { class: "row", role: "group", "aria-label": "Highlight colour" },
         swatch("yellow", "yellow"), swatch("green", "green"), swatch("blue", "blue"), swatch("pink", "pink"), swatch("purple", "purple"), swatch("underline", "with an underline")),
       button("Remove highlight", () => unhighlight()),
-      button("Note", () => {
-        showNotes.checked = true;
-        layout();
-        notes.create(verseRangeText(rs[0][0], rs[0][1], books));
-      }),
+      button("Note", () => side.newNote(verseRangeText(rs[0][0], rs[0][1], books))),
       button("Add to list", () => addToList("verses", "these verses", rs.map(([a, b]) => ({ verse_start: a, verse_end: b })))),
       button("Clear selection", () => { selected.clear(); updateSelbar(); }));
   }
 
   function renderPicker() {
+    const chosen = state.modules.filter((id) => modules.some((m) => m.id === id))
+      .map((id) => modules.find((m) => m.id === id)?.abbreviation || id);
+    biblesBtn.textContent = chosen.length ? chosen.join(", ") : "Bibles";
     clear(picker, modules.length === 0 ? h("span", { class: "hint" }, "No Bibles installed.") : modules.map((m) => {
       const box = h("input", { type: "checkbox", value: m.id, checked: state.modules.includes(m.id) });
       box.addEventListener("change", () => {
         const ids = [...picker.querySelectorAll<HTMLInputElement>("input:checked")].map((b) => b.value);
         setModules(ids);
+        renderPicker();
         read();
       });
       return h("label", { class: "check chip", title: m.name }, box, " ", m.abbreviation || m.id);
@@ -289,7 +378,6 @@ export function readerView() {
   onPassage(() => {
     input.value = state.ref;
     read();
-    notes.refresh();
   });
 
   async function show() {
@@ -311,4 +399,30 @@ export function readerView() {
   }
 
   return { el, show, focus: () => input.select() };
+}
+
+// readingControls are the Read mode settings, in the Aa popover and in Settings → Appearance.
+let radios = 0;
+export function readingControls(): HTMLElement {
+  const size = h("output", { "aria-live": "polite" }, `${prefs.reading.size}%`);
+  const set = (patch: Partial<ReadingPrefs>) => {
+    setPrefs({ reading: { ...prefs.reading, ...patch } });
+    size.textContent = `${prefs.reading.size}%`;
+  };
+  const group = ++radios;
+  const choice = (key: "font" | "width", label: string, options: [string, string][]) =>
+    h("fieldset", {}, h("legend", {}, label), options.map(([v, l]) => {
+      const b = h("input", { type: "radio", name: `reading-${key}-${group}`, checked: prefs.reading[key] === v });
+      b.addEventListener("change", () => set({ [key]: v } as Partial<ReadingPrefs>));
+      return h("label", { class: "check" }, b, " ", l);
+    }));
+  return h("div", { class: "pop-body reading-controls" },
+    h("h2", { class: "pop-title" }, "Reading"),
+    h("div", { class: "row", role: "group", "aria-label": "Text size" },
+      h("span", {}, "Text size"),
+      button("A−", () => set({ size: stepSize(prefs.reading.size, -1) }), { "aria-label": "Smaller text", title: `Smaller (down to ${TEXT_SIZES[0]}%)` }),
+      size,
+      button("A+", () => set({ size: stepSize(prefs.reading.size, 1) }), { "aria-label": "Larger text", title: `Larger (up to ${TEXT_SIZES[TEXT_SIZES.length - 1]}%)` })),
+    choice("font", "Typeface", [["serif", "Book (serif)"], ["sans", "Plain (sans serif)"]]),
+    choice("width", "Line length", [["narrow", "Comfortable"], ["wide", "Full width"]]));
 }

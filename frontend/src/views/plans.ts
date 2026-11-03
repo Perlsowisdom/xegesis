@@ -27,7 +27,7 @@ export function plansView() {
   let books: ItemSummary[] = [];
   let open: string | null = null; // the plan whose days are listed
 
-  const el = h("div", { class: "view" }, h("h1", {}, "Plans"), msg.el,
+  const el = h("div", { class: "view" }, h("h1", {}, "Reading plans"), msg.el,
     h("section", { "aria-label": "Your plans" }, h("h2", {}, "Your plans"), list),
     h("section", { "aria-label": "Start a plan" }, h("h2", {}, "Start a plan"), startBox));
 

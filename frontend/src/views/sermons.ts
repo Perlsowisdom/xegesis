@@ -239,7 +239,7 @@ export function sermonsView() {
     qForm.addEventListener("submit", async (e) => {
       e.preventDefault();
       if (!qRef.value.trim() || !qBible.value) {
-        msg.info(qBible.value ? "Type the verses to quote, e.g. Rom 8:31." : "Install a Bible first (Bibles section) to quote verses.");
+        msg.info(qBible.value ? "Type the verses to quote, e.g. Rom 8:31." : "Install a Bible first (Library → Get Bibles) to quote verses.");
         return;
       }
       if (!(await save())) return;

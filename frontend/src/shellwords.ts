@@ -1,0 +1,229 @@
+// Pure logic for the interface shell: the places on the rail, which view belongs to which place,
+// the per-device preferences for the rail, the right sidebar and reading, and their defaults. No DOM
+// here, so it is unit-tested (shellwords.test.ts); main.ts, shell/*.ts and the views use it.
+
+export type PlaceId = "search" | "library" | "reader" | "work" | "settings";
+export type Width = "condensed" | "expanded";
+export type ReaderMode = "read" | "study";
+export type ToolId = "chat" | "related" | "notes" | "word" | "compare";
+
+export interface Place {
+  id: PlaceId;
+  label: string;
+  // The views reached inside this place, the first being where it opens. Places with more than one
+  // view show them as tabs, except the Reader, whose plans page is reached from the Reader itself.
+  views: { id: string; label: string }[];
+  tabs: boolean;
+}
+
+// The places on the rail, top to bottom; Settings is reached from Rail settings, Help or Ctrl+,.
+export const PLACES: Place[] = [
+  { id: "search", label: "Search", views: [{ id: "search", label: "Search" }], tabs: false },
+  { id: "library", label: "Library", views: [{ id: "library", label: "Your library" }, { id: "bibles", label: "Get Bibles" }], tabs: true },
+  { id: "reader", label: "Reader", views: [{ id: "reader", label: "Reader" }, { id: "plans", label: "Reading plans" }], tabs: false },
+  {
+    id: "work", label: "My work", tabs: true,
+    views: [{ id: "notes", label: "Notes" }, { id: "sermons", label: "Sermons" }, { id: "lists", label: "Lists" }, { id: "reports", label: "Reports" }],
+  },
+  { id: "settings", label: "Settings", views: [{ id: "settings", label: "Settings" }, { id: "commands", label: "Commands" }], tabs: false },
+];
+
+// RAIL_PLACES are the places shown on the rail and in the phone dock; Alt+1 to Alt+4 reach them.
+export const RAIL_PLACES: PlaceId[] = ["search", "library", "reader", "work"];
+// Places the user may hide from the rail. The Reader always stays.
+export const HIDEABLE: PlaceId[] = ["search", "library", "work"];
+
+export function placeOf(view: string): Place {
+  return PLACES.find((p) => p.views.some((v) => v.id === view)) ?? PLACES[2];
+}
+
+export function isView(view: string): boolean {
+  return PLACES.some((p) => p.views.some((v) => v.id === view));
+}
+
+export function viewLabel(view: string): string {
+  for (const p of PLACES) for (const v of p.views) if (v.id === view) return v.label;
+  return "Reader";
+}
+
+// placeForKey maps Alt+1 to Alt+4 to a rail place; anything else gives null.
+export function placeForKey(key: string): PlaceId | null {
+  const n = Number(key);
+  return Number.isInteger(n) && n >= 1 && n <= RAIL_PLACES.length ? RAIL_PLACES[n - 1] : null;
+}
+
+// Rail ---------------------------------------------------------------------------------------------
+
+export interface RailPrefs {
+  width: Width;
+  autoHide: boolean;
+  hidden: PlaceId[];
+  gridOnRail: boolean;
+}
+
+export const RAIL_DEFAULTS: RailPrefs = { width: "condensed", autoHide: false, hidden: [], gridOnRail: true };
+
+export function normalizeRail(v: unknown): RailPrefs {
+  const o = (v && typeof v === "object" ? v : {}) as Partial<Record<keyof RailPrefs, unknown>>;
+  return {
+    width: o.width === "expanded" ? "expanded" : "condensed",
+    autoHide: o.autoHide === true,
+    hidden: Array.isArray(o.hidden) ? HIDEABLE.filter((p) => (o.hidden as unknown[]).includes(p)) : [],
+    gridOnRail: o.gridOnRail !== false,
+  };
+}
+
+export function railPlaces(p: RailPrefs): PlaceId[] {
+  return RAIL_PLACES.filter((id) => !p.hidden.includes(id));
+}
+
+export function toggleHidden(p: RailPrefs, id: PlaceId, hide: boolean): RailPrefs {
+  if (!HIDEABLE.includes(id)) return p;
+  const hidden = p.hidden.filter((x) => x !== id);
+  if (hide) hidden.push(id);
+  return { ...p, hidden: HIDEABLE.filter((x) => hidden.includes(x)) };
+}
+
+// Where the grid presets button goes in Study mode: on the rail (the default), or in the Reader's
+// top bar when the setting is off. Read mode has no grid.
+export function gridButtonPlace(mode: ReaderMode, p: RailPrefs): "rail" | "toolbar" | null {
+  if (mode !== "study") return null;
+  return p.gridOnRail ? "rail" : "toolbar";
+}
+
+// Right sidebar ------------------------------------------------------------------------------------
+
+export const TOOLS: { id: ToolId; label: string }[] = [
+  { id: "chat", label: "AI chat" },
+  { id: "related", label: "Related" },
+  { id: "notes", label: "Notes" },
+  { id: "word", label: "Word" },
+  { id: "compare", label: "Compare" },
+];
+
+export interface ToolSetting { id: ToolId; shown: boolean }
+
+export interface SidebarPrefs {
+  open: boolean;
+  tool: ToolId;
+  tools: ToolSetting[];
+}
+
+export const SIDEBAR_DEFAULTS: SidebarPrefs = {
+  open: false,
+  tool: "related",
+  tools: TOOLS.map((t) => ({ id: t.id, shown: true })),
+};
+
+export function toolLabel(id: ToolId): string {
+  return TOOLS.find((t) => t.id === id)?.label ?? id;
+}
+
+// normalizeTools keeps the saved order, drops unknown or repeated tools and adds any new tool at the
+// end, shown.
+export function normalizeTools(v: unknown): ToolSetting[] {
+  const out: ToolSetting[] = [];
+  const known = new Set<string>(TOOLS.map((t) => t.id));
+  if (Array.isArray(v)) {
+    for (const x of v) {
+      const id = x && typeof x === "object" ? (x as { id?: unknown }).id : undefined;
+      if (typeof id !== "string" || !known.has(id) || out.some((t) => t.id === id)) continue;
+      out.push({ id: id as ToolId, shown: (x as { shown?: unknown }).shown !== false });
+    }
+  }
+  for (const t of TOOLS) if (!out.some((o) => o.id === t.id)) out.push({ id: t.id, shown: true });
+  return out;
+}
+
+export function normalizeSidebar(v: unknown): SidebarPrefs {
+  const o = (v && typeof v === "object" ? v : {}) as Partial<Record<keyof SidebarPrefs, unknown>>;
+  const tools = normalizeTools(o.tools);
+  const p: SidebarPrefs = { open: o.open === true, tool: "related", tools };
+  p.tool = activeTool(tools, typeof o.tool === "string" ? (o.tool as ToolId) : "related");
+  return p;
+}
+
+export function visibleTools(tools: ToolSetting[]): ToolId[] {
+  return tools.filter((t) => t.shown).map((t) => t.id);
+}
+
+// activeTool is the wanted tool when it is shown, else the first shown one ("related" if none are).
+export function activeTool(tools: ToolSetting[], wanted: ToolId): ToolId {
+  const shown = visibleTools(tools);
+  return shown.includes(wanted) ? wanted : shown[0] ?? "related";
+}
+
+export function moveTool(tools: ToolSetting[], id: ToolId, by: -1 | 1): ToolSetting[] {
+  const i = tools.findIndex((t) => t.id === id);
+  const j = i + by;
+  if (i < 0 || j < 0 || j >= tools.length) return tools;
+  const out = tools.slice();
+  [out[i], out[j]] = [out[j], out[i]];
+  return out;
+}
+
+export function showTool(tools: ToolSetting[], id: ToolId, shown: boolean): ToolSetting[] {
+  return tools.map((t) => (t.id === id ? { ...t, shown } : t));
+}
+
+// Reading ------------------------------------------------------------------------------------------
+
+export interface ReadingPrefs {
+  mode: ReaderMode;
+  size: number; // text size in percent
+  font: "serif" | "sans";
+  width: "narrow" | "wide";
+}
+
+export const READING_DEFAULTS: ReadingPrefs = { mode: "read", size: 100, font: "serif", width: "narrow" };
+export const TEXT_SIZES = [85, 100, 115, 130, 150];
+
+export function normalizeReading(v: unknown): ReadingPrefs {
+  const o = (v && typeof v === "object" ? v : {}) as Partial<Record<keyof ReadingPrefs, unknown>>;
+  return {
+    mode: o.mode === "study" ? "study" : "read",
+    size: TEXT_SIZES.includes(o.size as number) ? (o.size as number) : 100,
+    font: o.font === "sans" ? "sans" : "serif",
+    width: o.width === "wide" ? "wide" : "narrow",
+  };
+}
+
+// stepSize moves one text size up or down, staying within TEXT_SIZES.
+export function stepSize(size: number, by: -1 | 1): number {
+  const i = TEXT_SIZES.indexOf(size);
+  const j = Math.min(TEXT_SIZES.length - 1, Math.max(0, (i < 0 ? 1 : i) + by));
+  return TEXT_SIZES[j];
+}
+
+// Assistant ----------------------------------------------------------------------------------------
+
+export type Provider = "off" | "claude" | "openai" | "gemini" | "openrouter" | "claude-code" | "codex" | "local";
+
+export const ONLINE_PROVIDERS: { id: Provider; label: string }[] = [
+  { id: "claude", label: "Claude" }, { id: "openai", label: "OpenAI" }, { id: "gemini", label: "Gemini" }, { id: "openrouter", label: "OpenRouter" },
+];
+export const LOCAL_PROVIDERS: { id: Provider; label: string }[] = [
+  { id: "claude-code", label: "Claude Code" }, { id: "codex", label: "Codex" }, { id: "local", label: "Local model" },
+];
+
+export function normalizeProvider(v: unknown): Provider {
+  return [...ONLINE_PROVIDERS, ...LOCAL_PROVIDERS].some((p) => p.id === v) ? (v as Provider) : "off";
+}
+
+export function providerText(p: Provider): string {
+  if (p === "off") return "Off";
+  const online = ONLINE_PROVIDERS.find((x) => x.id === p);
+  if (online) return `${online.label}, with your own key`;
+  return `${LOCAL_PROVIDERS.find((x) => x.id === p)?.label ?? p}, on this computer`;
+}
+
+// Recent searches ----------------------------------------------------------------------------------
+
+export const MAX_RECENT = 8;
+
+// addRecent puts a search first, without repeats (ignoring case and spacing), keeping MAX_RECENT.
+export function addRecent(list: string[], query: string): string[] {
+  const q = query.trim().replace(/\s+/g, " ");
+  if (!q) return list;
+  return [q, ...list.filter((x) => x.toLowerCase() !== q.toLowerCase())].slice(0, MAX_RECENT);
+}

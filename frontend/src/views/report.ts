@@ -144,8 +144,8 @@ export function reportView() {
   }
 
   function emptyText(rep: Report): string {
-    if (rep.kind === "word" && !rep.strong) return "No installed lexicon or tagged Bible has this word. Lexicons and tagged Bibles are in Bibles → Get Bibles.";
-    return "Nothing in your library is about this yet. Install Bibles, commentaries and dictionaries in Bibles → Get Bibles, and index your books in the Library section.";
+    if (rep.kind === "word" && !rep.strong) return "No installed lexicon or tagged Bible has this word. Lexicons and tagged Bibles are in Library → Get Bibles.";
+    return "Nothing in your library is about this yet. Install Bibles, commentaries and dictionaries in Library → Get Bibles, and index your books in Library.";
   }
 
   function sectionEl(s: ReportSection, open: boolean): HTMLElement {

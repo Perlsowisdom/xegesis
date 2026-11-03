@@ -129,3 +129,16 @@ export function handDays(text: string): { refs: string[] }[] {
   return text.split("\n").map((line) => ({ refs: line.split(";").map((s) => s.trim()).filter(Boolean) }))
     .filter((d) => d.refs.length > 0);
 }
+
+// todayLine is the one-line summary of today's reading at the top of the Reader, such as
+// "Gospels · Day 7: John 3, John 4 · 2 behind". More plans are counted, not listed.
+export function todayLine(list: TodayInfo[]): string {
+  if (list.length === 0) return "";
+  const t = list[0];
+  const parts = [t.plan.name];
+  if (t.today) parts.push(`Day ${t.today.day}: ${t.today.readings.map((r) => r.ref).join(", ")}${t.today.done ? " (done)" : ""}`);
+  else if (t.status === "done_for_today") parts.push("done for today");
+  if (t.missed.length) parts.push(`${t.missed.length} behind`);
+  const more = list.length - 1;
+  return parts.join(" · ") + (more > 0 ? ` · and ${more} more ${more === 1 ? "plan" : "plans"}` : "");
+}

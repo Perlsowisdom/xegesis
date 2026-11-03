@@ -2,6 +2,9 @@
 // Only view preferences live here; everything else comes from commands.
 
 import type { Ref } from "./api";
+import {
+  Provider, RailPrefs, ReadingPrefs, SidebarPrefs, normalizeProvider, normalizeRail, normalizeReading, normalizeSidebar,
+} from "./shellwords";
 
 type Listener = () => void;
 const listeners = new Set<Listener>();
@@ -32,6 +35,16 @@ export function lastRef(): string {
   return load<string>("xegesis.ref", "John 1");
 }
 
+// loadPref and savePref keep per-device preferences in localStorage. Both survive storage being
+// unavailable: preferences are a convenience, never data.
+export function loadPref<T>(key: string, fallback: T): T {
+  return load(key, fallback);
+}
+
+export function savePref(key: string, v: unknown): void {
+  save(key, v);
+}
+
 function load<T>(key: string, fallback: T): T {
   try {
     const v = localStorage.getItem(key);
@@ -47,6 +60,40 @@ function save(key: string, v: unknown) {
   } catch {
     /* storage may be unavailable; preferences are a convenience */
   }
+}
+
+// Per-device preferences for the shell: the rail, the right sidebar, reading and the assistant.
+// Changing one saves it and tells every listener, so the rail popover and Settings stay in step.
+export interface Prefs {
+  rail: RailPrefs;
+  sidebar: SidebarPrefs;
+  reading: ReadingPrefs;
+  provider: Provider;
+}
+
+const PREF_KEYS: Record<keyof Prefs, string> = {
+  rail: "xegesis.rail", sidebar: "xegesis.sidebar", reading: "xegesis.reading", provider: "xegesis.assistant.provider",
+};
+
+export const prefs: Prefs = {
+  rail: normalizeRail(load(PREF_KEYS.rail, null)),
+  sidebar: normalizeSidebar(load(PREF_KEYS.sidebar, null)),
+  reading: normalizeReading(load(PREF_KEYS.reading, null)),
+  provider: normalizeProvider(load(PREF_KEYS.provider, "off")),
+};
+
+const prefListeners = new Set<Listener>();
+
+export function setPrefs(patch: Partial<Prefs>): void {
+  for (const k of Object.keys(patch) as (keyof Prefs)[]) {
+    (prefs as unknown as Record<string, unknown>)[k] = patch[k];
+    save(PREF_KEYS[k], patch[k]);
+  }
+  prefListeners.forEach((l) => l());
+}
+
+export function onPrefs(l: Listener): void {
+  prefListeners.add(l);
 }
 
 // Navigation is set up by main.ts; views call navigate to switch sections.
