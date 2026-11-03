@@ -62,6 +62,18 @@ copied.
 - **Settings at the bottom of the rail.**
 - **Library and My work need real sample content** to judge.
 
+### Final round 3 feedback (3 November 2026): approved for building
+
+- **Rail bottom:** drop the general Settings icon. Rail settings → "All settings…" leads there.
+- **Grid presets on the rail:** a rail button in Study mode. It's a setting, on by default; off moves
+  the presets to the Reader toolbar.
+- **My work:**
+  - the Folders, Tags and Writing sections collapse;
+  - you can create folders;
+  - a folder holds notes and sermons together.
+- **Phone:** Search is a fourth button in the bottom dock.
+- The user said the layout "looks good and can probably be implemented in the app".
+
 ### What the Any app does (looked at 3 November 2026)
 
 - **Rail:** auto-hide slides the rail over the content when you reach the left edge, so the layout
