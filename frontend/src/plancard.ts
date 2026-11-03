@@ -1,10 +1,10 @@
 // The parts of reading plans shown in more than one place: opening a reading, and "where this plan
 // stands today" with its buttons for marking days read, catching up and rescheduling. The Reader
-// shows a small card of them (todayCard); the Plans section shows one per plan.
+// shows a one-line strip of them (todayCard); the reading plans page shows one per plan.
 
 import { Message, Ref, run } from "./api";
 import { button, clear, h } from "./dom";
-import { DayInfo, PlanInfo, ReadingInfo, TodayInfo, behindText, friendlyDate, statusText } from "./planwords";
+import { DayInfo, PlanInfo, ReadingInfo, TodayInfo, behindText, friendlyDate, statusText, todayLine } from "./planwords";
 import { navigate, setPassage } from "./state";
 import { openBook } from "./views/book";
 
@@ -74,21 +74,24 @@ export function todayBlock(t: TodayInfo, o: BlockOptions): HTMLElement {
   return h("div", { class: "plan-block" }, parts);
 }
 
-// todayCard is the small "Today's reading" card at the top of the Reader. It stays hidden when
-// there is no plan with something to read.
+// todayCard is the one-line "Today's reading" strip at the top of the Reader; it opens on click to
+// show the readings and the buttons for marking them read. It stays hidden when no plan has
+// something to read.
 export function todayCard() {
   const msg = new Message();
   const body = h("div", {});
-  const el = h("section", { class: "card plan-card", "aria-label": "Today's reading", hidden: true },
-    h("div", { class: "row between" }, h("h2", {}, "Today's reading"),
-      button("All plans", () => navigate("plans"), { title: "Open the Plans section" })),
-    msg.el, body);
+  const line = h("span", { class: "today-line" });
+  const el = h("details", { class: "today-strip", hidden: true },
+    h("summary", {}, h("strong", {}, "Today's reading"), " ", line),
+    h("div", { class: "today-body" }, msg.el, body,
+      button("All reading plans", () => navigate("plans"), { class: "link" })));
 
   async function refresh() {
     const list = await msg.attempt(() => run<TodayInfo[]>("plan.today"));
     if (!list) return;
     const shown = list.filter((t) => t.status === "today" || t.status === "done_for_today" || t.status === "behind");
     el.hidden = shown.length === 0;
+    line.textContent = todayLine(shown);
     clear(body, shown.map((t) => todayBlock(t, { msg, changed: refresh, stay: true })));
   }
   return { el, refresh };

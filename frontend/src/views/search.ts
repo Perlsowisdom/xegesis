@@ -21,6 +21,16 @@ const MODE_LABELS: Record<string, string> = {
   all: "All the words", any: "Any of the words", phrase: "Exact phrase", fts: "Search syntax",
 };
 
+// Other parts of the app (the rail's search flyout, the Reader's search box) search through
+// searchFor; the Search view runs the words when it is next shown.
+let pending: string | null = null;
+
+export function searchFor(words: string) {
+  if (!words.trim()) return;
+  pending = words.trim();
+  navigate("search");
+}
+
 export function searchView() {
   const msg = new Message();
   const query = h("input", { type: "search", id: "search-q", autocomplete: "off", placeholder: "e.g. love one another" });
@@ -89,11 +99,18 @@ export function searchView() {
   }
 
   async function show() {
+    const asked = pending;
+    pending = null;
+    if (asked) {
+      tabs.select(0);
+      query.value = asked;
+    }
     installed = (await msg.attempt(() => run<Module[]>("bible.modules"))) ?? [];
     const checked = new Set([...modules.querySelectorAll<HTMLInputElement>("input:checked")].map((b) => b.value));
     clear(modules, h("span", { class: "hint" }, installed.length ? "Bibles:" : "No Bibles installed."),
       installed.map((m) => h("label", { class: "check chip" },
         h("input", { type: "checkbox", value: m.id, checked: checked.size ? checked.has(m.id) : true }), " ", m.abbreviation || m.id)));
+    if (asked) await search();
   }
 
   return { el, show, focus: tabs.focus };
@@ -137,5 +154,5 @@ function searchTabs(tabs: Tab[]) {
   }
   select(0, false);
   const el = h("div", {}, h("div", { class: "tabs", role: "tablist", "aria-label": "What to search" }, buttons), tabs.map((t) => t.el));
-  return { el, focus: () => tabs[current].focus() };
+  return { el, focus: () => tabs[current].focus(), select: (i: number) => select(i, false) };
 }

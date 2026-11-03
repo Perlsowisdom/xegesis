@@ -1,0 +1,31 @@
+// Line icons for the shell, drawn for Xegesis on a 24-unit grid. They take the text colour and are
+// hidden from screen readers: every icon sits beside a label or inside a named button.
+
+const PATHS: Record<string, string> = {
+  search: '<circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5"/>',
+  library: '<path d="M4 4h4v16H4zM10 4h4v16h-4z"/><path d="M15.2 5.4l3.6-1 3 15.2-3.6 1z"/>',
+  reader: '<path d="M3 5.5C5.5 4.5 9 4.5 12 6.5c3-2 6.5-2 9-1V19c-2.5-1-6-1-9 1-3-2-6.5-2-9-1z"/><path d="M12 6.5V20"/>',
+  work: '<path d="M4 4h10l4 4v12H4z"/><path d="M14 4v4h4"/><path d="M7.5 12.5h7M7.5 16h5"/>',
+  grid: '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 12h16M12 4v16"/>',
+  sliders: '<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="17" r="2"/>',
+  help: '<circle cx="12" cy="12" r="8.5"/><path d="M9.6 9.5a2.5 2.5 0 1 1 3.4 2.3c-.6.3-1 .8-1 1.5v.5"/><path d="M12 16.8v.2"/>',
+  panel: '<rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M14.5 4.5v15"/>',
+  more: '<path d="M6 12h.01M12 12h.01M18 12h.01" stroke-width="3"/>',
+  prev: '<path d="M14.5 6l-6 6 6 6"/>',
+  next: '<path d="M9.5 6l6 6-6 6"/>',
+  close: '<path d="M6 6l12 12M18 6L6 18"/>',
+  rail: '<rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M9.5 4.5v15"/>',
+  up: '<path d="M6 14.5l6-6 6 6"/>',
+  down: '<path d="M6 9.5l6 6 6-6"/>',
+};
+
+export function icon(name: keyof typeof PATHS | string): SVGSVGElement {
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("class", "icon");
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("focusable", "false");
+  svg.innerHTML = PATHS[name] ?? "";
+  return svg;
+}

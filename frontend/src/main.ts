@@ -1,20 +1,26 @@
-// The interface shell: sidebar navigation, sections and keyboard shortcuts. Every action in the
-// sections calls a registered command (api.ts); the shell itself only switches views.
+// The interface shell: the left rail of places (shell/rail.ts), the main area, and the right sidebar
+// of study tools (views/sidebar.ts). Places hold the views: Library (your library, Get Bibles),
+// Reader (reading, and its reading plans page), My work (notes, sermons, lists, reports), Search and
+// Settings (with Commands under Advanced). Every action in the views calls a registered command
+// (api.ts); the shell itself only switches views.
 
 import { bound, onEvent } from "./api";
 import { button, h } from "./dom";
-import { setNavigator } from "./state";
+import { closePopover } from "./popover";
+import { rail } from "./shell/rail";
+import { PLACES, PlaceId, isView, placeForKey, placeOf, viewLabel } from "./shellwords";
+import { loadPref, onPrefs, prefs, savePref, setNavigator } from "./state";
 import { biblesView } from "./views/bibles";
-import { commandsView } from "./views/commands";
 import { libraryView } from "./views/library";
 import { listsView } from "./views/lists";
 import { notesSectionView } from "./views/notes";
 import { plansView } from "./views/plans";
 import { readerView } from "./views/reader";
 import { follow, reportView } from "./views/report";
-import { searchView } from "./views/search";
+import { searchFor, searchView } from "./views/search";
 import { sermonsView } from "./views/sermons";
 import { settingsView } from "./views/settings";
+import { sidebar } from "./views/sidebar";
 
 interface View {
   el: HTMLElement;
@@ -24,48 +30,93 @@ interface View {
   changed?(): void;
 }
 
-const sections: { id: string; label: string; make: () => View }[] = [
-  { id: "reader", label: "Reader", make: readerView },
-  { id: "bibles", label: "Bibles", make: biblesView },
-  { id: "library", label: "Library", make: libraryView },
-  { id: "notes", label: "Notes", make: notesSectionView },
-  { id: "lists", label: "Lists", make: listsView },
-  { id: "plans", label: "Plans", make: plansView },
-  { id: "sermons", label: "Sermons", make: sermonsView },
-  { id: "reports", label: "Reports", make: reportView },
-  { id: "search", label: "Search", make: searchView },
-  { id: "settings", label: "Settings", make: settingsView },
-  { id: "commands", label: "Commands", make: commandsView },
-];
+// "commands" is not a view of its own: it is the Commands page of Settings (#settings/commands).
+const makers: Record<string, () => View> = {
+  reader: readerView, plans: plansView,
+  library: libraryView, bibles: biblesView,
+  notes: notesSectionView, sermons: sermonsView, lists: listsView, reports: reportView,
+  search: searchView, settings: settingsView,
+};
 
+const LAST_KEY = "xegesis.shell.views";
 const views = new Map<string, View>();
 const main = h("main", { id: "main", tabindex: "-1" });
-const links = new Map<string, HTMLAnchorElement>();
+const placeNavs = new Map<PlaceId, { el: HTMLElement; links: Map<string, HTMLElement> }>();
+// The view each place last showed, so going back to My work returns to the same tab.
+const last: Partial<Record<PlaceId, string>> = loadPref(LAST_KEY, {});
+let current = "reader";
+let theRail: ReturnType<typeof rail>;
 
 function view(id: string): View {
-  const s = sections.find((x) => x.id === id) ?? sections[0];
-  let v = views.get(s.id);
+  let v = views.get(id);
   if (!v) {
-    v = s.make();
-    views.set(s.id, v);
+    v = makers[id]();
+    views.set(id, v);
     main.append(v.el);
   }
   return v;
 }
 
-function show(id: string, focus = false) {
-  const s = sections.find((x) => x.id === id) ?? sections[0];
-  const v = view(s.id);
-  for (const [vid, view] of views) view.el.hidden = vid !== s.id;
-  for (const [lid, a] of links) {
-    if (lid === s.id) a.setAttribute("aria-current", "page");
+// placeNav is the row of tabs at the top of a place with several views (Library, My work), or the
+// way back from the reading plans page to the Reader.
+function placeNav(p: PlaceId): { el: HTMLElement; links: Map<string, HTMLElement> } | null {
+  const place = PLACES.find((x) => x.id === p)!;
+  if (!place.tabs && p !== "reader") return null;
+  let nav = placeNavs.get(p);
+  if (!nav) {
+    const links = new Map<string, HTMLElement>();
+    const el = place.tabs
+      ? h("nav", { class: "place-tabs", "aria-label": place.label }, h("ul", {}, place.views.map((v) => {
+        const a = h("a", { href: `#${v.id}` }, v.label);
+        a.addEventListener("click", (e) => {
+          e.preventDefault();
+          show(v.id, true);
+        });
+        links.set(v.id, a);
+        return h("li", {}, a);
+      })))
+      : h("nav", { class: "place-tabs back", "aria-label": "Reader" },
+        button("‹ Back to the Reader", () => show("reader", true), { class: "link" }));
+    nav = { el, links };
+    placeNavs.set(p, nav);
+    main.prepend(el);
+  }
+  return nav;
+}
+
+function show(target: string, focus = false) {
+  let [id, ...rest] = target.split("/");
+  let sub = rest.join("/");
+  if (id === "commands") [id, sub] = ["settings", "commands"];
+  if (!makers[id]) [id, sub] = ["reader", ""];
+  // An address inside a view (#sermons/<id>, #settings/model) is kept for the view to open.
+  if (sub && !location.hash.startsWith(`#${id}/${sub}`)) history.replaceState(null, "", `#${id}/${sub}`);
+  else if (!sub && location.hash !== `#${id}` && !location.hash.startsWith(`#${id}/`)) history.replaceState(null, "", `#${id}`);
+  closePopover();
+
+  const place = placeOf(id);
+  const v = view(id);
+  current = id;
+  last[place.id] = id;
+  savePref(LAST_KEY, last);
+  for (const [vid, x] of views) x.el.hidden = vid !== id;
+  const nav = placeNav(place.id);
+  for (const [p, n] of placeNavs) n.el.hidden = !(p === place.id && (p !== "reader" || id === "plans"));
+  if (nav) for (const [lid, a] of nav.links) {
+    if (lid === id) a.setAttribute("aria-current", "page");
     else a.removeAttribute("aria-current");
   }
-  document.title = `${s.label} · Xegesis`;
-  // An address inside a section (#sermons/<id>) is kept for the section to open.
-  if (location.hash !== `#${s.id}` && !location.hash.startsWith(`#${s.id}/`)) history.replaceState(null, "", `#${s.id}`);
-  v.show();
+  theRail.setContext(place.id, prefs.reading.mode);
+  document.title = `${viewLabel(id)} · Xegesis`;
+  main.scrollTop = 0;
+  void v.show();
   if (focus) (v.focus ? v.focus() : main.focus());
+}
+
+function goPlace(p: PlaceId, focus = true) {
+  const place = PLACES.find((x) => x.id === p)!;
+  const want = last[p];
+  show(want && place.views.some((v) => v.id === want) ? want : place.views[0].id, focus);
 }
 
 // boot waits briefly for the desktop app's bindings, which are injected alongside the page.
@@ -82,38 +133,55 @@ function boot(tries = 10) {
       button("Try again", () => boot())));
     return;
   }
-  const nav = h("nav", { class: "sidebar", "aria-label": "Sections" },
-    h("div", { class: "brand" }, "Xegesis"),
-    h("ul", {}, sections.map((s, i) => {
-      const k = i === 9 ? 0 : i + 1;
-      const a = h("a", { href: `#${s.id}`, "aria-keyshortcuts": i < 10 ? `Alt+${k}` : undefined, title: i < 10 ? `${s.label} (Alt+${k})` : s.label }, s.label);
-      a.addEventListener("click", (e) => {
-        e.preventDefault();
-        show(s.id, true);
-      });
-      links.set(s.id, a);
-      return h("li", {}, a);
-    })),
-    h("p", { class: "hint shortcuts" }, `Alt+1–${sections.length > 9 ? 0 : sections.length} sections · Ctrl+L passage · Alt+N new note`));
-  app.replaceChildren(h("div", { class: "shell" }, nav, main));
+  const shell = h("div", { class: "shell" });
+  theRail = rail(shell, {
+    go: (p) => goPlace(p),
+    search: (q) => searchFor(q),
+    settings: (page) => show(page ? `settings/${page}` : "settings", true),
+  });
+  const side = sidebar();
+  shell.append(theRail.edge, theRail.reveal, theRail.el, main, side.el);
+  app.replaceChildren(shell);
   setNavigator((id) => show(id));
+  onPrefs(() => theRail.setContext(placeOf(current).id, prefs.reading.mode));
+  // The sidebar's close button hands the keyboard back to the page.
+  document.addEventListener("xegesis:sidebar-closed", () => main.focus());
 
   document.addEventListener("keydown", (e) => {
-    if (e.altKey && !e.ctrlKey && /^[0-9]$/.test(e.key)) {
-      const s = sections[e.key === "0" ? 9 : Number(e.key) - 1];
-      if (s) {
+    const ctrl = e.ctrlKey || e.metaKey;
+    if (e.altKey && !ctrl && /^[0-9]$/.test(e.key)) {
+      const p = placeForKey(e.key);
+      if (e.key === "0") {
         e.preventDefault();
-        show(s.id, true);
+        theRail.focus();
+      } else if (p) {
+        e.preventDefault();
+        goPlace(p);
       }
+      return;
     }
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "l") {
+    if (e.key === "F6" && !ctrl && !e.altKey) {
+      e.preventDefault();
+      theRail.focus();
+    } else if (ctrl && e.key.toLowerCase() === "l") {
       e.preventDefault();
       show("reader", true);
+    } else if (ctrl && e.key === ",") {
+      e.preventDefault();
+      show("settings", true);
+    } else if (ctrl && e.key === ".") {
+      e.preventDefault();
+      side.toggle();
+      if (side.isOpen()) side.el.querySelector<HTMLElement>("[role=tab][aria-selected=true]")?.focus();
+    } else if (e.key === "Escape" && side.isOpen() && side.el.contains(document.activeElement) && matchMedia("(max-width: 700px)").matches) {
+      // At phone width the sidebar is a sheet over the page, so Escape closes it.
+      side.toggle();
+      main.focus();
     }
   });
   // Links in reports and saved notes are app addresses such as #passage/Rom.8.28 (views/report.ts).
   window.addEventListener("hashchange", () => {
-    if (!follow(location.hash)) show(location.hash.slice(1).split("/")[0]);
+    if (!follow(location.hash)) show(location.hash.slice(1));
   });
   // Files and folders dropped on the window are added to the library.
   onEvent("files:dropped", (paths) => {
@@ -122,7 +190,8 @@ function boot(tries = 10) {
     view("library").drop?.(paths as string[]);
   });
   onEvent("library:changed", () => views.get("library")?.changed?.());
-  if (!follow(location.hash)) show(location.hash.slice(1).split("/")[0] || "reader");
+  const start = location.hash.slice(1);
+  if (!follow(location.hash)) show(start && isView(start.split("/")[0]) ? start : "reader");
 }
 
 window.addEventListener("load", () => boot());
