@@ -2,8 +2,9 @@
 // points tied to verses, and the full text; verses are quoted into the text with their credit line
 // (document.quote keeps each Bible's licence). Changes save on their own after a pause.
 
+import { installedBibles } from "../bibles";
 import { printExportButton } from "../printexport";
-import { Message, Module, Ref, run } from "../api";
+import { Message, Ref, run } from "../api";
 import { button, clear, field, h, select } from "../dom";
 import { formatTime } from "../helpers";
 import { flash } from "../listpicker";
@@ -317,7 +318,7 @@ export function sermonsView() {
   }
 
   async function loadBibles(sel: HTMLSelectElement) {
-    const mods = (await run<Module[]>("bible.modules").catch(() => [])) ?? [];
+    const mods = await installedBibles();
     const first = state.modules.find((m) => mods.some((x) => x.id === m)) ?? mods[0]?.id ?? "";
     clear(sel, mods.length === 0 ? h("option", { value: "" }, "No Bibles installed") :
       mods.map((m) => h("option", { value: m.id, selected: m.id === first }, m.abbreviation || m.name || m.id)));

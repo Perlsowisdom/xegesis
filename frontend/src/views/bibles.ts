@@ -2,6 +2,7 @@
 // installing one from a file or folder. Every action is a bible.* command.
 
 import { CatalogueItem, Message, Module, paramEnum, pick, run } from "../api";
+import { biblesChanged } from "../bibles";
 import { badge, button, clear, field, h, select } from "../dom";
 import { licenceChooser, licenceLine, plainName, termsText } from "../licence";
 import { kindLabel } from "../markupwords";
@@ -238,6 +239,8 @@ function installedList(changed: () => void) {
       run<{ module: string; name: string; version: string; installed_version: string }[]>("bible.updates").catch(() => []),
     ]);
     if (!ms) return;
+    // This list is shown again after every install, removal and licence change: tell the panes.
+    void biblesChanged();
     clear(updates, ups.length ? h("p", { class: "msg", role: "status" },
       `Updates are available for ${ups.map((u) => `${u.name} (${u.installed_version || "?"} → ${u.version})`).join(", ")}. ` +
       "Update them from Get Bibles.") : null);

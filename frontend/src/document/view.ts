@@ -4,6 +4,7 @@
 // Only the current tab of each visible pane is mounted; destroy() frees everything, PDFs included.
 
 import { Module, run } from "../api";
+import { installedBibles } from "../bibles";
 import type { Book } from "../helpers";
 import type { Tab, TabSpec } from "./grid";
 
@@ -35,13 +36,12 @@ export interface DocView {
   destroy(): void;
 }
 
-// Lists every pane needs, fetched once.
-let modulesP: Promise<Module[]> | null = null;
+// The books of the Bible, fetched once. The installed Bibles come from bibles.ts, which keeps
+// them current as Bibles are installed and removed.
 let booksP: Promise<Book[]> | null = null;
 
-export function bibleModules(fresh = false): Promise<Module[]> {
-  if (!modulesP || fresh) modulesP = run<Module[]>("bible.modules").catch(() => { modulesP = null; return []; });
-  return modulesP;
+export function bibleModules(): Promise<Module[]> {
+  return installedBibles();
 }
 
 export function bibleBooks(): Promise<Book[]> {

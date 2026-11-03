@@ -3,6 +3,7 @@
 // chapter. Words tagged with Strong's numbers open in the sidebar's Word tool.
 
 import { Highlight, Message, Module, Ref, run } from "../api";
+import { onBibles } from "../bibles";
 import { button, clear, h } from "../dom";
 import {
   Book, Column, Verse, alignColumns, highlightFor, markSegments, neighbourChapters, selectionRuns, verseParts, verseRangeText,
@@ -373,6 +374,14 @@ export function bibleDoc(host: DocHost): DocView {
     },
   };
 
+  // A Bible installed or removed while this pane is open shows at once.
+  const stopBibles = onBibles((list) => {
+    if (!alive) return;
+    modules = list;
+    renderPicker();
+    void read(host.ref());
+  });
+
   void (async () => {
     [modules, books] = await Promise.all([bibleModules(), bibleBooks()]);
     if (!alive) return;
@@ -392,6 +401,7 @@ export function bibleDoc(host: DocHost): DocView {
     destroy() {
       alive = false;
       seq++;
+      stopBibles();
     },
   };
 }

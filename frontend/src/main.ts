@@ -5,6 +5,7 @@
 // (api.ts); the shell itself only switches views.
 
 import { bound, onEvent } from "./api";
+import { biblesChanged } from "./bibles";
 import { button, h } from "./dom";
 import { closePopover } from "./popover";
 import { rail } from "./shell/rail";
@@ -189,7 +190,12 @@ function boot(tries = 10) {
     show("library");
     view("library").drop?.(paths as string[]);
   });
-  onEvent("library:changed", () => views.get("library")?.changed?.());
+  onEvent("library:changed", () => {
+    views.get("library")?.changed?.();
+    void biblesChanged();
+  });
+  // A Bible installed from the command line or another window shows when you come back.
+  window.addEventListener("focus", () => void biblesChanged());
   const start = location.hash.slice(1);
   if (!follow(location.hash)) show(start && isView(start.split("/")[0]) ? start : "reader");
 }

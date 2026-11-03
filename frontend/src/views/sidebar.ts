@@ -2,6 +2,7 @@
 // and Compare; Settings → Right sidebar chooses which show and in what order. Tools follow the
 // passage in the Reader and load only while they are visible. At phone width it is a sheet.
 
+import { installedBibles } from "../bibles";
 import { Message, Module, Ref, run } from "../api";
 import { button, clear, h } from "../dom";
 import { Column, alignColumns, verseParts } from "../helpers";
@@ -206,7 +207,7 @@ function comparePanel() {
   }
 
   async function refresh() {
-    modules = (await msg.attempt(() => run<Module[]>("bible.modules"))) ?? [];
+    modules = await installedBibles();
     renderPicker();
     await draw();
   }
