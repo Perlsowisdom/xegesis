@@ -53,3 +53,19 @@ still use native selects or tick-box lists rather than the new controls.
    stacked on four rows. Keep it to one row, with overflow in ⋯.
 
 The user liked the Library ("looks good so far").
+
+## User testing after T34c (3 November 2026)
+
+Design first: mock-up for approval, then build.
+
+- **Right sidebar:** remove its × button. The top-bar sidebar toggle is enough.
+- **Pane ⋯ menu:** its items feel out of place, because everything is in one long list. "Unlink"
+  duplicates the link button.
+- **Sermon editor and note editor:** both look "terrible": a form of labelled boxes and a toolbar of
+  big text buttons. They need a document-style design.
+- **Highlights:** unintuitive, with no way to see or delete them. Needed: a clear selection toolbar,
+  clicking a highlight to change or remove it, and a list of highlights.
+- **Word look-up:** "over-aggressive", because words are marked as clickable throughout the text.
+  Words should look like plain text until you ask to look one up.
+- **Bug: the auto-hide "show rail" button sits on top of page headers.** It covers "My work". Content
+  must never be overlapped: the user reported "the sidebar cuts off part of the text UI".
