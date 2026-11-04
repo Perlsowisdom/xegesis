@@ -8,10 +8,12 @@
   --fill: #d9944a; --fill-fg: #1f1d1a; --fill-soft: #f6e6d2; --fill-soft-fg: #6b3f12;
   --track: #cfc7ba; --knob: #fff; --well: #ebe6dc; --well-on: #fff; --hover: rgb(0 0 0 / .05);
   --shadow-sm: 0 1px 2px rgb(0 0 0 / .12);
-  color-scheme: light dark;
+  color-scheme: light;
 }
+/* Colour tokens for the dark theme: used when the system is dark and no theme is chosen
+   (Settings → Appearance), or when Dark is chosen. Keep the two copies the same. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #1b1a18; --panel: #24221f; --fg: #ece8e1; --muted: #aaa399; --line: #3a3631;
     --accent: #e0a868; --accent-fg: #1b1a18; --focus: #7aa2ff;
     --ok: #9fd5a8; --ok-bg: #213628; --warn: #f0cf75; --warn-bg: #3a3119; --bad: #f2a3a3; --bad-bg: #432222;
@@ -20,7 +22,19 @@
     --fill: #e0a868; --fill-fg: #1b1a18; --fill-soft: #3a2f22; --fill-soft-fg: #f0c48e;
     --track: #4a463f; --knob: #1b1a18; --well: #2a2824; --well-on: #3a3631; --hover: rgb(255 255 255 / .05);
     --shadow-sm: 0 1px 2px rgb(0 0 0 / .4);
+    color-scheme: dark;
   }
+}
+:root[data-theme="dark"] {
+  --bg: #1b1a18; --panel: #24221f; --fg: #ece8e1; --muted: #aaa399; --line: #3a3631;
+  --accent: #e0a868; --accent-fg: #1b1a18; --focus: #7aa2ff;
+  --ok: #9fd5a8; --ok-bg: #213628; --warn: #f0cf75; --warn-bg: #3a3119; --bad: #f2a3a3; --bad-bg: #432222;
+  --mark: #6b5513;
+  --rail-bg: #201f1c; --rail-hover: #2e2b27; --rail-on: #3a2f22; --tip-bg: #ece8e1; --tip-fg: #1b1a18;
+  --fill: #e0a868; --fill-fg: #1b1a18; --fill-soft: #3a2f22; --fill-soft-fg: #f0c48e;
+  --track: #4a463f; --knob: #1b1a18; --well: #2a2824; --well-on: #3a3631; --hover: rgb(255 255 255 / .05);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / .4);
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }

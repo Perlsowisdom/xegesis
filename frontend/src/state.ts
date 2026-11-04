@@ -3,7 +3,8 @@
 
 import type { Ref } from "./api";
 import {
-  Provider, RailPrefs, ReadingPrefs, SidebarPrefs, normalizeProvider, normalizeRail, normalizeReading, normalizeSidebar,
+  AppTheme, Provider, RailPrefs, ReadingPrefs, SidebarPrefs, normalizeProvider, normalizeRail, normalizeReading, normalizeSidebar,
+  normalizeTheme,
 } from "./shellwords";
 
 type Listener = () => void;
@@ -69,10 +70,12 @@ export interface Prefs {
   sidebar: SidebarPrefs;
   reading: ReadingPrefs;
   provider: Provider;
+  theme: AppTheme;
 }
 
 const PREF_KEYS: Record<keyof Prefs, string> = {
   rail: "xegesis.rail", sidebar: "xegesis.sidebar", reading: "xegesis.reading", provider: "xegesis.assistant.provider",
+  theme: "xegesis.theme",
 };
 
 export const prefs: Prefs = {
@@ -80,7 +83,16 @@ export const prefs: Prefs = {
   sidebar: normalizeSidebar(load(PREF_KEYS.sidebar, null)),
   reading: normalizeReading(load(PREF_KEYS.reading, null)),
   provider: normalizeProvider(load(PREF_KEYS.provider, "off")),
+  theme: normalizeTheme(load(PREF_KEYS.theme, "system")),
 };
+
+// applyTheme sets the app's colours on the page: style.css follows data-theme, or the system's
+// setting when there is none.
+export function applyTheme(): void {
+  const root = document.documentElement;
+  if (prefs.theme === "system") delete root.dataset.theme;
+  else root.dataset.theme = prefs.theme;
+}
 
 const prefListeners = new Set<Listener>();
 

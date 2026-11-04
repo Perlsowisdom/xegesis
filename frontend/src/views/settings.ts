@@ -6,11 +6,11 @@
 // Pages are addressed as #settings/<page>, so Help and the sidebar can link straight to one.
 
 import { Message, run } from "../api";
-import { tick } from "../controls";
+import { segmented, settingRow, tick } from "../controls";
 import { badge, button, clear, field, h } from "../dom";
 import { icon } from "../icons";
 import { railControls } from "../shell/rail";
-import { LOCAL_PROVIDERS, ONLINE_PROVIDERS, Provider, ToolId, moveTool, providerText, showTool, toolLabel } from "../shellwords";
+import { APP_THEMES, LOCAL_PROVIDERS, ONLINE_PROVIDERS, Provider, ToolId, moveTool, providerText, showTool, toolLabel } from "../shellwords";
 import { prefs, setPrefs } from "../state";
 import { commandsView } from "./commands";
 import { dataSection } from "./data";
@@ -104,7 +104,11 @@ function pageEl(title: string, intro: string | null, ...children: (Node | null)[
 function appearancePage(): PageView {
   const rail = h("div", {});
   const reading = h("div", {});
+  const theme = segmented({ label: "Theme", value: prefs.theme, options: APP_THEMES, onChange: (v) => setPrefs({ theme: v }) });
   const el = pageEl("Appearance", null,
+    h("h3", {}, "Theme"),
+    h("div", { class: "settings-card" },
+      settingRow("Colours", "Light, dark, or the same as your computer. Kept on this device.", theme)),
     h("h3", {}, "Rail"),
     h("div", { class: "settings-card" }, rail),
     h("h3", {}, "Reading"),
