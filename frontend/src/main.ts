@@ -19,6 +19,7 @@ import { notesSectionView } from "./views/notes";
 import { plansView } from "./views/plans";
 import { readerView } from "./views/reader";
 import { follow, reportView } from "./views/report";
+import { highlightsView } from "./highlightspanel";
 import { searchFor, searchView } from "./views/search";
 import { sermonsView } from "./views/sermons";
 import { settingsView } from "./views/settings";
@@ -37,7 +38,7 @@ interface View {
 const makers: Record<string, () => View> = {
   reader: readerView, plans: plansView,
   library: libraryView, bibles: biblesView,
-  notes: notesSectionView, sermons: sermonsView, lists: listsView, reports: reportView, bin: binView,
+  notes: notesSectionView, sermons: sermonsView, highlights: highlightsView, lists: listsView, reports: reportView, bin: binView,
   search: searchView, settings: settingsView,
 };
 

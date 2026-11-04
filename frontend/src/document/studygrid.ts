@@ -16,8 +16,11 @@ import {
   selectPane, selectTab, setLinked, setRef, shape, updateTab,
 } from "./grid";
 import { DRAG_TYPE, dragging, setDragging } from "./drag";
+import { setSelectedView } from "../gridhook";
 import { mountDoc } from "./mount";
 import { DocHost, DocView, followsPassage, tabLabel } from "./view";
+import { paneMenu as paneMenuGroups } from "../docwords";
+import { flash } from "../listpicker";
 
 const GRID_KEY = "xegesis.grid";
 const STEP = 0.05;
@@ -39,6 +42,7 @@ interface PaneUI {
   place: HTMLElement;
   tools: HTMLElement;
   link: HTMLButtonElement;
+  contents: HTMLButtonElement;
   more: HTMLButtonElement;
   body: HTMLElement;
   preview: HTMLElement;
@@ -100,6 +104,7 @@ export function studyGrid(o: StudyGridOptions) {
     savePref(GRID_KEY, g);
     for (const [id, ui] of uis) ui.el.classList.toggle("selected", id === paneId);
     syncPassage();
+    document.dispatchEvent(new Event("xegesis:pane-changed"));
   }
 
   // Hosts ----------------------------------------------------------------------------------------------
@@ -182,6 +187,7 @@ export function studyGrid(o: StudyGridOptions) {
       if (p) m.view.refChanged?.(paneRef(g, p));
     }
     syncPassage();
+    document.dispatchEvent(new Event("xegesis:pane-changed"));
   }
 
   function drawPane(p: Pane, selected: boolean, ci: number, pi: number): HTMLElement {
@@ -220,6 +226,7 @@ export function studyGrid(o: StudyGridOptions) {
     setChildren(ui.place, m.view.placeBox ? [m.view.placeBox] : []);
     setChildren(ui.tools, m.view.tools ? [m.view.tools] : []);
     ui.link.hidden = !followsPassage(tab) && !p.tabs.some(followsPassage);
+    ui.contents.hidden = !m.view.menu?.contents;
     return ui.el;
   }
 
@@ -273,14 +280,26 @@ export function studyGrid(o: StudyGridOptions) {
       const p = findPane(g, paneId)?.pane;
       if (p) setGrid(setLinked(g, paneId, !p.linked));
     });
+    const contents: HTMLButtonElement = h("button", { type: "button", class: "icon-btn grid-contents", "aria-label": "Contents", title: "Contents: go to a book, chapter or section",
+      "aria-haspopup": "dialog", "aria-expanded": "false" }, icon("contents"));
+    contents.addEventListener("click", () => viewOf(paneId)?.menu?.contents?.(contents));
     const more: HTMLButtonElement = h("button", { type: "button", class: "icon-btn", "aria-label": "Pane menu", title: "More", "aria-haspopup": "menu", "aria-expanded": "false" }, icon("more"));
-    more.addEventListener("click", () => togglePopover(more, () => paneMenu(paneId, more), { label: "Pane menu", side: "below", menu: true }));
-    const bar = h("div", { class: "grid-bar" }, h("div", { class: "grid-tabstrip" }, tabs, plus), place, tools, link, more);
+    more.addEventListener("click", () => togglePopover(more, () => paneMenu(paneId, more), { label: "Pane menu", side: "below", menu: true, className: "pane-menu" }));
+    const bar = h("div", { class: "grid-bar" }, h("div", { class: "grid-tabstrip" }, tabs, plus), place, tools, link, contents, more);
     const body = h("div", { class: "grid-body" });
     const preview = h("div", { class: "grid-preview", hidden: true, "aria-hidden": "true" });
     const pel = h("section", { class: "grid-pane", "data-pane": paneId }, bar, body, preview);
     pel.addEventListener("pointerdown", () => select(paneId), true);
     pel.addEventListener("focusin", () => select(paneId));
+    // The ⋯ menu's shortcuts work while the keyboard is in the pane.
+    pel.addEventListener("keydown", (e) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
+      const k = e.key.toLowerCase();
+      const menu = viewOf(paneId)?.menu;
+      if (k === "f" && menu?.search) { e.preventDefault(); menu.search(more); }
+      else if (k === "p" && menu?.print) { e.preventDefault(); menu.print(); }
+      else if (k === "w") { e.preventDefault(); setGrid(closePane(g, paneId)); focusSelected(); }
+    });
 
     pel.addEventListener("dragover", (e) => {
       if (!dragging) return;
@@ -307,7 +326,7 @@ export function studyGrid(o: StudyGridOptions) {
       endDrag();
       setGrid(d.tabId ? dropTab(g, d.tabId, paneId, zone) : insertTab(g, d.spec!, paneId, zone));
     });
-    return { el: pel, tabs, place, tools, link, more, body, preview };
+    return { el: pel, tabs, place, tools, link, contents, more, body, preview };
   }
 
   function endDrag() {
@@ -327,29 +346,47 @@ export function studyGrid(o: StudyGridOptions) {
       button("New note", add({ kind: "note" })));
   }
 
+  function viewOf(paneId: string): DocView | undefined {
+    const p = findPane(g, paneId)?.pane;
+    return p ? mounted.get(activeTab(p)!.id)?.view : undefined;
+  }
+
+  // paneMenu is ⋯: what this pane shows, then the layout (docwords.ts paneMenu).
   function paneMenu(paneId: string, anchor: HTMLElement): HTMLElement {
     const p = findPane(g, paneId)?.pane;
-    const m = p ? mounted.get(activeTab(p)!.id) : undefined;
-    const menu = m?.view.menu ?? {};
+    const tab = p && activeTab(p);
+    const menu = viewOf(paneId)?.menu ?? {};
     // A menu item that opens another popover waits for the menu to close first.
     const later = (fn: () => void) => () => setTimeout(fn, 0);
-    // A narrow pane hides its Bibles and link buttons (style.css); they are offered here instead.
+    // A narrow pane hides its Bibles button (style.css); it is offered here instead.
     const ui = uis.get(paneId);
     const folded = (x?: HTMLElement) => !!x && !x.hidden && getComputedStyle(x).display === "none";
-    const extra: HTMLElement[] = [];
-    if (menu.bibles && folded(ui?.tools)) extra.push(button("Bibles to show…", later(() => menu.bibles!(anchor))));
-    if (p && folded(ui?.link)) {
-      extra.push(button(p.linked ? "Unlink from the other panes" : "Link to the other panes", () => setGrid(setLinked(g, paneId, !p.linked)),
-        { title: p.linked ? "Keep this pane's own passage" : "Follow the shared passage" }));
-    }
-    return h("div", { class: "menu-list" },
-      extra,
-      button("Contents", later(() => menu.contents?.(anchor)), { disabled: !menu.contents }),
-      button("History", later(() => menu.history?.(anchor)), { disabled: !menu.history }),
-      button("Search in this", later(() => menu.search?.(anchor)), { disabled: !menu.search }),
-      button("Print or export…", () => menu.print?.(), { disabled: !menu.print }),
-      button("Move to…", later(() => moveDialog(paneId, anchor)), { disabled: !p }),
-      button("Close pane", () => setGrid(closePane(g, paneId))));
+    const spec = (): TabSpec | null => (tab ? (({ id: _id, ...rest }) => rest)(tab) : null);
+    const groups = paneMenuGroups({
+      search: !!menu.search, print: !!menu.print, link: !!menu.link?.(),
+      splitRight: !!tab && insertTab(g, spec()!, paneId, "right") !== null,
+      splitDown: !!tab && insertTab(g, spec()!, paneId, "bottom") !== null,
+      bibles: !!menu.bibles && folded(ui?.tools),
+    });
+    const run: Record<string, () => void> = {
+      search: later(() => menu.search?.(anchor)),
+      print: () => menu.print?.(),
+      copylink: () => {
+        const l = menu.link?.();
+        if (l) void navigator.clipboard.writeText(`${location.origin}${location.pathname}${l}`).then(() => flash("Link copied."), () => flash("The clipboard is not available here."));
+      },
+      bibles: later(() => menu.bibles?.(anchor)),
+      "split-right": () => { const sp = spec(); if (sp) setGrid(insertTab(g, sp, paneId, "right")); },
+      "split-down": () => { const sp = spec(); if (sp) setGrid(insertTab(g, sp, paneId, "bottom")); },
+      move: later(() => moveDialog(paneId, anchor)),
+      close: () => setGrid(closePane(g, paneId)),
+    };
+    return h("div", { class: "menu-list grouped-menu" }, groups.map((gr) => [
+      h("div", { class: "menu-head", role: "presentation" }, gr.head),
+      gr.items.map((it) => h("button", { type: "button", class: `menu-item${it.danger ? " danger" : ""}`, disabled: !!it.disabled, onclick: run[it.id],
+        "aria-keyshortcuts": it.keys ? it.keys.replace("Ctrl+", "Control+") : null },
+      h("span", {}, it.label), it.keys ? h("kbd", { class: "menu-keys" }, it.keys) : null)),
+    ]));
   }
 
   // moveDialog is the keyboard way to drag the current tab: beside, above or below a pane, or into it.
@@ -510,6 +547,7 @@ export function studyGrid(o: StudyGridOptions) {
   }
 
   render();
+  setSelectedView(selectedView);
 
   return {
     el,

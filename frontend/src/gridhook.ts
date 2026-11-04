@@ -30,6 +30,18 @@ export function setGridPresets(fn: GridPresetsHandler): void {
   handler = fn;
 }
 
+// The selected pane's view, for the sidebar tools that follow it (the Highlights tool). The grid
+// sends "xegesis:pane-changed" on document when the selected pane or its tab changes.
+let selected: () => { markScope?(): unknown } | null = () => null;
+
+export function setSelectedView(fn: () => { markScope?(): unknown } | null): void {
+  selected = fn;
+}
+
+export function selectedMarkScope(): unknown {
+  return selected()?.markScope?.() ?? null;
+}
+
 export function openGridPresets(anchor: HTMLElement): void {
   window.dispatchEvent(new CustomEvent("xegesis:grid-presets", { detail: anchor }));
   handler(anchor);

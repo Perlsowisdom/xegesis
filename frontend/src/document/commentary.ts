@@ -5,6 +5,8 @@ import { clear, h } from "../dom";
 import { paragraphs } from "../markup";
 import { sidebar } from "../views/sidebar";
 import { attachContextMenu } from "./contextmenu";
+import { lookUpCard } from "../lookup";
+import { attachMarking } from "../marking";
 import { DocHost, DocView } from "./view";
 
 interface Commentary { module: string; name: string; attribution?: string; entries: { ref: string; markup?: string; text: string }[] }
@@ -42,6 +44,11 @@ export function commentaryDoc(host: DocHost): DocView {
   attachContextMenu(text, {
     note: () => sidebar().newNote(shown),
     go: (ref) => host.go(ref),
+    showWord: (w) => sidebar().showWord(w),
+  });
+  attachMarking(text, {
+    note: () => sidebar().newNote(shown),
+    lookUp: (t, word, at) => void lookUpCard(t, word, at, { showWord: (w) => sidebar().showWord(w), go: (ref) => host.go(ref) }),
   });
 
   void read(host.ref());

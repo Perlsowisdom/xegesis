@@ -3,8 +3,10 @@
 // further blank line is an empty paragraph; at the edges every blank line is an empty paragraph.
 //
 // The reader is deliberately conservative. It recognises only what the writer emits in exactly that
-// form (headings "# ", bullets "- ", numbers "1. ", quotes "> ", **bold**, *italic*, `code`,
-// [text](url)); anything else stays literal text, so a note written by hand is not rewritten.
+// form (headings "# ", bullets "- ", numbers "1. ", quotes "> ", a divider "---", **bold**, *italic*,
+// <u>underline</u>, `code`, [text](url)); anything else stays literal text, so a note written by hand
+// is not rewritten. A quote whose last line is a credit ("> — [Rom 8:28](#passage/…) (KJV)…", as
+// document.quote writes it) is a verse quotation, kept line for line.
 // This file has no dependency on the editor, so it is tested on its own.
 
 export interface Span {
@@ -12,6 +14,7 @@ export interface Span {
   bold?: boolean;
   italic?: boolean;
   code?: boolean;
+  underline?: boolean;
   link?: string;
   br?: boolean; // a line break inside a block; text is ""
 }
@@ -20,7 +23,10 @@ export type Block =
   | { type: "paragraph"; spans: Span[] }
   | { type: "heading"; level: number; spans: Span[] }
   | { type: "quote"; spans: Span[] }
-  | { type: "list"; ordered: boolean; items: Span[][] };
+  | { type: "list"; ordered: boolean; items: Span[][] }
+  | { type: "divider" }
+  // lines are the quotation's lines without their "> " (a bare ">" is ""); the last is the credit.
+  | { type: "versequote"; lines: string[] };
 
 // splitBlocks mirrors backup.ParseBlocks. An empty paragraph is "".
 export function splitBlocks(md: string): string[] {
@@ -82,6 +88,10 @@ function parseBlock(src: string): Block {
   if (lines.length === 1) {
     const m = /^(#{1,6}) (\S.*)$/.exec(src);
     if (m) return { type: "heading", level: m[1].length, spans: parseInline(m[2]) };
+    if (src === "---") return { type: "divider" };
+  }
+  if (lines.length > 1 && lines.every((l) => l === ">" || l.startsWith("> ")) && /^> — \S/.test(lines[lines.length - 1])) {
+    return { type: "versequote", lines: lines.map((l) => l.slice(2)) };
   }
   if (lines.every((l) => /^- \S/.test(l))) {
     return { type: "list", ordered: false, items: lines.map((l) => parseInline(l.slice(2))) };
@@ -104,7 +114,7 @@ function joinLines(lines: Span[][]): Span[] {
   return out;
 }
 
-type Marks = Pick<Span, "bold" | "italic" | "code" | "link">;
+type Marks = Pick<Span, "bold" | "italic" | "code" | "underline" | "link">;
 
 export function parseInline(s: string, marks: Marks = {}): Span[] {
   const out: Span[] = [];
@@ -122,6 +132,7 @@ export function parseInline(s: string, marks: Marks = {}): Span[] {
     else if (rest.startsWith("**")) m = emphasisAt(rest, "**", { ...marks, bold: true });
     else if (rest[0] === "*") m = emphasisAt(rest, "*", { ...marks, italic: true });
     else if (rest[0] === "[" && !marks.link) m = linkAt(rest, marks);
+    else if (rest.startsWith("<u>") && !marks.underline) m = underlineAt(rest, marks);
     if (m) {
       flush();
       out.push(...m.spans);
@@ -162,6 +173,12 @@ function linkAt(rest: string, marks: Marks): { len: number; spans: Span[] } | nu
   return { len: m[0].length, spans: parseInline(m[1], { ...marks, link: m[2] }) };
 }
 
+function underlineAt(rest: string, marks: Marks): { len: number; spans: Span[] } | null {
+  const end = rest.indexOf("</u>", 3);
+  if (end < 4) return null;
+  return { len: end + 4, spans: parseInline(rest.slice(3, end), { ...marks, underline: true }) };
+}
+
 // Writing -------------------------------------------------------------------------------------
 
 export function toMarkdown(blocks: Block[]): string {
@@ -179,11 +196,15 @@ function writeBlock(b: Block): string {
       return writeInline(b.spans).split("\n").map((l) => `> ${l}`).join("\n");
     case "list":
       return b.items.map((it, i) => `${b.ordered ? `${i + 1}. ` : "- "}${writeInline(it)}`).join("\n");
+    case "divider":
+      return "---";
+    case "versequote":
+      return b.lines.map((l) => (l ? `> ${l}` : ">")).join("\n");
   }
 }
 
-type Mark = "link" | "bold" | "italic" | "code";
-const ORDER: Mark[] = ["link", "bold", "italic", "code"];
+type Mark = "link" | "bold" | "italic" | "underline" | "code";
+const ORDER: Mark[] = ["link", "bold", "italic", "underline", "code"];
 
 const has = (s: Span, m: Mark) => (m === "link" ? !!s.link : !!s[m]);
 const same = (a: Span, b: Span, m: Mark) => !b.br && has(b, m) && (m !== "link" || a.link === b.link);
@@ -192,7 +213,7 @@ export function writeInline(spans: Span[]): string {
   return write(spans, new Set());
 }
 
-// Marks nest in a fixed order (link, bold, italic, code); neighbouring pieces that share a mark are
+// Marks nest in a fixed order (link, bold, italic, underline, code); neighbouring pieces that share a mark are
 // written inside one pair of marks, so marks are not closed and reopened between them.
 function write(spans: Span[], used: Set<Mark>): string {
   let out = "";
@@ -224,6 +245,7 @@ function wrap(m: Mark, text: string, url?: string): string {
   const body = text.slice(lead.length).replace(/\s+$/, "");
   const trail = text.slice(lead.length + body.length);
   if (body === "") return text;
-  const marked = m === "bold" ? `**${body}**` : m === "italic" ? `*${body}*` : m === "code" ? `\`${body}\`` : `[${body}](${url})`;
+  const marked = m === "bold" ? `**${body}**` : m === "italic" ? `*${body}*` : m === "code" ? `\`${body}\``
+    : m === "underline" ? `<u>${body}</u>` : `[${body}](${url})`;
   return m === "link" ? marked : lead + marked + trail;
 }

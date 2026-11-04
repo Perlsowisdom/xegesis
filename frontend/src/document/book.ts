@@ -10,13 +10,18 @@ import {
   CopyResult, DEFAULT_PREFS, ReadingPrefs, TOCEntry, base64ToBytes, concatBytes, copyMessage, currentEntry,
   pageRects, tidyPrefs, tocOptions,
 } from "../bookhelpers";
-import { button, clear, field, h, select } from "../dom";
+import { button, clear, h, select } from "../dom";
+import { sidebar } from "../views/sidebar";
 import { addToList } from "../listpicker";
 import type { PdfDoc, RenderedPage } from "./pdf";
 import { closePopover, togglePopover } from "../popover";
 import { markSegments } from "../helpers";
 import type { Locator } from "./open";
 import { attachContextMenu } from "./contextmenu";
+import { contentsPopover } from "./contentspop";
+import { lookUpCard } from "../lookup";
+import { attachMarking } from "../marking";
+import { hlClasses, parseStyle, styleOf } from "../markingwords";
 import { DocHost, DocView } from "./view";
 
 interface BookInfo {
@@ -67,7 +72,6 @@ interface Target {
   flash?: boolean;
 }
 
-const STYLES = ["yellow", "green", "blue", "pink", "purple", "underline"];
 const PREFS_KEY = "xegesis.book.prefs";
 
 function loadPrefs(): ReadingPrefs {
@@ -121,12 +125,6 @@ export function bookDoc(host: DocHost): DocView {
   const pdfBox = h("div", { class: "pdf-box doc-text" });
   const body = h("div", { class: "book-body", tabindex: "0", role: "document", "aria-label": "Book text" }, text, pdfBox);
   const attribution = h("footer", { class: "attribution" });
-  const styleSel = select(STYLES, "yellow", { "aria-label": "Highlight colour" });
-  const hlBtn = button("Highlight", () => void addHighlight(), { disabled: true });
-  const noteBtn = button("Note", () => addNote(), { disabled: true });
-  const listBtn = button("Add to list", () => addExcerpt(), { disabled: true, title: "Keep the selected text in a list of excerpts" });
-  const actions = h("div", { class: "row wrap book-actions", role: "group", "aria-label": "Selected text", hidden: true },
-    h("span", { class: "hint" }, "Selection:"), styleSel, hlBtn, noteBtn, listBtn);
   const editor = h("div", {});
   const marks = h("ul", { class: "book-marks" });
   const picker = h("div", { class: "card book-picker", hidden: true });
@@ -142,7 +140,7 @@ export function bookDoc(host: DocHost): DocView {
 
   const settings = textSettings();
   const reader = h("div", { class: "book-reader", hidden: true },
-    byline, settings.el, actions, editor, copyMsg.el, body, attribution,
+    byline, settings.el, editor, copyMsg.el, body, attribution,
     h("details", { class: "book-marks-box" }, h("summary", {}, "Highlights and notes in this section"), marks));
   const el = h("div", { class: "doc doc-book" }, picker, msg.el, reader);
 
@@ -376,7 +374,6 @@ export function bookDoc(host: DocHost): DocView {
     alive = false;
     loadSeq++;
     clearTimeout(saveTimer);
-    document.removeEventListener("selectionchange", onSelection);
     resizer.disconnect();
     book = null;
     page?.cancel();
@@ -407,10 +404,10 @@ export function bookDoc(host: DocHost): DocView {
     if (book.reflowable) {
       for (const m of [...text.querySelectorAll("mark.hl")]) m.replaceWith(...m.childNodes);
       text.normalize();
-      for (const hl of highlights) if (hl.locator) markText(hl.locator, `hl hl-${hl.style}`, hl.id);
+      for (const hl of highlights) if (hl.locator) markText(hl.locator, hlClasses(hl.style).join(" "), hl.id);
       for (const n of notes) if (n.locator) markText(n.locator, "hl hl-note", n.id);
     } else if (page) {
-      clear(page.marks, highlights.map((hl) => rectsEl(hl.locator, `pdf-hl hl-${hl.style}`)),
+      clear(page.marks, highlights.map((hl) => rectsEl(hl.locator, `pdf-hl ${hlClasses(hl.style).slice(1).join(" ")}`)),
         notes.map((n) => rectsEl(n.locator, "pdf-hl hl-note")));
     }
   }
@@ -427,7 +424,7 @@ export function bookDoc(host: DocHost): DocView {
     ];
     clear(marks, items.length === 0 ? h("li", { class: "empty" }, "None yet. Select text to highlight it or add a note.") : items.map((m) =>
       h("li", { class: "row small" },
-        h("span", { class: `swatch hl-${m.style}`, "aria-hidden": "true" }),
+        h("span", { class: `swatch ${m.style === "note" ? "hl-note" : `dot-${parseStyle(m.style).colour}`}`, "aria-hidden": "true" }),
         h("span", { class: "grow" }, h("strong", {}, `${m.kind}: `), m.label.length > 120 ? m.label.slice(0, 120) + "…" : m.label),
         book?.reflowable && m.a?.para ? button("Show", () => scrollTo({ para: m.a?.para, flash: true }), { "aria-label": `Show ${m.kind.toLowerCase()}` }) : null,
         button("Delete", () => removeMark(m.kind, m.id), { class: "danger", "aria-label": `Delete ${m.kind.toLowerCase()}` }))));
@@ -483,15 +480,6 @@ export function bookDoc(host: DocHost): DocView {
     return r.collapsed || !r.toString().trim() ? null : r;
   }
 
-  function onSelection() {
-    const has = !!book && !!selection();
-    hlBtn.disabled = !has;
-    noteBtn.disabled = !has;
-    listBtn.disabled = !has;
-    actions.hidden = !has && !editor.childElementCount;
-  }
-  document.addEventListener("selectionchange", onSelection);
-
   function anchorOf(r: Range): Anchor | null {
     if (!book) return null;
     const quote = r.toString().replace(/\s+/g, " ").trim().slice(0, 2000);
@@ -506,45 +494,23 @@ export function bookDoc(host: DocHost): DocView {
     return rects.length ? { section, page: section, rects, text: quote } : null;
   }
 
-  async function addHighlight(style = styleSel.value) {
-    const r = selection();
+  async function addHighlight(style: string, given?: Range) {
+    const r = given ?? selection();
     const a = r && anchorOf(r);
     if (!book || !a) return msg.info("Select some text in the book first.");
     const ok = await msg.attempt(() => run("highlight.create", { item_id: book!.item_id, locator: a, style }));
     if (ok !== undefined) {
       document.getSelection()?.removeAllRanges();
-      loadMarks();
+      marksChanged();
     }
   }
 
+  // addNote starts a note on the selection, in the sidebar's Notes tool; it is kept with its first words.
   function addNote() {
     const r = selection();
     const a = r && anchorOf(r);
     if (!book || !a) return msg.info("Select some text in the book first.");
-    const t = h("input", { type: "text" });
-    const b = h("div", { class: "editor-host" });
-    let ed: { getMarkdown(): string; destroy(): void } | null = null;
-    import("../editor").then(({ createEditor }) => { ed = createEditor(b, { placeholder: "Write your note…", label: "Text of the note" }); });
-    const form = h("form", { class: "card", "aria-label": "New note on the selection" },
-      h("p", { class: "hint" }, `On: “${(a.text ?? "").slice(0, 160)}”`),
-      field("Title", t), h("div", { class: "field" }, h("label", {}, "Text"), b),
-      h("div", { class: "row" }, h("button", { type: "submit", class: "primary" }, "Create note"), button("Cancel", () => { ed?.destroy(); clear(editor); })));
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const ok = await msg.attempt(() => run<Note>("note.create", { title: t.value, body: ed?.getMarkdown() ?? "", item_id: book!.item_id, locator: a }));
-      if (ok) {
-        ed?.destroy();
-        clear(editor);
-        msg.ok("Note created.");
-        loadMarks();
-      }
-    });
-    form.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && !(e.target as HTMLElement).closest(".rich-link")) { ed?.destroy(); clear(editor); }
-      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) form.requestSubmit();
-    });
-    clear(editor, form);
-    t.focus();
+    sidebar().newNoteOn({ itemId: book.item_id, title: book.title, locator: a as unknown as Record<string, unknown> });
   }
 
   // Selected text goes into a list of excerpts as a copy: the book's licence limits and credit apply.
@@ -656,30 +622,74 @@ export function bookDoc(host: DocHost): DocView {
 
   attachContextMenu(body, {
     highlight: (style) => addHighlight(style),
+    list: () => addExcerpt(),
+    showWord: (w) => sidebar().showWord(w),
     note: () => addNote(),
     copy: (t) => copyText(t),
     go: (ref) => host.go(ref),
   });
 
+  function marksChanged() {
+    void loadMarks();
+    document.dispatchEvent(new Event("xegesis:marks-changed"));
+  }
+  const onMarks = () => { if (alive && book) void loadMarks(); };
+  document.addEventListener("xegesis:marks-changed", onMarks);
+
+  const marking = attachMarking(body, {
+    highlight: (st, r) => addHighlight(styleOf(st), r),
+    restyle: async (id, style) => {
+      if (await msg.attempt(() => run("highlight.update", { id, style })) !== undefined) marksChanged();
+    },
+    remove: async (id) => {
+      if (await msg.attempt(() => run("highlight.delete", { id })) !== undefined) marksChanged();
+    },
+    note: () => addNote(),
+    lookUp: (t, word, at) => void lookUpCard(t, word, at, { showWord: (w) => sidebar().showWord(w), go: (ref) => host.go(ref) }),
+    copy: (t) => copyText(t),
+    list: () => addExcerpt(),
+    at: (target) => {
+      const m = target.closest<HTMLElement>("mark[data-mark]");
+      const hl = m && highlights.find((x) => x.id === m.dataset.mark);
+      return m && hl ? { id: hl.id, style: hl.style, el: m } : null;
+    },
+  });
+
   // The ⋯ menu ----------------------------------------------------------------------------------------
 
   const menu = {
+    // ☰ Contents: the table of contents, narrowed by what is typed, and the places visited.
     contents(anchor: HTMLElement) {
-      if (toc.length === 0) return msg.info("This book has no contents list.");
-      togglePopover(anchor, () => h("div", { class: "menu-list toc-list" }, tocOptions(toc).map(([v, label]) =>
-        button(label, () => {
-          const t = toc[Number(v)];
-          if (t) jump(t.section, { anchor: t.anchor, flash: !!t.anchor });
-        }))), { label: "Contents", side: "below", menu: true });
-    },
-    history(anchor: HTMLElement) {
-      togglePopover(anchor, () => h("div", { class: "menu-list" }, back.length === 0
-        ? h("p", { class: "hint pop-body" }, "No earlier places yet. Following a link or a contents entry adds one.")
-        : [...back].reverse().map((p, i) => button(`${book?.reflowable ? "Section" : "Page"} ${p.section}`, () => {
+      const unit = book?.reflowable ? "Section" : "Page";
+      const entries = tocOptions(toc);
+      contentsPopover(anchor, {
+        placeholder: toc.length ? "Go to a chapter or section…" : `Go to a ${unit.toLowerCase()} number…`,
+        go: (t) => {
+          const n = Number(t);
+          if (Number.isInteger(n) && n > 0) { go(n); return true; }
+          const hit = entries.find(([, label]) => label.trim().toLowerCase().includes(t.toLowerCase()));
+          const e = hit && toc[Number(hit[0])];
+          if (!e) return false;
+          jump(e.section, { anchor: e.anchor, flash: !!e.anchor });
+          return true;
+        },
+        body: (q) => {
+          const shown = entries.filter(([, label]) => !q || label.toLowerCase().includes(q.toLowerCase()));
+          if (toc.length === 0) return h("p", { class: "hint" }, "This book has no contents list. Type a number to go there.");
+          return h("div", { class: "menu-list toc-list" }, shown.length === 0 ? h("p", { class: "hint" }, "No heading has those words.")
+            : shown.map(([v, label]) => button(label, () => {
+              closePopover(true);
+              const t = toc[Number(v)];
+              if (t) jump(t.section, { anchor: t.anchor, flash: !!t.anchor });
+            }, { class: Number(v) === Number(contents.value) ? "on" : "" })));
+        },
+        recent: [...back].reverse().map((p, i) => ({ label: `${unit} ${p.section}`, go: () => {
           back.splice(back.length - 1 - i);
           go(p.section, { para: p.para });
-        }))), { label: "History", side: "below", menu: true });
+        } })),
+      });
     },
+    link: () => (book ? `#book/${encodeURIComponent(book.item_id)}?file=${encodeURIComponent(book.file_id)}${book.reflowable ? "" : `&page=${section}`}` : null),
     print,
     search(anchor: HTMLElement) {
       const q = h("input", { type: "search", "aria-label": "Search in this book", placeholder: "Words to find", autocomplete: "off" });
@@ -713,7 +723,15 @@ export function bookDoc(host: DocHost): DocView {
   else choose();
   if (t.locator) queueMicrotask(() => host.update({ locator: undefined }));
 
-  return { el, placeBox, menu, destroy, focus: () => body.focus() };
+  return {
+    el, placeBox, menu, focus: () => body.focus(),
+    markScope: () => (book ? { kind: "item", itemId: book.item_id, title: book.title || "this book" } : null),
+    destroy() {
+      marking.close();
+      document.removeEventListener("xegesis:marks-changed", onMarks);
+      destroy();
+    },
+  };
 }
 
 // Positions in sanitised book HTML ------------------------------------------------------------------

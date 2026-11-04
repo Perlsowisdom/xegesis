@@ -7,6 +7,7 @@ import { Module, run } from "../api";
 import { installedBibles } from "../bibles";
 import type { Book } from "../helpers";
 import type { Tab, TabSpec } from "./grid";
+import type { MarkScope } from "../highlightspanel";
 
 export interface DocHost {
   tab(): Tab;
@@ -17,10 +18,11 @@ export interface DocHost {
   mode(): "read" | "study";
 }
 
-// The pane's ⋯ menu shows whichever of these a view offers.
+// The pane's bar offers whichever of these a view has: ☰ Contents (a place to go, with the recent
+// places), and in ⋯ searching, printing and copying a link to the place shown.
 export interface DocMenu {
   contents?(anchor: HTMLElement): void;
-  history?(anchor: HTMLElement): void;
+  link?(): string | null; // an app address of the place shown, e.g. #passage/John.1
   search?(anchor: HTMLElement): void;
   find?(query: string, anchor: HTMLElement): void | Promise<void>; // the Reader bar's "search in what is open"
   print?(): void;
@@ -33,6 +35,7 @@ export interface DocView {
   tools?: HTMLElement; // extra controls in the pane's bar
   menu?: DocMenu;
   refChanged?(ref: string): void;
+  markScope?(): MarkScope | null; // where its highlights are, for the sidebar's Highlights tool
   focus?(): void;
   destroy(): void;
 }

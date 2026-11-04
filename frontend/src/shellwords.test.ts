@@ -51,18 +51,22 @@ describe("rail preferences", () => {
 describe("right sidebar tools", () => {
   it("shows every tool by default, starting closed", () => {
     expect(normalizeSidebar(null)).toEqual(SIDEBAR_DEFAULTS);
-    expect(visibleTools(SIDEBAR_DEFAULTS.tools)).toEqual(["chat", "related", "notes", "word", "compare"]);
+    expect(visibleTools(SIDEBAR_DEFAULTS.tools)).toEqual(["chat", "related", "notes", "highlights", "word", "compare"]);
   });
   it("keeps the saved order, drops unknown and repeated tools, adds new ones", () => {
     const t = normalizeTools([{ id: "word", shown: false }, { id: "nope" }, { id: "chat" }, { id: "word" }]);
     expect(t).toEqual([
-      { id: "word", shown: false }, { id: "chat", shown: true }, { id: "related", shown: true },
-      { id: "notes", shown: true }, { id: "compare", shown: true },
+      { id: "word", shown: false }, { id: "compare", shown: true }, { id: "chat", shown: true }, { id: "related", shown: true },
+      { id: "notes", shown: true }, { id: "highlights", shown: true },
     ]);
+  });
+  it("puts a new tool after the one it follows", () => {
+    const saved = [{ id: "notes", shown: true }, { id: "chat", shown: false }, { id: "related" }, { id: "word" }, { id: "compare" }];
+    expect(normalizeTools(saved).map((x) => x.id)).toEqual(["notes", "highlights", "chat", "related", "word", "compare"]);
   });
   it("moves tools up and down within bounds", () => {
     const t = SIDEBAR_DEFAULTS.tools;
-    expect(visibleTools(moveTool(t, "notes", -1))).toEqual(["chat", "notes", "related", "word", "compare"]);
+    expect(visibleTools(moveTool(t, "notes", -1))).toEqual(["chat", "notes", "related", "highlights", "word", "compare"]);
     expect(moveTool(t, "chat", -1)).toBe(t);
     expect(moveTool(t, "compare", 1)).toBe(t);
   });
@@ -77,9 +81,9 @@ describe("right sidebar tools", () => {
 describe("reading preferences", () => {
   it("defaults to Read mode and normal text", () => {
     expect(normalizeReading({ mode: "x", size: 3, spacing: "huge", theme: "neon" }))
-      .toEqual({ mode: "read", size: 100, font: "serif", width: "narrow", spacing: "normal", theme: "auto" });
-    expect(normalizeReading({ mode: "study", size: 130, font: "sans", width: "wide", spacing: "loose", theme: "sepia" }))
-      .toEqual({ mode: "study", size: 130, font: "sans", width: "wide", spacing: "loose", theme: "sepia" });
+      .toEqual({ mode: "read", size: 100, font: "serif", width: "narrow", spacing: "normal", theme: "auto", taggedWords: false });
+    expect(normalizeReading({ mode: "study", size: 130, font: "sans", width: "wide", spacing: "loose", theme: "sepia", taggedWords: true }))
+      .toEqual({ mode: "study", size: 130, font: "sans", width: "wide", spacing: "loose", theme: "sepia", taggedWords: true });
   });
   it("steps text sizes", () => {
     expect(stepSize(100, 1)).toBe(115);

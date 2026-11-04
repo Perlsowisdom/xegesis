@@ -222,6 +222,35 @@ func TestQuoteFollowsLicence(t *testing.T) {
 	if err := e.run("document.quote", map[string]any{"id": d.ID, "ref": "John 3:16", "module": "nope"}, nil); code(err) != "not_found" {
 		t.Fatalf("unknown module: %v", err)
 	}
+	// The credit is the quotation's last line, with no empty quote line before it.
+	if !strings.Contains(got.Body, "John 3:17\n> — [John 3:16-17]") {
+		t.Fatalf("credit line:\n%s", got.Body)
+	}
+}
+
+func TestQuotePreview(t *testing.T) {
+	e := setup(t)
+	var q QuoteResult
+	e.must("document.quote", map[string]any{"ref": "John 3:16", "module": "kjv", "preview": true}, &q)
+	if !q.Allowed || q.Document != nil || !strings.HasPrefix(q.Quote, "> **16** Verse text") || !strings.Contains(q.Quote, "\n> — [John 3:16](#passage/John.3.16) (KJV)") {
+		t.Fatalf("preview = %+v", q)
+	}
+	// The licence rules are the same: nothing to store means nothing to place.
+	q = QuoteResult{}
+	e.must("document.quote", map[string]any{"ref": "John 3:16", "module": "live", "preview": true}, &q)
+	if q.Allowed || q.Quote != "" {
+		t.Fatalf("live preview = %+v", q)
+	}
+	if err := e.run("document.quote", map[string]any{"ref": "John 3:16", "module": "kjv"}, nil); code(err) != "bad_params" {
+		t.Fatalf("no id and no preview: %v", err)
+	}
+	var d Document
+	e.must("document.create", map[string]any{"title": "Kept", "body": "Text."}, &d)
+	e.must("document.quote", map[string]any{"id": d.ID, "ref": "John 3:16", "module": "kjv", "preview": true}, &q)
+	e.must("document.get", map[string]any{"id": d.ID}, &d)
+	if d.Body != "Text." {
+		t.Fatalf("preview changed the text: %q", d.Body)
+	}
 }
 
 func TestOldOutlineArray(t *testing.T) {

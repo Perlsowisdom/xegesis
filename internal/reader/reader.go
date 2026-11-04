@@ -31,7 +31,8 @@ func register(r *command.Registry, s *service) {
 		command.Define("book.excerpt", "Read part of a book for printing or exporting: a selection or whole sections, with its licence and length.", false, s.excerptCmd),
 		command.Define("book.refs", "Find Bible references in pieces of text, such as the lines of a PDF page, so they can become links.", false, s.refsCmd),
 		command.Define("highlight.create", "Highlight a passage in a book or Bible verses.", true, s.highlightCreate),
-		command.Define("highlight.list", "List highlights in a book or on Bible verses.", false, s.highlightList),
+		command.Define("highlight.list", "List highlights: in a book, on Bible verses, in a book of the Bible or everywhere, by colour or words.", false, s.highlightList),
+		command.Define("highlight.update", "Change a highlight's colour, or whether it underlines.", true, s.highlightUpdate),
 		command.Define("highlight.delete", "Delete a highlight. It can be restored from its history.", true, s.highlightDelete),
 	)
 }

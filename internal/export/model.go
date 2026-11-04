@@ -11,6 +11,7 @@ type Span struct {
 	Bold   bool   `json:"bold,omitempty"`
 	Italic bool   `json:"italic,omitempty"`
 	Code   bool   `json:"code,omitempty"`
+	Under  bool   `json:"underline,omitempty"`
 	Link   string `json:"link,omitempty"`
 	Break  bool   `json:"br,omitempty"` // a line break inside a block; Text is ""
 }

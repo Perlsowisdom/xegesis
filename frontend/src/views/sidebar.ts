@@ -1,5 +1,6 @@
-// The right sidebar: study tools beside whatever is open. Its tabs are AI chat, Related, Notes, Word
-// and Compare; Settings → Right sidebar chooses which show and in what order. Tools follow the
+// The right sidebar: study tools beside whatever is open. Its tabs are AI chat, Related, Notes,
+// Highlights, Word and Compare; Settings → Right sidebar chooses which show and in what order. It
+// opens and closes with the Reader's sidebar button and Ctrl+., so it has no close button of its own. Tools follow the
 // passage in the Reader and load only while they are visible. At phone width it is a sheet.
 
 import { installedBibles } from "../bibles";
@@ -7,9 +8,16 @@ import { chip } from "../controls";
 import { Message, Module, Ref, run } from "../api";
 import { button, clear, h } from "../dom";
 import { Column, alignColumns, verseParts } from "../helpers";
-import { icon } from "../icons";
 import { WordInfo } from "../markup";
-import { notesPanel } from "../notes";
+import { openInStudy } from "../document/open";
+import { selectedMarkScope } from "../gridhook";
+import { MarkScope, highlightsPanel } from "../highlightspanel";
+
+// bookOf is the book of the Bible in a displayed reference, such as "1 John" in "1 John 3:16".
+function bookOf(display: string): string {
+  return display.replace(/\s+\d+([:.]\d+)?([-–].*)?$/, "").trim() || display;
+}
+import { noteName, notesPanel } from "../notes";
 import { TOOLS, ToolId, activeTool, visibleTools } from "../shellwords";
 import { loadPref, navigate, onPassage, onPrefs, prefs, savePref, setPassage, setPrefs, state } from "../state";
 import { relatedPanel, wordPanel } from "./study";
@@ -31,21 +39,25 @@ function makeSidebar() {
   const related = relatedPanel(go);
   const word = wordPanel(go);
   const notes = notesPanel({
-    heading: "Notes on this passage",
     scope: () => (state.parsed ? { ref: state.parsed.osis, display: state.parsed.display } : null),
+    openTab: (n) => openInStudy({ kind: "note", target: n.id, title: noteName(n) }),
   });
   const compare = comparePanel();
+  const allLink = button("All highlights in My work →", () => navigate("highlights"), { class: "card-link" });
+  const hls = highlightsPanel({
+    scope: () => (selectedMarkScope() as MarkScope | null) ?? (state.parsed ? { kind: "bible", book: bookOf(state.parsed.display) } : null),
+    footer: h("div", { class: "hl-foot" }, allLink),
+  });
   const tools: Record<ToolId, Tool> = {
     chat: { el: chatPanel(), stale: false },
     related: { el: related.el, stale: true, refresh: () => related.showPassage(state.parsed?.osis ?? null, state.parsed?.display) },
     notes: { el: notes.el, stale: true, refresh: () => notes.refresh() },
+    highlights: { el: hls.el, stale: true, refresh: () => hls.refresh() },
     word: { el: word.el, stale: false },
     compare: { el: compare.el, stale: true, refresh: () => compare.refresh() },
   };
 
   const tablist = h("div", { class: "tool-tabs", role: "tablist", "aria-label": "Study tools" });
-  const closeBtn = h("button", { type: "button", class: "icon-btn", "aria-label": "Close the sidebar", title: "Close the sidebar (Ctrl+.)" }, icon("close"));
-  closeBtn.addEventListener("click", () => setOpen(false));
   const panels = h("div", { class: "tool-panels" });
   const tabs = new Map<ToolId, HTMLButtonElement>();
   const panelEls = new Map<ToolId, HTMLElement>();
@@ -69,7 +81,7 @@ function makeSidebar() {
   }
 
   const el = h("aside", { class: "rightbar", "aria-label": "Study tools", id: "rightbar" },
-    h("div", { class: "rightbar-head" }, tablist, closeBtn), panels);
+    h("div", { class: "rightbar-head" }, tablist), panels);
 
   function render() {
     const p = prefs.sidebar;
@@ -88,7 +100,14 @@ function makeSidebar() {
     if (shown.length === 0) {
       tablist.replaceChildren(h("span", { class: "hint" }, "No tools chosen."));
     }
-    if (p.open) load(current);
+    if (p.open) {
+      load(current);
+      // Keep the chosen tab in view when they do not all fit.
+      const b = tabs.get(current);
+      if (b) requestAnimationFrame(() => {
+        if (b.offsetLeft < tablist.scrollLeft || b.offsetLeft + b.offsetWidth > tablist.scrollLeft + tablist.clientWidth) tablist.scrollLeft = b.offsetLeft - 8;
+      });
+    }
   }
 
   function load(id: ToolId) {
@@ -116,6 +135,14 @@ function makeSidebar() {
     setPrefs({ sidebar: { ...prefs.sidebar, tools, open: true, tool: id ?? prefs.sidebar.tool } });
   }
 
+  // The Highlights tool follows the selected pane, and changes made anywhere.
+  const marksStale = () => {
+    tools.highlights.stale = true;
+    if (prefs.sidebar.open && activeTool(prefs.sidebar.tools, prefs.sidebar.tool) === "highlights") load("highlights");
+  };
+  document.addEventListener("xegesis:pane-changed", marksStale);
+  document.addEventListener("xegesis:marks-changed", marksStale);
+
   onPassage(() => {
     for (const t of Object.values(tools)) if (t.refresh) t.stale = true;
     if (prefs.sidebar.open) load(activeTool(prefs.sidebar.tools, prefs.sidebar.tool));
@@ -135,6 +162,11 @@ function makeSidebar() {
     newNote(text: string) {
       open("notes");
       notes.create(text);
+    },
+    // newNoteOn starts a note on a place in a book.
+    newNoteOn(place: { itemId: string; title: string; locator: Record<string, unknown> }) {
+      open("notes");
+      notes.createOn(place);
     },
   };
 }

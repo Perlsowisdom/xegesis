@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"strings"
 
 	"github.com/Perlsowisdom/xegesis/internal/command"
 	"github.com/Perlsowisdom/xegesis/internal/passage"
@@ -47,7 +48,7 @@ type HighlightCreateParams struct {
 	Start         int     `json:"verse_start,omitempty" desc:"Or the first verse ID (BBCCCVVV), with verse_end"`
 	End           int     `json:"verse_end,omitempty" desc:"The last verse ID"`
 	Versification string  `json:"versification,omitempty" enum:"english,hebrew" desc:"Numbering of the verses given; default english. Highlights are kept in English numbering and show in every Bible"`
-	Style         string  `json:"style,omitempty" enum:"yellow,green,blue,pink,purple,underline" desc:"Default yellow"`
+	Style         string  `json:"style,omitempty" enum:"yellow,green,blue,pink,purple,underline,yellow-underline,green-underline,blue-underline,pink-underline,purple-underline" desc:"Default yellow. A colour with -underline underlines in that colour; underline alone is a yellow underline"`
 }
 
 type Highlight struct {
@@ -59,6 +60,8 @@ type Highlight struct {
 	End       int64   `json:"verse_end,omitempty" desc:"Last highlighted verse ID"`
 	Style     string  `json:"style"`
 	CreatedAt int64   `json:"created_at"`
+	ItemTitle string  `json:"item_title,omitempty" desc:"The book's title, for a book highlight"`
+	Text      string  `json:"text,omitempty" desc:"The highlighted words: a book highlight's own, or a Bible highlight's verses in the module asked for"`
 }
 
 func (s *service) highlightCreate(ctx context.Context, env *command.Env, p HighlightCreateParams) (Highlight, error) {
@@ -106,6 +109,13 @@ type HighlightListParams struct {
 	ItemID  string `json:"item_id,omitempty" desc:"Only highlights in this book"`
 	Section int    `json:"section,omitempty" desc:"With item_id, only this section or PDF page"`
 	Ref     string `json:"ref,omitempty" desc:"Only highlights on verses overlapping this reference"`
+	Book    string `json:"book,omitempty" desc:"Only highlights in this book of the Bible, e.g. \"John\""`
+	On      string `json:"on,omitempty" enum:"verses,books" desc:"Only highlights on Bible verses, or only in library books"`
+	Colour  string `json:"colour,omitempty" enum:"yellow,green,blue,pink,purple" desc:"Only highlights of this colour, underlined or not"`
+	Module  string `json:"module,omitempty" desc:"A Bible (bible.modules) to give Bible highlights' text from"`
+	Query   string `json:"query,omitempty" desc:"Only highlights whose text, place or book title has all these words"`
+	Newest  bool   `json:"newest,omitempty" desc:"Newest first; otherwise in reading order (verse order, then by book and place)"`
+	Limit   int    `json:"limit,omitempty" desc:"Most highlights to return (default 500)"`
 }
 
 func (s *service) highlightList(ctx context.Context, env *command.Env, p HighlightListParams) ([]Highlight, error) {
@@ -129,7 +139,119 @@ func (s *service) highlightList(ctx context.Context, env *command.Env, p Highlig
 		where += ` AND a.verse_start <= ? AND a.verse_end >= ?`
 		args = append(args, int64(r.End), int64(r.Start))
 	}
-	return queryHighlights(ctx, env.Store, where, args...)
+	if p.Book != "" {
+		b, ok := verse.LookupBook(p.Book)
+		if !ok {
+			return nil, command.Errorf("bad_params", "highlight.list: unknown book of the Bible %q", p.Book)
+		}
+		where += ` AND a.verse_start BETWEEN ? AND ?`
+		args = append(args, int64(b.Number)*1_000_000, int64(b.Number+1)*1_000_000-1)
+	}
+	switch p.On {
+	case "verses":
+		where += ` AND a.verse_start IS NOT NULL`
+	case "books":
+		where += ` AND a.item_id IS NOT NULL`
+	}
+	if p.Colour != "" {
+		styles := []any{p.Colour, p.Colour + "-underline"}
+		if p.Colour == "yellow" {
+			styles = append(styles, "underline")
+		}
+		where += ` AND h.style IN (?` + strings.Repeat(", ?", len(styles)-1) + `)`
+		args = append(args, styles...)
+	}
+	order := ` ORDER BY a.verse_start IS NULL, a.verse_start, a.verse_end, i.title, json_extract(a.locator_json, '$.section'),
+		json_extract(a.locator_json, '$.para'), json_extract(a.locator_json, '$.offset'), h.created_at, h.rowid`
+	if p.Newest {
+		order = ` ORDER BY h.created_at DESC, h.rowid DESC`
+	}
+	list, err := queryHighlights(ctx, env.Store, where+order, args...)
+	if err != nil {
+		return nil, err
+	}
+	if p.Module != "" {
+		s.verseText(ctx, env, p.Module, list)
+	}
+	if q := strings.Fields(strings.ToLower(p.Query)); len(q) > 0 {
+		kept := list[:0]
+		for _, h := range list {
+			hay := strings.ToLower(h.Text + " " + h.Ref + " " + h.ItemTitle)
+			all := true
+			for _, w := range q {
+				all = all && strings.Contains(hay, w)
+			}
+			if all {
+				kept = append(kept, h)
+			}
+		}
+		list = kept
+	}
+	if p.Limit <= 0 {
+		p.Limit = 500
+	}
+	if len(list) > p.Limit {
+		list = list[:p.Limit]
+	}
+	return list, nil
+}
+
+// verseText gives Bible highlights their words from a Bible, when it is installed and has them.
+func (s *service) verseText(ctx context.Context, env *command.Env, module string, list []Highlight) {
+	for i := range list {
+		h := &list[i]
+		if h.Ref == "" || h.Text != "" {
+			continue
+		}
+		raw, _ := json.Marshal(map[string]any{"module": module, "ref": h.Ref})
+		res, err := s.reg.Run(ctx, env, "bible.read", raw)
+		if err != nil {
+			continue
+		}
+		b, _ := json.Marshal(res)
+		var pas struct {
+			Verses []struct {
+				Text string `json:"text"`
+			} `json:"verses"`
+		}
+		if json.Unmarshal(b, &pas) != nil {
+			continue
+		}
+		words := make([]string, 0, len(pas.Verses))
+		for _, v := range pas.Verses {
+			words = append(words, strings.Join(strings.Fields(v.Text), " "))
+		}
+		h.Text = strings.Join(words, " ")
+	}
+}
+
+type HighlightUpdateParams struct {
+	ID    string `json:"id" required:"true"`
+	Style string `json:"style" required:"true" enum:"yellow,green,blue,pink,purple,underline,yellow-underline,green-underline,blue-underline,pink-underline,purple-underline" desc:"The new colour, with -underline to underline in it"`
+}
+
+func (s *service) highlightUpdate(ctx context.Context, env *command.Env, p HighlightUpdateParams) (Highlight, error) {
+	err := env.Store.Write(ctx, "highlight.update", func(tx *store.Tx) error {
+		cur, err := tx.Get("highlights", store.ByID(p.ID))
+		if err != nil {
+			return err
+		}
+		if cur["deleted_at"] != nil {
+			return command.Errorf("not_found", "highlight %s is deleted", p.ID)
+		}
+		if cur["style"] == p.Style {
+			return nil
+		}
+		return tx.Update("highlights", store.ByID(p.ID), store.Row{"style": p.Style})
+	})
+	if err != nil {
+		return Highlight{}, err
+	}
+	list, err := queryHighlights(ctx, env.Store, ` AND h.id = ?`, p.ID)
+	if err != nil || len(list) == 0 {
+		return Highlight{}, err
+	}
+	return list[0], nil
 }
 
 type IDParams struct {
@@ -150,9 +272,11 @@ func (s *service) highlightDelete(ctx context.Context, env *command.Env, p IDPar
 }
 
 func queryHighlights(ctx context.Context, st *store.Store, where string, args ...any) ([]Highlight, error) {
-	rows, err := st.Query(ctx, `SELECT h.id, h.style, h.created_at, a.item_id, a.locator_json, a.verse_start, a.verse_end
-		FROM highlights h JOIN anchors a ON a.id = h.anchor_id WHERE h.deleted_at IS NULL`+where+
-		` ORDER BY h.created_at, h.id`, args...)
+	if !strings.Contains(where, "ORDER BY") {
+		where += ` ORDER BY h.created_at, h.id`
+	}
+	rows, err := st.Query(ctx, `SELECT h.id, h.style, h.created_at, a.item_id, a.locator_json, a.verse_start, a.verse_end, COALESCE(i.title, '')
+		FROM highlights h JOIN anchors a ON a.id = h.anchor_id LEFT JOIN items i ON i.id = a.item_id WHERE h.deleted_at IS NULL`+where, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -162,7 +286,7 @@ func queryHighlights(ctx context.Context, st *store.Store, where string, args ..
 		var h Highlight
 		var item, loc sql.NullString
 		var start, end sql.NullInt64
-		if err := rows.Scan(&h.ID, &h.Style, &h.CreatedAt, &item, &loc, &start, &end); err != nil {
+		if err := rows.Scan(&h.ID, &h.Style, &h.CreatedAt, &item, &loc, &start, &end, &h.ItemTitle); err != nil {
 			return nil, err
 		}
 		h.ItemID = item.String
@@ -170,6 +294,7 @@ func queryHighlights(ctx context.Context, st *store.Store, where string, args ..
 			var a Anchor
 			if json.Unmarshal([]byte(loc.String), &a) == nil {
 				h.Locator = &a
+				h.Text = a.Text
 			}
 		}
 		if start.Valid && end.Valid {

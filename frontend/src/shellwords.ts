@@ -5,7 +5,7 @@
 export type PlaceId = "search" | "library" | "reader" | "work" | "settings";
 export type Width = "condensed" | "expanded";
 export type ReaderMode = "read" | "study";
-export type ToolId = "chat" | "related" | "notes" | "word" | "compare";
+export type ToolId = "chat" | "related" | "notes" | "highlights" | "word" | "compare";
 
 export interface Place {
   id: PlaceId;
@@ -24,7 +24,7 @@ export const PLACES: Place[] = [
   // My work shows its own column of folders, tags and writing (views/work.ts) instead of tabs.
   {
     id: "work", label: "My work", tabs: false,
-    views: [{ id: "notes", label: "Notes" }, { id: "sermons", label: "Sermons" }, { id: "lists", label: "Lists" },
+    views: [{ id: "notes", label: "Notes" }, { id: "sermons", label: "Sermons" }, { id: "highlights", label: "Highlights" }, { id: "lists", label: "Lists" },
       { id: "plans", label: "Reading plans" }, { id: "reports", label: "Reports" }, { id: "bin", label: "Bin" }],
   },
   { id: "settings", label: "Settings", views: [{ id: "settings", label: "Settings" }, { id: "commands", label: "Commands" }], tabs: false },
@@ -99,6 +99,7 @@ export const TOOLS: { id: ToolId; label: string }[] = [
   { id: "chat", label: "AI chat" },
   { id: "related", label: "Related" },
   { id: "notes", label: "Notes" },
+  { id: "highlights", label: "Highlights" },
   { id: "word", label: "Word" },
   { id: "compare", label: "Compare" },
 ];
@@ -121,8 +122,8 @@ export function toolLabel(id: ToolId): string {
   return TOOLS.find((t) => t.id === id)?.label ?? id;
 }
 
-// normalizeTools keeps the saved order, drops unknown or repeated tools and adds any new tool at the
-// end, shown.
+// normalizeTools keeps the saved order, drops unknown or repeated tools and adds any new tool, shown,
+// after the tool it follows in TOOLS (Highlights after Notes).
 export function normalizeTools(v: unknown): ToolSetting[] {
   const out: ToolSetting[] = [];
   const known = new Set<string>(TOOLS.map((t) => t.id));
@@ -133,7 +134,11 @@ export function normalizeTools(v: unknown): ToolSetting[] {
       out.push({ id: id as ToolId, shown: (x as { shown?: unknown }).shown !== false });
     }
   }
-  for (const t of TOOLS) if (!out.some((o) => o.id === t.id)) out.push({ id: t.id, shown: true });
+  TOOLS.forEach((t, i) => {
+    if (out.some((o) => o.id === t.id)) return;
+    const after = i > 0 ? out.findIndex((o) => o.id === TOOLS[i - 1].id) : -1;
+    out.splice(after + 1, 0, { id: t.id, shown: true });
+  });
   return out;
 }
 
@@ -177,6 +182,7 @@ export interface ReadingPrefs {
   width: "narrow" | "wide";
   spacing: Spacing;
   theme: PageTheme; // the page colour in Read mode; "auto" follows the app
+  taggedWords: boolean; // mark words tagged with Strong's numbers, and look them up on a click
 }
 
 export type Spacing = "tight" | "normal" | "loose";
@@ -184,7 +190,7 @@ export type PageTheme = "auto" | "light" | "sepia" | "dark";
 export const SPACINGS: Record<Spacing, number> = { tight: 1.45, normal: 1.75, loose: 2.1 };
 const THEMES: PageTheme[] = ["auto", "light", "sepia", "dark"];
 
-export const READING_DEFAULTS: ReadingPrefs = { mode: "read", size: 100, font: "serif", width: "narrow", spacing: "normal", theme: "auto" };
+export const READING_DEFAULTS: ReadingPrefs = { mode: "read", size: 100, font: "serif", width: "narrow", spacing: "normal", theme: "auto", taggedWords: false };
 export const TEXT_SIZES = [85, 100, 115, 130, 150];
 
 export function normalizeReading(v: unknown): ReadingPrefs {
@@ -196,6 +202,7 @@ export function normalizeReading(v: unknown): ReadingPrefs {
     width: o.width === "wide" ? "wide" : "narrow",
     spacing: o.spacing === "tight" || o.spacing === "loose" ? o.spacing : "normal",
     theme: THEMES.includes(o.theme as PageTheme) ? (o.theme as PageTheme) : "auto",
+    taggedWords: o.taggedWords === true,
   };
 }
 

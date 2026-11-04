@@ -35,6 +35,22 @@ func TestNoteMarkdownReadsAndWritesBack(t *testing.T) {
 	}
 }
 
+func TestUnderlineAndVerseQuotations(t *testing.T) {
+	bs := parseNote("Some <u>underlined</u> text\n\n> **28** And we know.\n>\n> — [Romans 8:28](#passage/Rom.8.28) (KJV)")
+	if len(bs) != 2 || !bs[0].Spans[1].Under || bs[0].Spans[1].Text != "underlined" {
+		t.Fatalf("underline %+v", bs)
+	}
+	if bs[1].Kind != Quote || !strings.Contains(spansText(bs[1].Spans), "— Romans 8:28 (KJV)") {
+		t.Fatalf("an older quotation with an empty line is still a quote: %+v", bs[1])
+	}
+	if out := string(Markdown(Doc{Pieces: []Piece{{Blocks: bs[:1]}}})); !strings.Contains(out, "Some <u>underlined</u> text") {
+		t.Errorf("markdown %q", out)
+	}
+	if out := inlineHTML(bs[0].Spans); !strings.Contains(out, "<u>underlined</u>") {
+		t.Errorf("html %q", out)
+	}
+}
+
 func TestHTMLEscapesEverything(t *testing.T) {
 	d := Doc{Title: `<script>alert(1)</script>`, Pieces: []Piece{{Title: "A & B", Blocks: []Block{
 		{Kind: Para, Spans: []Span{{Text: `<img src=x onerror=1>`, Link: "javascript:alert(1)"}, {Text: "ok", Link: "https://x.org/?a=1&b=2"}}},

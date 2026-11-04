@@ -20,15 +20,16 @@ import (
 const charsPerPage = reader.CharsPerPage
 
 type QuoteParams struct {
-	ID     string `json:"id" required:"true" desc:"The document to quote into"`
-	Ref    string `json:"ref" required:"true" desc:"The passage, e.g. \"Rom 8:28-30\""`
-	Module string `json:"module" required:"true" desc:"The Bible to quote, from bible.modules"`
+	ID      string `json:"id,omitempty" desc:"The document to quote into; not needed with preview"`
+	Ref     string `json:"ref" required:"true" desc:"The passage, e.g. \"Rom 8:28-30\""`
+	Module  string `json:"module" required:"true" desc:"The Bible to quote, from bible.modules"`
+	Preview bool   `json:"preview,omitempty" desc:"Only return the quotation, for an editor to place where the cursor is; nothing is saved"`
 }
 
 type QuoteResult struct {
 	Allowed     bool      `json:"allowed"`
 	Reason      string    `json:"reason,omitempty" desc:"Why nothing was quoted"`
-	Quote       string    `json:"quote,omitempty" desc:"The Markdown added to the end of the text"`
+	Quote       string    `json:"quote,omitempty" desc:"The Markdown added to the end of the text, or to place with preview"`
 	Attribution string    `json:"attribution,omitempty"`
 	Document    *Document `json:"document,omitempty" desc:"The document after the quotation was added"`
 }
@@ -50,8 +51,13 @@ func (s *service) call(ctx context.Context, env *command.Env, id string, params,
 }
 
 func (s *service) quote(ctx context.Context, env *command.Env, p QuoteParams) (QuoteResult, error) {
-	if _, err := get(ctx, env, p.ID); err != nil {
-		return QuoteResult{}, err
+	switch {
+	case p.ID == "" && !p.Preview:
+		return QuoteResult{}, command.Errorf("bad_params", "document.quote: give id, or preview")
+	case p.ID != "":
+		if _, err := get(ctx, env, p.ID); err != nil {
+			return QuoteResult{}, err
+		}
 	}
 	r, err := refOf(p.Ref)
 	if err != nil {
@@ -87,6 +93,10 @@ func (s *service) quote(ctx context.Context, env *command.Env, p QuoteParams) (Q
 	text := quoteMarkdown(pas, r.Display, r.OSIS, name(*meta), res.Attribution)
 	if max := quoteLimit(lic); max > 0 && utf8.RuneCountInString(text) > max {
 		res.Reason = fmt.Sprintf("the licence of %s allows quoting about %d characters at a time; choose fewer verses", name(*meta), max)
+		return res, nil
+	}
+	if p.Preview {
+		res.Allowed, res.Quote = true, text
 		return res, nil
 	}
 	err = env.Store.Write(ctx, "document.quote", func(tx *store.Tx) error {
@@ -134,7 +144,8 @@ func quoteLimit(l licence.Licence) int {
 }
 
 // quoteMarkdown is the passage as a Markdown block quote: bold verse numbers, then a line with a
-// link to the passage, the Bible's short name and its credit.
+// link to the passage, the Bible's short name and its credit. The editor shows a quote whose last
+// line starts with "— " as a verse quotation, the credit in small type.
 func quoteMarkdown(p bible.Passage, display, osis, bibleName, credit string) string {
 	var b strings.Builder
 	b.WriteString("> ")
@@ -148,7 +159,7 @@ func quoteMarkdown(p bible.Passage, display, osis, bibleName, credit string) str
 		}
 		fmt.Fprintf(&b, "**%s** %s", num, strings.Join(strings.Fields(v.Text), " "))
 	}
-	fmt.Fprintf(&b, "\n>\n> — [%s](#passage/%s) (%s)", display, osis, bibleName)
+	fmt.Fprintf(&b, "\n> — [%s](#passage/%s) (%s)", display, osis, bibleName)
 	if credit != "" {
 		b.WriteString(". " + credit)
 	}
