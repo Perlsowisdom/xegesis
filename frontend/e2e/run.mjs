@@ -11,7 +11,7 @@
 import { readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { shots, startApp } from "./app.mjs";
+import { shots, startApp, within } from "./app.mjs";
 import { helpers } from "./helpers.mjs";
 
 const args = process.argv.slice(2);
@@ -20,10 +20,9 @@ const here = import.meta.dirname;
 const files = readdirSync(here).filter((f) => f.endsWith(".e2e.mjs")).sort();
 
 const app = await startApp({ build: !args.includes("--no-build") });
-const stop = async () => {
-  await app.stop();
-};
-process.on("SIGINT", () => void stop().finally(() => process.exit(130)));
+let stopping;
+const stop = () => (stopping ??= app.stop());
+for (const sig of ["SIGINT", "SIGTERM", "SIGBREAK"]) process.on(sig, () => void stop().finally(() => process.exit(130)));
 
 const results = [];
 try {
@@ -34,7 +33,8 @@ try {
       const t = helpers(app, c.shot);
       const started = Date.now();
       try {
-        await c.run(t);
+        // A check that stops responding fails on its own instead of stalling the run.
+        await within(c.run(t), c.timeout ?? 120000, "the check to finish");
         if (!t.shotTaken) await t.shot();
         results.push({ file: f, row: c.row, ok: true, shot: c.shot, note: t.note });
         console.log(`PASS  ${c.row}  (${Date.now() - started} ms)${t.note ? `\n      note: ${t.note}` : ""}`);

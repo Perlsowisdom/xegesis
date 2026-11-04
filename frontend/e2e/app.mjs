@@ -6,9 +6,15 @@
 //   const app = await startApp({ build: true });
 //   await app.page.keyboard.type("## Hello");
 //   await app.stop();
+//
+// Nothing here waits without a limit: the app has XEGESIS_E2E_START_MS (60 s) to start, or the run
+// stops with the app's output; each request to it is limited too. A run that was killed leaves its
+// app, WebView2 processes and run folder behind; the next run closes and removes them first.
 
 import { execFileSync, spawn } from "node:child_process";
-import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { chmodSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -20,8 +26,12 @@ export const shots = join(here, "shots");
 
 // The library the tests copy. Override with XEGESIS_E2E_SOURCE.
 const SOURCE = process.env.XEGESIS_E2E_SOURCE ?? "C:\\Users\\perlj\\Documents\\Xegesis-scratch3";
-const WORK = join(tmpdir(), "xegesis-e2e");
+// One folder per checkout: two worktrees running the tests at once must not build into, or run,
+// each other's executable (a running app also locks it, so the other's build fails).
+const WORK = join(tmpdir(), "xegesis-e2e", createHash("sha1").update(repo.toLowerCase()).digest("hex").slice(0, 10));
 export const EXE = join(WORK, "xegesis-e2e.exe");
+// How long the app may take to start before the run stops with an error.
+const START_MS = Number(process.env.XEGESIS_E2E_START_MS ?? 60000);
 
 function sh(cmd, args, cwd) {
   execFileSync(`${cmd} ${args.map((a) => (/[\s"]/.test(a) ? `"${a}"` : a)).join(" ")}`, { cwd, stdio: "inherit", shell: true });
@@ -67,14 +77,26 @@ export function build() {
   });
 }
 
+// within gives up on a promise after ms, so nothing the tests wait for can stall the run.
+export function within(p, ms, what) {
+  let timer;
+  return Promise.race([
+    Promise.resolve(p).finally(() => clearTimeout(timer)),
+    new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`Timed out after ${ms} ms: ${what}`)), ms); }),
+  ]);
+}
+
+// waitFor retries fn until it gives a value. Each try is limited too, so a request that never
+// answers (a port another program holds, a half-started WebView2) cannot hang it.
 async function waitFor(fn, ms, what) {
   const until = Date.now() + ms;
   let last;
   while (Date.now() < until) {
     try {
-      const v = await fn();
+      const v = await within(fn(), Math.max(500, Math.min(5000, until - Date.now())), what);
       if (v) return v;
     } catch (e) {
+      if (e.fatal) throw e;
       last = e;
     }
     await new Promise((r) => setTimeout(r, 250));
@@ -82,21 +104,81 @@ async function waitFor(fn, ms, what) {
   throw new Error(`Timed out waiting for ${what}${last ? `: ${last.message}` : ""}`);
 }
 
+// freePort asks the system for a port nothing listens on.
+function freePort() {
+  return new Promise((ok, fail) => {
+    const srv = createServer();
+    srv.unref();
+    srv.on("error", fail);
+    srv.listen(0, "127.0.0.1", () => {
+      const { port } = srv.address();
+      srv.close(() => ok(port));
+    });
+  });
+}
+
 function killTree(pid) {
   if (!pid) return;
   try {
-    if (process.platform === "win32") execFileSync("taskkill", ["/PID", String(pid), "/T", "/F"], { stdio: "ignore" });
+    if (process.platform === "win32") execFileSync("taskkill", ["/PID", String(pid), "/T", "/F"], { stdio: "ignore", timeout: 15000 });
     else process.kill(pid, "SIGKILL");
   } catch {
     // already gone
   }
 }
 
-export async function startApp({ build: doBuild = true, port = 9333 + Math.floor(Math.random() * 400) } = {}) {
+// ps lists the processes whose path or command line mentions text (WebView2's processes name
+// the profile folder they use), as [pid, name].
+function ps(text) {
+  const q = text.replaceAll("'", "''");
+  try {
+    const out = execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
+      `Get-CimInstance Win32_Process | Where-Object { ($_.CommandLine -and $_.CommandLine.Contains('${q}')) -or ($_.ExecutablePath -and $_.ExecutablePath.Contains('${q}')) } | ForEach-Object { "$($_.ProcessId) $($_.Name)" }`],
+    { encoding: "utf8", timeout: 30000, stdio: ["ignore", "pipe", "ignore"] });
+    return out.split(/\r?\n/).filter(Boolean).map((l) => {
+      const [pid, ...name] = l.trim().split(" ");
+      return [Number(pid), name.join(" ")];
+    }).filter(([pid, name]) => pid !== process.pid && !/^(node|powershell)/i.test(name));
+  } catch {
+    return [];
+  }
+}
+
+const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// removeRun deletes a run folder, retrying while WebView2 lets go of its files. A folder still
+// locked after that is left for the next run's sweep, with a warning, instead of failing this one.
+async function removeRun(dir, ms = 10000) {
+  const until = Date.now() + ms;
+  for (;;) {
+    try {
+      rmSync(dir, { recursive: true, force: true, maxRetries: 2, retryDelay: 200 });
+      return true;
+    } catch (e) {
+      if (Date.now() > until) {
+        console.warn(`e2e: could not remove ${dir} yet (${e.code ?? e.message}); the next run removes it.`);
+        return false;
+      }
+      await pause(400);
+    }
+  }
+}
+
+// sweep closes what an earlier, interrupted run left behind (its app and WebView2 processes)
+// and removes its run folders.
+async function sweep() {
+  if (!existsSync(WORK)) return;
+  for (const [pid] of [...ps(EXE), ...ps(join(WORK, "run-"))]) killTree(pid);
+  for (const f of readdirSync(WORK)) if (f.startsWith("run-")) await removeRun(join(WORK, f), 3000);
+}
+
+export async function startApp({ build: doBuild = true, port } = {}) {
   if (process.platform !== "win32") throw new Error("The interface tests drive WebView2 and run on Windows.");
   if (!existsSync(join(SOURCE, "library.db"))) throw new Error(`No library to copy at ${SOURCE}`);
+  await sweep();
   if (doBuild || !existsSync(EXE)) build();
   mkdirSync(shots, { recursive: true });
+  port ??= await freePort();
 
   const run = join(WORK, `run-${Date.now()}`);
   const lib = join(run, "library");
@@ -122,41 +204,47 @@ export async function startApp({ build: doBuild = true, port = 9333 + Math.floor
   child.on("exit", () => (exited = true));
 
   let browser;
+  // Close everything this run started, then remove its folder.
+  const cleanUp = async () => {
+    await within(browser?.close(), 5000, "closing the connection").catch(() => {});
+    killTree(child.pid);
+    for (const [pid] of ps(run)) killTree(pid);
+    await pause(500);
+    await removeRun(run);
+  };
+  const started = Date.now();
+  const left = () => Math.max(1000, START_MS - (Date.now() - started));
   try {
     await waitFor(async () => {
-      if (exited) throw new Error(`the app quit:\n${log}`);
-      const r = await fetch(`http://127.0.0.1:${port}/json/version`);
+      if (exited) throw Object.assign(new Error("the app quit"), { fatal: true });
+      const r = await fetch(`http://127.0.0.1:${port}/json/version`, { signal: AbortSignal.timeout(2000) });
       return r.ok;
-    }, 30000, `the debugging port ${port}`);
-    browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
-    const page = await waitFor(() => browser.contexts().flatMap((c) => c.pages()).find((p) => p.url().startsWith("http")), 20000, "the app page");
-    await page.waitForFunction(() => !!(window.go && window.go.main && window.go.main.App), null, { timeout: 20000 });
-    await page.waitForSelector("#app, body", { timeout: 20000 });
+    }, left(), `the debugging port ${port}`);
+    browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`, { timeout: left() });
+    const page = await waitFor(() => browser.contexts().flatMap((c) => c.pages()).find((p) => p.url().startsWith("http")), left(), "the app page");
+    page.setDefaultTimeout(30000);
+    await page.waitForFunction(() => !!(window.go && window.go.main && window.go.main.App), null, { timeout: left() });
+    await page.waitForSelector("#app, body", { timeout: left() });
     return {
       page,
       browser,
       library: lib,
       log: () => log,
       // run calls a command the way the interface does.
-      run: (id, params = {}) => page.evaluate(async ([id, p]) => JSON.parse((await window.go.main.App.Run(id, JSON.stringify(p))) || "null"), [id, params]),
-      shot: (name) => page.screenshot({ path: join(shots, name) }),
+      run: (id, params = {}) => within(page.evaluate(async ([id, p]) => JSON.parse((await window.go.main.App.Run(id, JSON.stringify(p))) || "null"), [id, params]), 30000, `the command ${id}`),
+      shot: (name) => page.screenshot({ path: join(shots, name), timeout: 15000 }),
       async stop() {
         try {
-          await page.evaluate(() => window.runtime?.Quit?.()).catch(() => {});
+          // Quit in a moment, so the call returns before the page goes.
+          await within(page.evaluate(() => { setTimeout(() => window.runtime?.Quit?.(), 0); }), 3000, "asking the app to quit").catch(() => {});
           await waitFor(() => exited, 5000, "the app to quit").catch(() => {});
-          await browser.close().catch(() => {});
         } finally {
-          killTree(child.pid);
-          await new Promise((r) => setTimeout(r, 500));
-          rmSync(run, { recursive: true, force: true, maxRetries: 5, retryDelay: 300 });
+          await cleanUp();
         }
       },
     };
   } catch (e) {
-    await browser?.close().catch(() => {});
-    killTree(child.pid);
-    await new Promise((r) => setTimeout(r, 500));
-    rmSync(run, { recursive: true, force: true, maxRetries: 5, retryDelay: 300 });
-    throw e;
+    await cleanUp();
+    throw new Error(`The app did not start within ${Math.round(START_MS / 1000)} s: ${e.message}\nApp output:\n${log.slice(-2000) || "(none)"}`);
   }
 }
