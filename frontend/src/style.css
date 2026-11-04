@@ -413,6 +413,12 @@ td.actions button { margin: 0 2px 2px 0; }
 .bible-text .module-name { font-family: system-ui, sans-serif; font-size: .9rem; color: var(--muted); margin: 4px 0; }
 .bible-text .chapter { font-size: 1.25rem; margin: 18px 0 6px; }
 .vnum { font-family: system-ui, sans-serif; font-size: .7em; color: var(--accent); font-weight: 600; }
+.chapter-toggle-row { margin: 12px 0 0; font-family: system-ui, sans-serif; font-size: .85rem; }
+.chapter-toggle { background: none; border: 0; border-radius: 6px; padding: 3px 8px; margin-left: -8px; color: var(--accent); cursor: pointer; font: inherit; }
+.chapter-toggle:hover { background: var(--ghost-hover); }
+.jumped { animation: jumped 2.6s ease-out 0.4s backwards; border-radius: 3px; }
+@keyframes jumped { from { background: var(--mark); } to { background: transparent; } }
+@media (prefers-reduced-motion: reduce) { .jumped { animation-duration: .01s; animation-delay: 2.5s; } }
 .verse:target { background: var(--mark); }
 .attribution { font-family: system-ui, sans-serif; font-size: .8rem; color: var(--muted); border-top: 1px solid var(--line); margin-top: 16px; padding-top: 8px; }
 table.parallel { border-collapse: collapse; width: 100%; max-width: none; }
