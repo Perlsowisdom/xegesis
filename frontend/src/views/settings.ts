@@ -6,7 +6,7 @@
 // Pages are addressed as #settings/<page>, so Help and the sidebar can link straight to one.
 
 import { Message, run } from "../api";
-import { segmented, settingRow, tick } from "../controls";
+import { segmented, settingRow, tick, toggleSwitch } from "../controls";
 import { badge, button, clear, field, h } from "../dom";
 import { icon } from "../icons";
 import { railControls } from "../shell/rail";
@@ -118,7 +118,11 @@ function appearancePage(): PageView {
     el,
     show: () => {
       clear(rail, railControls());
-      clear(reading, readingControls());
+      clear(reading, readingControls(), toggleSwitch({
+        label: "Show tagged words", checked: prefs.reading.taggedWords,
+        hint: "Mark words that carry Strong's numbers, and look one up with a click. Off: words look like plain text; Alt+click looks one up.",
+        onChange: (taggedWords) => setPrefs({ reading: { ...prefs.reading, taggedWords } }),
+      }));
     },
   };
 }
@@ -127,7 +131,8 @@ const TOOL_HINTS: Record<ToolId, string> = {
   chat: "Ask questions about what you are reading.",
   related: "Cross-references, commentaries and your notes for the passage.",
   notes: "Your notes on the passage.",
-  word: "The original word under a tapped word.",
+  highlights: "What you have highlighted in the book you are reading.",
+  word: "The original word behind a word you look up.",
   compare: "The passage in several Bibles, verse by verse.",
 };
 

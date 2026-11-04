@@ -7,6 +7,7 @@ import { Module, run } from "../api";
 import { installedBibles } from "../bibles";
 import type { Book } from "../helpers";
 import type { Tab, TabSpec } from "./grid";
+import type { MarkScope } from "../highlightspanel";
 
 export interface DocHost {
   tab(): Tab;
@@ -33,6 +34,7 @@ export interface DocView {
   tools?: HTMLElement; // extra controls in the pane's bar
   menu?: DocMenu;
   refChanged?(ref: string): void;
+  markScope?(): MarkScope | null; // where its highlights are, for the sidebar's Highlights tool
   focus?(): void;
   destroy(): void;
 }

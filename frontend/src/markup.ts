@@ -1,5 +1,5 @@
-// Drawing verse and reference markup as elements. Tagged words become clickable; references
-// become links to the passage. Notes and headings inside the markup are left out.
+// Drawing verse and reference markup as elements. Tagged words keep their Strong's numbers (but look
+// like plain text); references become links to the passage. Notes and headings inside the markup are left out.
 
 import { h } from "./dom";
 import { MarkupNode, parseMarkup, strongNumbers } from "./markupwords";
@@ -12,7 +12,6 @@ export interface WordInfo {
 }
 
 export interface MarkupHandlers {
-  onWord?: (w: WordInfo) => void;
   onRef?: (osis: string, label: string) => void;
 }
 
@@ -59,12 +58,13 @@ function textOf(n: MarkupNode): string {
   return n.tag === "" ? n.text : n.children.map(textOf).join("");
 }
 
+// word draws a tagged word as plain text that carries its numbers, so it can be looked up when
+// asked (marking.ts, lookup.ts) without looking clickable.
 function word(n: MarkupNode, hd: MarkupHandlers): Node {
   const strongs = strongNumbers(n.attrs.s);
   const children = draw(n.children, hd);
-  if (!strongs.length || !hd.onWord) return h("span", {}, children);
-  const info: WordInfo = { text: textOf(n), strongs, morph: n.attrs.m, gloss: n.attrs.g };
-  return h("span", { class: "w", title: n.attrs.g || "Look up this word", onclick: () => hd.onWord!(info) }, children);
+  if (!strongs.length) return h("span", {}, children);
+  return h("span", { class: "w", "data-strongs": strongs.join(" "), "data-morph": n.attrs.m || null, "data-gloss": n.attrs.g || null }, children);
 }
 
 // paragraphs draws reference-work markup, where <p/> starts a new paragraph.

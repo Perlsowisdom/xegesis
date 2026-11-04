@@ -103,6 +103,7 @@ export function readerView() {
     el.dataset.font = r.font;
     el.dataset.width = r.width;
     el.dataset.theme = r.theme;
+    el.dataset.tagged = String(r.taggedWords);
     el.style.setProperty("--line-height", String(SPACINGS[r.spacing]));
     sideBtn.setAttribute("aria-pressed", String(prefs.sidebar.open));
     if (r.mode !== lastMode) {

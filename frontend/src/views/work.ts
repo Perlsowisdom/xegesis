@@ -21,6 +21,7 @@ const FEW_TAGS = 8;
 
 const WRITING: { view: string; label: string; icon: string }[] = [
   { view: "sermons", label: "Sermons", icon: "sermon" },
+  { view: "highlights", label: "Highlights", icon: "highlight" },
   { view: "lists", label: "Lists", icon: "list" },
   { view: "plans", label: "Reading plans", icon: "plan" },
   { view: "reports", label: "Reports", icon: "report" },

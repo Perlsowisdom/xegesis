@@ -1,6 +1,8 @@
 // A Bible passage, drawn for one pane: one Bible or several side by side, with verse selection,
 // highlights, notes and lists. The pane's place box is the passage box with previous and next
-// chapter. Words tagged with Strong's numbers open in the sidebar's Word tool.
+// chapter. Selecting text, or verse numbers, shows the marking toolbar (marking.ts); a word is
+// looked up on Alt+click (lookup.ts). Words look like plain text unless Settings → Reading →
+// "Show tagged words" is on.
 
 import { Highlight, Message, Module, Ref, run } from "../api";
 import { onBibles } from "../bibles";
@@ -14,7 +16,10 @@ import { addToList } from "../listpicker";
 import { renderMarkup } from "../markup";
 import { closePopover, togglePopover } from "../popover";
 import { openExport } from "../printexport";
-import { setModules, state } from "../state";
+import { lookUpCard } from "../lookup";
+import { attachMarking } from "../marking";
+import { hlClasses, replaced, styleOf } from "../markingwords";
+import { prefs, setModules, state } from "../state";
 import { searchFor } from "../views/search";
 import { sidebar } from "../views/sidebar";
 import { attachContextMenu, selectedIn } from "./contextmenu";
@@ -23,7 +28,6 @@ import { DocHost, DocView, bibleBooks, bibleModules } from "./view";
 interface Hit { id: number; module: string; ref: string; text: string; snippet?: string }
 
 const FIND_LIMIT = 30;
-const SWATCHES: [string, string][] = [["yellow", "yellow"], ["green", "green"], ["blue", "blue"], ["pink", "pink"], ["purple", "purple"], ["underline", "with an underline"]];
 
 function iconButton(name: string, label: string, onclick: (e: Event) => void, attrs: Record<string, unknown> = {}): HTMLButtonElement {
   return h("button", { type: "button", class: "icon-btn", "aria-label": label, title: label, ...attrs, onclick }, icon(name));
@@ -42,7 +46,6 @@ export function bibleDoc(host: DocHost): DocView {
     void go(input.value);
   });
   const text = h("article", { class: "bible-text doc-text", tabindex: "-1", "aria-label": "Bible text" });
-  const selbar = h("div", { class: "selbar", role: "toolbar", "aria-label": "Selected verses", hidden: true });
   const picker = h("div", { class: "module-picker", role: "group", "aria-label": "Bibles to show" });
   const biblesBtn = h("button", { type: "button", class: "bibles-btn", "aria-haspopup": "dialog", "aria-expanded": "false", title: "Choose the Bibles to show" }, "Bibles");
   const openBibles = (anchor: HTMLElement) => togglePopover(anchor, () => h("div", { class: "pop-body" },
@@ -50,9 +53,9 @@ export function bibleDoc(host: DocHost): DocView {
     h("p", { class: "hint" }, "Choose two or more to read them side by side."),
     picker), { label: "Bibles to show", side: "below" });
   biblesBtn.addEventListener("click", () => openBibles(biblesBtn));
-  const el = h("div", { class: "doc doc-bible" }, msg.el, selbar, text);
+  const el = h("div", { class: "doc doc-bible" }, msg.el, text);
 
-  const words = { onWord: side.showWord, onRef: (osis: string) => void go(osis) };
+  const words = { onRef: (osis: string) => void go(osis) };
   let modules: Module[] = [];
   let books: Book[] = [];
   let parsed: Ref | null = null;
@@ -134,6 +137,41 @@ export function bibleDoc(host: DocHost): DocView {
     updateSelbar();
   }
 
+  // The marking toolbar ---------------------------------------------------------------------------
+
+  const lookUp = (t: string, word: Element | null, at: DOMRect) => void lookUpCard(t, word, at, { showWord: side.showWord, go: (r) => void go(r) });
+  const marking = attachMarking(text, {
+    highlight: (s, r) => colour(styleOf(s), selectionRuns(shown, versesIn(r))),
+    restyle: async (id, style) => {
+      if (await msg.attempt(() => run("highlight.update", { id, style })) !== undefined) await changed();
+    },
+    remove: async (id) => {
+      if (await msg.attempt(() => run("highlight.delete", { id })) !== undefined) await changed();
+    },
+    note: (_t, r) => {
+      const rs = r ? selectionRuns(shown, versesIn(r)) : [];
+      side.newNote(rs.length ? verseRangeText(rs[0][0], rs[0][1], books) : parsed?.display ?? "");
+    },
+    lookUp,
+    copy: (t) => copy(t),
+    list: (r) => {
+      const rs = selectionRuns(shown, versesIn(r));
+      if (rs.length) addToList("verses", "these verses", rs.map(([a, b]) => ({ verse_start: a, verse_end: b })));
+    },
+    at: (target) => {
+      const v = target.closest<HTMLElement>("[data-hl]");
+      if (!v || !text.contains(v) || target.closest(".vnum")) return null;
+      const hl = highlights.find((x) => x.id === v.dataset.hl);
+      return hl ? { id: hl.id, style: hl.style, el: v } : null;
+    },
+  });
+  // With "Show tagged words" on, a click on a tagged word looks it up too.
+  text.addEventListener("click", (e) => {
+    const w = (e.target as Element).closest(".w");
+    if (!w || !prefs.reading.taggedWords || !document.getSelection()?.isCollapsed) return;
+    lookUp(w.textContent ?? "", w, w.getBoundingClientRect());
+  });
+
   function verseEl(v: Verse) {
     const n = verseParts(v.id).verse;
     const end = v.end && v.end !== v.id ? `–${verseParts(v.end).verse}` : "";
@@ -185,9 +223,12 @@ export function bibleDoc(host: DocHost): DocView {
   function paint() {
     for (const e of text.querySelectorAll<HTMLElement>("[data-base]")) {
       const base = Number(e.dataset.base);
-      e.className = e.className.replace(/hl(-\w+)?|picked/g, "").trim();
+      e.className = e.className.replace(/\bhl(-\w+)?\b|\bpicked\b/g, "").replace(/\s+/g, " ").trim();
       const hl = highlightFor(highlights, base);
-      if (hl) e.classList.add("hl", `hl-${hl.style}`);
+      if (hl) {
+        e.classList.add(...hlClasses(hl.style));
+        e.dataset.hl = hl.id;
+      } else delete e.dataset.hl;
       const on = selected.has(base);
       if (on) e.classList.add("picked");
       e.querySelector(".vnum")?.setAttribute("aria-pressed", String(on));
@@ -199,58 +240,47 @@ export function bibleDoc(host: DocHost): DocView {
     if (alive) paint();
   }
 
+  // changed reloads the highlights after a change here, and tells the Highlights tool.
+  async function changed() {
+    await loadHighlights();
+    document.dispatchEvent(new Event("xegesis:marks-changed"));
+  }
+  const onMarks = () => { if (alive) void loadHighlights(); };
+  document.addEventListener("xegesis:marks-changed", onMarks);
+
   // colour highlights the given verse runs (the selection by default).
   async function colour(style: string, rs = selectionRuns(shown, selected)) {
     const ok = await msg.attempt(async () => {
       for (const [a, b] of rs) {
         // A highlight wholly inside the selection is replaced by the new colour.
-        for (const hl of highlights) {
-          if (hl.verse_start !== undefined && hl.verse_end !== undefined && hl.verse_start >= a && hl.verse_end <= b) {
-            await run("highlight.delete", { id: hl.id });
-          }
-        }
+        for (const hl of replaced(highlights, a, b)) await run("highlight.delete", { id: hl.id });
         await run("highlight.create", { verse_start: a, verse_end: b, style });
       }
       return true;
     });
     if (ok) {
       selected.clear();
-      await loadHighlights();
+      await changed();
       updateSelbar();
     }
   }
 
-  async function unhighlight(verses: number[] = [...selected]) {
-    const ok = await msg.attempt(async () => {
-      for (const hl of highlights) {
-        if (verses.some((v) => hl.verse_start !== undefined && hl.verse_end !== undefined && hl.verse_start <= v && v <= hl.verse_end)) {
-          await run("highlight.delete", { id: hl.id });
-        }
-      }
-      return true;
-    });
-    if (ok) {
-      selected.clear();
-      await loadHighlights();
-      updateSelbar();
-    }
-  }
-
+  // updateSelbar marks the picked verses and offers the marking toolbar over them.
   function updateSelbar() {
     paint();
-    selbar.hidden = selected.size === 0;
-    if (selected.size === 0) return clear(selbar);
+    if (selected.size === 0) return marking.close();
     const rs = selectionRuns(shown, selected);
-    const label = rs.map(([a, b]) => verseRangeText(a, b, books)).join("; ");
-    const swatch = (style: string, name: string) =>
-      h("button", { type: "button", class: `swatch-btn hl-${style}`, title: `Highlight ${name}`, "aria-label": `Highlight ${name}`, onclick: () => colour(style) }, style === "underline" ? "U" : "");
-    clear(selbar,
-      h("span", { class: "sel-label" }, `Selected: ${label}`),
-      h("span", { class: "row", role: "group", "aria-label": "Highlight colour" }, SWATCHES.map(([s, n]) => swatch(s, n))),
-      button("Remove highlight", () => unhighlight()),
-      button("Note", () => side.newNote(verseRangeText(rs[0][0], rs[0][1], books))),
-      button("Add to list", () => addToList("verses", "these verses", rs.map(([a, b]) => ({ verse_start: a, verse_end: b })))),
-      button("Clear selection", () => { selected.clear(); updateSelbar(); }));
+    const els = [...text.querySelectorAll<HTMLElement>("[data-base]")].filter((e) => selected.has(Number(e.dataset.base)));
+    if (els.length === 0) return;
+    const boxes = els.map((e) => e.getBoundingClientRect());
+    const top = Math.min(...boxes.map((b) => b.top));
+    const first = boxes.find((b) => b.top === top)!;
+    marking.showFor(new DOMRect(first.left, top, first.width, first.height), {
+      text: rs.map(([a, b]) => verseRangeText(a, b, books)).join("; "),
+      highlight: (s) => colour(styleOf(s)),
+      note: () => side.newNote(verseRangeText(rs[0][0], rs[0][1], books)),
+      list: () => addToList("verses", "these verses", rs.map(([a, b]) => ({ verse_start: a, verse_end: b }))),
+    });
   }
 
   function renderPicker() {
@@ -320,6 +350,12 @@ export function bibleDoc(host: DocHost): DocView {
       const r = selectedIn(text);
       if (r) return colour(style, selectionRuns(shown, versesIn(r)));
     },
+    list: () => {
+      const r = selectedIn(text);
+      const rs = r ? selectionRuns(shown, versesIn(r)) : [];
+      if (rs.length) addToList("verses", "these verses", rs.map(([a, b]) => ({ verse_start: a, verse_end: b })));
+    },
+    showWord: side.showWord,
     note: () => {
       const r = selectedIn(text);
       const rs = r ? selectionRuns(shown, versesIn(r)) : [];
@@ -398,11 +434,17 @@ export function bibleDoc(host: DocHost): DocView {
     refChanged(ref) {
       if (ref !== wanted) void read(ref);
     },
+    markScope: () => {
+      const b = parsed ? books.find((x) => x.number === verseParts(parsed!.start).book) : undefined;
+      return b ? { kind: "bible", book: b.name } : null;
+    },
     focus: () => input.select(),
     destroy() {
       alive = false;
       seq++;
       stopBibles();
+      marking.close();
+      document.removeEventListener("xegesis:marks-changed", onMarks);
     },
   };
 }

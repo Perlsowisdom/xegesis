@@ -16,6 +16,7 @@ import {
   selectPane, selectTab, setLinked, setRef, shape, updateTab,
 } from "./grid";
 import { DRAG_TYPE, dragging, setDragging } from "./drag";
+import { setSelectedView } from "../gridhook";
 import { mountDoc } from "./mount";
 import { DocHost, DocView, followsPassage, tabLabel } from "./view";
 
@@ -100,6 +101,7 @@ export function studyGrid(o: StudyGridOptions) {
     savePref(GRID_KEY, g);
     for (const [id, ui] of uis) ui.el.classList.toggle("selected", id === paneId);
     syncPassage();
+    document.dispatchEvent(new Event("xegesis:pane-changed"));
   }
 
   // Hosts ----------------------------------------------------------------------------------------------
@@ -182,6 +184,7 @@ export function studyGrid(o: StudyGridOptions) {
       if (p) m.view.refChanged?.(paneRef(g, p));
     }
     syncPassage();
+    document.dispatchEvent(new Event("xegesis:pane-changed"));
   }
 
   function drawPane(p: Pane, selected: boolean, ci: number, pi: number): HTMLElement {
@@ -510,6 +513,7 @@ export function studyGrid(o: StudyGridOptions) {
   }
 
   render();
+  setSelectedView(selectedView);
 
   return {
     el,

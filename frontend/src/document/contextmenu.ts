@@ -1,26 +1,23 @@
 // The right-click menu on selected text, the same in every pane that shows text (Bibles, books,
 // PDFs, commentaries) and in both modes: Look up, Highlight, Add a note and Copy within the licence.
+// It is the keyboard and right-click way to what the floating toolbar (marking.ts) offers.
 // Every item calls a command through the view that owns the text. The menu key and Shift+F10 open it
 // from the keyboard, beside the selection.
 
-import { Ref, run } from "../api";
 import { button, h } from "../dom";
-import { paragraphs } from "../markup";
-import { closePopover, openPopover } from "../popover";
-import { searchFor } from "../views/search";
+import { lookUpCard } from "../lookup";
+import type { WordInfo } from "../markup";
+import { COLOURS } from "../markingwords";
+import { openPopover } from "../popover";
 
 export interface TextActions {
   highlight?(style: string): void | Promise<void>;
   note?(text: string): void;
   copy?(text: string): void | Promise<void>;
+  list?(): void; // add the selection to a list
   go?(ref: string): void; // a reference that is looked up opens here
+  showWord?(w: WordInfo): void; // the Word tool, for "More in the Word tool"
 }
-
-export const HIGHLIGHTS: [string, string][] = [
-  ["yellow", "Yellow"], ["green", "Green"], ["blue", "Blue"], ["pink", "Pink"], ["purple", "Purple"], ["underline", "Underline"],
-];
-
-interface LexEntry { name: string; key: string; lemma?: string; gloss?: string; text: string; markup?: string }
 
 // selectedIn is the selection inside root, trimmed to text that is really there.
 export function selectedIn(root: HTMLElement): Range | null {
@@ -50,41 +47,21 @@ export function attachContextMenu(root: HTMLElement, actions: TextActions): void
 function open(r: Range, x: number, y: number, a: TextActions) {
   const text = r.toString().replace(/\s+/g, " ").trim();
   const short = text.length > 24 ? `${text.slice(0, 24)}…` : text;
-  const word = (r.startContainer.parentElement?.closest(".w") ?? null) as HTMLElement | null;
+  const word = r.startContainer.parentElement?.closest(".w") ?? null;
+  const at = r.getBoundingClientRect();
   // An invisible anchor at the pointer, so the menu opens where the click was.
   const anchor = h("span", { class: "ctx-anchor", style: `left:${x}px;top:${y}px` });
   document.body.append(anchor);
   const swatches = a.highlight ? h("div", { class: "row ctx-swatches", role: "group", "aria-label": "Highlight" },
-    HIGHLIGHTS.map(([style, name]) => h("button", { type: "button", class: `swatch-btn hl-${style}`, title: `Highlight ${name.toLowerCase()}`,
-      "aria-label": `Highlight ${name.toLowerCase()}`, onclick: () => void a.highlight!(style) }, style === "underline" ? "U" : ""))) : null;
+    COLOURS.map((c) => h("button", { type: "button", class: "mark-btn mark-swatch", title: `Highlight ${c.label.toLowerCase()}`,
+      "aria-label": `Highlight ${c.label.toLowerCase()}`, onclick: () => void a.highlight!(c.id) }, h("span", { class: `mark-dot dot-${c.id}`, "aria-hidden": "true" }))),
+    h("button", { type: "button", class: "mark-btn", title: "Underline", "aria-label": "Underline", onclick: () => void a.highlight!("yellow-underline") },
+      h("span", { class: "mark-u", "aria-hidden": "true" }, "U"))) : null;
   const menu = h("div", { class: "menu-list ctx-menu" },
-    button(`Look up “${short}”`, () => setTimeout(() => void lookUp(text, word, a, anchor), 0)),
+    button(`Look up “${short}”`, () => setTimeout(() => void lookUpCard(text, word, at, { go: a.go, showWord: a.showWord }), 0)),
     swatches ? h("div", { class: "ctx-label" }, "Highlight") : null, swatches,
     a.note ? button("Add a note", () => a.note!(text)) : null,
+    a.list ? button("Add to a list", () => a.list!()) : null,
     a.copy ? button("Copy", () => void a.copy!(text)) : null);
   openPopover(anchor, menu, { label: "Selected text", side: "below", menu: true, className: "ctx-pop", onClose: () => setTimeout(() => anchor.remove(), 0) });
-}
-
-// lookUp opens a reference in the Bible, a tagged word in the Word tool, or else looks the word up
-// in the lexicons and dictionaries, offering a library search when they have nothing.
-async function lookUp(text: string, word: HTMLElement | null, a: TextActions, anchor: HTMLElement) {
-  if (word) {
-    word.click();
-    return;
-  }
-  if (/\d/.test(text) && text.length < 40) {
-    const p = await run<Ref>("verse.parse", { ref: text }).catch(() => null);
-    if (p && a.go) return a.go(p.display);
-  }
-  const q = text.split(" ").slice(0, 3).join(" ");
-  const entries = await run<LexEntry[]>("lexicon.lookup", { word: q, limit: 3 }).catch(() => [] as LexEntry[]);
-  const back = h("span", { class: "ctx-anchor", style: anchor.getAttribute("style") ?? "" });
-  document.body.append(back);
-  openPopover(back, h("div", { class: "pop-body lookup" },
-    h("h2", { class: "pop-title" }, `Look up “${q}”`),
-    entries.length === 0 ? h("p", { class: "hint" }, "Nothing in your lexicons and dictionaries.") :
-      entries.map((e) => h("div", { class: "lex-entry" }, h("h3", {}, `${e.lemma || e.key} · ${e.name}`),
-        e.gloss ? h("p", { class: "hint" }, e.gloss) : null, paragraphs(e.markup || e.text, { onRef: (o: string) => a.go?.(o) }))),
-    button("Search the library for it", () => { closePopover(); searchFor(q); }, { class: "link" })),
-  { label: "Look up", side: "below", onClose: () => setTimeout(() => back.remove(), 0) });
 }

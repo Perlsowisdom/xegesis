@@ -10,6 +10,13 @@ import { Column, alignColumns, verseParts } from "../helpers";
 import { icon } from "../icons";
 import { WordInfo } from "../markup";
 import { openInStudy } from "../document/open";
+import { selectedMarkScope } from "../gridhook";
+import { MarkScope, highlightsPanel } from "../highlightspanel";
+
+// bookOf is the book of the Bible in a displayed reference, such as "1 John" in "1 John 3:16".
+function bookOf(display: string): string {
+  return display.replace(/\s+\d+([:.]\d+)?([-–].*)?$/, "").trim() || display;
+}
 import { noteName, notesPanel } from "../notes";
 import { TOOLS, ToolId, activeTool, visibleTools } from "../shellwords";
 import { loadPref, navigate, onPassage, onPrefs, prefs, savePref, setPassage, setPrefs, state } from "../state";
@@ -36,10 +43,16 @@ function makeSidebar() {
     openTab: (n) => openInStudy({ kind: "note", target: n.id, title: noteName(n) }),
   });
   const compare = comparePanel();
+  const allLink = button("All highlights in My work →", () => navigate("highlights"), { class: "card-link" });
+  const hls = highlightsPanel({
+    scope: () => (selectedMarkScope() as MarkScope | null) ?? (state.parsed ? { kind: "bible", book: bookOf(state.parsed.display) } : null),
+    footer: h("div", { class: "hl-foot" }, allLink),
+  });
   const tools: Record<ToolId, Tool> = {
     chat: { el: chatPanel(), stale: false },
     related: { el: related.el, stale: true, refresh: () => related.showPassage(state.parsed?.osis ?? null, state.parsed?.display) },
     notes: { el: notes.el, stale: true, refresh: () => notes.refresh() },
+    highlights: { el: hls.el, stale: true, refresh: () => hls.refresh() },
     word: { el: word.el, stale: false },
     compare: { el: compare.el, stale: true, refresh: () => compare.refresh() },
   };
@@ -116,6 +129,14 @@ function makeSidebar() {
     if (id && !visibleTools(tools).includes(id)) tools = tools.map((t) => (t.id === id ? { ...t, shown: true } : t));
     setPrefs({ sidebar: { ...prefs.sidebar, tools, open: true, tool: id ?? prefs.sidebar.tool } });
   }
+
+  // The Highlights tool follows the selected pane, and changes made anywhere.
+  const marksStale = () => {
+    tools.highlights.stale = true;
+    if (prefs.sidebar.open && activeTool(prefs.sidebar.tools, prefs.sidebar.tool) === "highlights") load("highlights");
+  };
+  document.addEventListener("xegesis:pane-changed", marksStale);
+  document.addEventListener("xegesis:marks-changed", marksStale);
 
   onPassage(() => {
     for (const t of Object.values(tools)) if (t.refresh) t.stale = true;
