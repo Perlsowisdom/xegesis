@@ -1,7 +1,8 @@
 // Your data: export and import in open formats, backups now, and the automatic backup schedule.
 
 import { Message, pick, run } from "../api";
-import { button, clear, field, h, select } from "../dom";
+import { chip, segmented, segmentedValue, setSegmented, switchInput } from "../controls";
+import { button, clear, field, h } from "../dom";
 
 const TYPES: [string, string][] = [
   ["note", "Notes"], ["highlight", "Highlights"], ["list", "Lists"], ["collection", "Collections"],
@@ -23,12 +24,10 @@ function size(bytes: number): string {
 export function dataSection(): { el: HTMLElement; show: () => void } {
   const msg = new Message();
   const boxes = TYPES.map(([value, label]) => {
-    const box = h("input", { type: "checkbox", value }) as HTMLInputElement;
-    box.checked = true;
-    return h("label", { class: "check" }, box, " ", label);
+    return chip({ label, value, checked: true });
   });
-  const history = h("input", { type: "checkbox" }) as HTMLInputElement;
-  const every = select([["off", "Off"], ["daily", "Daily"], ["weekly", "Weekly"]]);
+  const history = switchInput(false, () => {});
+  const every = segmented<string>({ label: "Automatic backups", options: [["off", "Off"], ["daily", "Daily"], ["weekly", "Weekly"]], value: "off", onChange: () => {} });
   const keep = h("input", { type: "number", min: "1", max: "100", value: "7" }) as HTMLInputElement;
   const list = h("ul", { class: "plain" });
 
@@ -64,8 +63,8 @@ export function dataSection(): { el: HTMLElement; show: () => void } {
 
   async function saveSchedule() {
     const n = Number(keep.value);
-    if (await msg.attempt(() => run("backup.settings.set", { every: every.value, keep: n >= 1 && n <= 100 ? n : 7 }))) {
-      msg.ok(every.value === "off" ? "Automatic backups are off." : `Backing up ${every.value}, keeping ${keep.value} copies.`);
+    if (await msg.attempt(() => run("backup.settings.set", { every: segmentedValue(every), keep: n >= 1 && n <= 100 ? n : 7 }))) {
+      msg.ok(segmentedValue(every) === "off" ? "Automatic backups are off." : `Backing up ${segmentedValue(every)}, keeping ${keep.value} copies.`);
       await msg.attempt(() => run("backup.auto"));
       refresh();
     }
@@ -74,7 +73,7 @@ export function dataSection(): { el: HTMLElement; show: () => void } {
   async function refresh() {
     const s = await msg.attempt(() => run<Schedule>("backup.settings.get"));
     if (s) {
-      every.value = s.every || "off";
+      setSegmented(every, s.every || "off");
       if (s.keep) keep.value = String(s.keep);
     }
     const copies = await msg.attempt(() => run<BackupInfo[]>("backup.list"));
@@ -99,7 +98,7 @@ export function dataSection(): { el: HTMLElement; show: () => void } {
     h("p", { class: "hint" }, "A backup is a complete copy of your library database, made safely while Xegesis runs."),
     h("div", { class: "row wrap" },
       button("Back up now", backupNow),
-      field("Automatic backups", every),
+      h("div", { class: "field" }, h("span", { class: "field-label" }, "Automatic backups"), every),
       field("Copies to keep", keep),
       button("Save schedule", saveSchedule)),
     list,

@@ -6,6 +6,7 @@
 // Read mode draws the selected pane alone.
 
 import { Ref, run } from "../api";
+import { segmented } from "../controls";
 import { button, clear, h } from "../dom";
 import { icon } from "../icons";
 import { closePopover, openPopover, togglePopover } from "../popover";
@@ -399,17 +400,17 @@ export function studyGrid(o: StudyGridOptions) {
       h("option", { value: q.id, selected: q.id === paneId }, `Pane ${i + 1}${q.id === paneId ? " (this one)" : ""}: ${tabLabel(activeTab(q)!)}`)));
     const wheres: [MoveTarget, string][] = [["into", "Into it, as a tab"], ["left", "To its left"], ["right", "To its right"], ["above", "Above it"], ["below", "Below it"]];
     const radios = h("fieldset", {}, h("legend", {}, "Where"));
+    let where: MoveTarget = "into";
     const go = h("button", { type: "submit", class: "primary" }, "Move");
     const note = h("p", { class: "hint", role: "status" });
     function refresh() {
-      let first: HTMLInputElement | null = null;
-      clear(radios, h("legend", {}, "Where"), wheres.map(([w, label]) => {
-        const ok = moveTab(g, tab!.id, target.value, w) !== null;
-        const r = h("input", { type: "radio", name: "move-where", value: w, disabled: !ok });
-        if (ok && !first) first = r;
-        return h("label", { class: "check" }, r, " ", label);
-      }));
-      if (first) (first as HTMLInputElement).checked = true;
+      const okFor = (w: MoveTarget) => moveTab(g, tab!.id, target.value, w) !== null;
+      const first = wheres.find(([w]) => okFor(w))?.[0] ?? null;
+      where = first ?? "into";
+      const pills = segmented<MoveTarget>({ label: "Where", options: wheres, value: where, onChange: (w) => { where = w; } });
+      for (const r of pills.querySelectorAll<HTMLInputElement>("input")) r.disabled = !okFor(r.value as MoveTarget);
+      if (!first) for (const r of pills.querySelectorAll<HTMLInputElement>("input")) r.checked = false;
+      clear(radios, h("legend", {}, "Where"), pills);
       go.disabled = !first;
       note.textContent = first ? "" : `There is no room there: the grid holds at most ${MAX_COLUMNS} columns of ${MAX_PANES} panes.`;
     }
@@ -418,7 +419,7 @@ export function studyGrid(o: StudyGridOptions) {
     const form = h("form", { class: "pop-body move-to" }, h("h2", { class: "pop-title" }, `Move “${tabLabel(tab)}”`), target, radios, note, h("div", { class: "row" }, go));
     form.addEventListener("submit", (e) => {
       e.preventDefault();
-      const w = (radios.querySelector<HTMLInputElement>("input:checked")?.value ?? "into") as MoveTarget;
+      const w = where;
       const n = moveTab(g, tab.id, target.value, w);
       closePopover();
       setGrid(n);

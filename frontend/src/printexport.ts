@@ -5,6 +5,7 @@
 
 import { Message, RunError, run, saveFile } from "./api";
 import { button, clear, field, h, select } from "./dom";
+import { segmented, segmentedValue, switchInput } from "./controls";
 import { flash } from "./listpicker";
 import {
   ExportOptions, ExportPreview, ExportSource, FORMATS, Waiting, fileName, formatLabel, loadWaiting, rests, saveWaiting, summary,
@@ -53,20 +54,20 @@ export function openExport(req: ExportRequest) {
   const result = h("p", { class: "msg", "aria-live": "polite" });
 
   // More options -------------------------------------------------------------------------------
-  const size = select([["a4", "A4"], ["letter", "Letter"]], opts.page_size ?? "a4");
+  const size = segmented<"a4" | "letter">({ label: "Paper", options: [["a4", "A4"], ["letter", "Letter"]], value: opts.page_size ?? "a4", onChange: () => {} });
   const font = select(["10", "11", "12", "14", "16"], String(opts.font_size ?? 11));
-  const check = (on: boolean | undefined, def: boolean) => h("input", { type: "checkbox", checked: on ?? def });
+  const check = (on: boolean | undefined, def: boolean) => switchInput(on ?? def, () => {});
   const numbers = check(opts.verse_numbers, true);
   const notes = check(opts.notes, false);
   const header = check(opts.header, true);
   const footer = check(opts.footer, true);
-  const layout = select([["side_by_side", "Side by side"], ["one_after_another", "One after another"]], opts.layout ?? "side_by_side");
-  const credits = select([["each", "Under each piece"], ["end", "Together at the end"]], opts.credits ?? "each");
+  const layout = segmented<"side_by_side" | "one_after_another">({ label: "Bibles", options: [["side_by_side", "Side by side"], ["one_after_another", "One after another"]], value: opts.layout ?? "side_by_side", onChange: () => {} });
+  const credits = segmented<"each" | "end">({ label: "Credits", options: [["each", "Under each piece"], ["end", "Together at the end"]], value: opts.credits ?? "each", onChange: () => {} });
   const more = h("details", { class: "more" }, h("summary", {}, "More options"),
     h("div", { class: "row wrap" },
-      field("Paper", size), field("Text size", font),
-      parallel ? field("Bibles", layout) : null,
-      field("Credits", credits)),
+      h("div", { class: "field" }, h("span", { class: "field-label" }, "Paper"), size), field("Text size", font),
+      parallel ? h("div", { class: "field" }, h("span", { class: "field-label" }, "Bibles"), layout) : null,
+      h("div", { class: "field" }, h("span", { class: "field-label" }, "Credits"), credits)),
     h("div", { class: "row wrap" },
       passages.length ? h("label", { class: "check" }, numbers, " Verse numbers") : null,
       passages.length ? h("label", { class: "check" }, notes, " Include my notes") : null,
@@ -75,11 +76,11 @@ export function openExport(req: ExportRequest) {
 
   function options(): ExportOptions {
     const o: ExportOptions = {
-      page_size: size.value as ExportOptions["page_size"], font_size: Number(font.value),
+      page_size: segmentedValue(size) as ExportOptions["page_size"], font_size: Number(font.value),
       verse_numbers: numbers.checked, notes: notes.checked, header: header.checked, footer: footer.checked,
-      credits: credits.value as ExportOptions["credits"],
+      credits: segmentedValue(credits) as ExportOptions["credits"],
     };
-    if (parallel) o.layout = layout.value as ExportOptions["layout"];
+    if (parallel) o.layout = segmentedValue(layout) as ExportOptions["layout"];
     try {
       localStorage.setItem(OPTIONS_KEY, JSON.stringify({ ...o, notes: undefined }));
     } catch {
@@ -115,7 +116,7 @@ export function openExport(req: ExportRequest) {
     info.textContent = summary(p);
     style.textContent = p.css.replace(/@page[^{]*\{[^{}]*(\{[^{}]*\}[^{}]*)*\}/g, ""); // page rules only when printing
     paper.innerHTML = p.body; // HTML built by the core; all text in it is escaped
-    paper.classList.toggle("letter", size.value === "letter");
+    paper.classList.toggle("letter", segmentedValue(size) === "letter");
     clear(cuts, cutNotes(p, req));
   }
 

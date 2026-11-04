@@ -3,7 +3,7 @@
 
 import { CatalogueItem, Message, Module, paramEnum, pick, run } from "../api";
 import { biblesChanged } from "../bibles";
-import { chip } from "../controls";
+import { chip, switchInput } from "../controls";
 import { badge, button, clear, field, h, select } from "../dom";
 import { licenceChooser, licenceLine, plainName, termsText } from "../licence";
 import { kindLabel } from "../markupwords";
@@ -284,7 +284,7 @@ function installForm(installed: () => void) {
     id: text("e.g. web"), name: text("e.g. World English Bible"), abbreviation: text("e.g. WEB"),
     language: text("e.g. eng"), version: text(), versification: text("english or hebrew"), source: text("Where it came from"),
   };
-  const replace = h("input", { type: "checkbox" });
+  const replace = switchInput(false, () => {});
 
   const browse = async (kind: "file" | "folder") => {
     const p = await msg.attempt(() => pick(kind, kind === "file" ? "Choose a Bible file or .zip archive" : "Choose a folder of Bible files"));
