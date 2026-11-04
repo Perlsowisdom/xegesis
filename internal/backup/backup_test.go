@@ -67,8 +67,10 @@ func seed(t *testing.T, s *store.Store) {
 			{"anchors", store.Row{"id": "A1", "verse_start": int64(45008028), "verse_end": int64(45008030), "versification": "english"}},
 			{"anchors", store.Row{"id": "A2", "item_id": "ITEM1", "locator_json": `{"cfi":"epubcfi(/6/4)"}`}},
 			{"anchors", store.Row{"id": "A3", "verse_start": int64(43003016), "verse_end": int64(43003016), "locator_json": `{ "spaced": 1 }`}},
+			{"folders", store.Row{"id": "F2", "name": "Top", "sort": int64(1), "created_at": int64(1), "updated_at": int64(2)}},
+			{"folders", store.Row{"id": "F1", "name": "Inside", "parent_id": "F2", "created_at": int64(1), "updated_at": int64(2)}},
 			{"notes", store.Row{"id": "N1", "anchor_id": "A1", "title": "Called", "body_md": bodies[4], "created_at": int64(1), "updated_at": int64(2)}},
-			{"notes", store.Row{"id": "N2", "body_md": bodies[5], "created_at": int64(3), "updated_at": int64(4)}},
+			{"notes", store.Row{"id": "N2", "folder_id": "F1", "body_md": bodies[5], "created_at": int64(3), "updated_at": int64(4)}},
 			{"notes", store.Row{"id": "N3", "anchor_id": "A2", "body_md": "", "created_at": int64(3), "updated_at": int64(4)}},
 			{"notes", store.Row{"id": "N4", "body_md": bodies[3], "created_at": int64(3), "updated_at": int64(4), "deleted_at": int64(9)}},
 			{"highlights", store.Row{"id": "H1", "anchor_id": "A1", "style": "green", "created_at": int64(10)}},
@@ -92,7 +94,7 @@ func seed(t *testing.T, s *store.Store) {
 			{"plan_progress", store.Row{"plan_id": "P1", "day_no": int64(1), "completed_at": int64(1700000999999)}},
 			{"plan_schedule", store.Row{"plan_id": "P1", "day_no": int64(1), "day_date": "2026-01-01"}},
 			{"plan_schedule", store.Row{"plan_id": "P1", "day_no": int64(2), "day_date": "2026-01-03"}},
-			{"documents", store.Row{"id": "D1", "kind": "sermon", "title": "Grace alone", "body_md": bodies[4], "outline_json": `[{"h":"One"},{"h":"Two"}]`, "created_at": int64(1), "updated_at": int64(2)}},
+			{"documents", store.Row{"id": "D1", "kind": "sermon", "folder_id": "F2", "preached_on": "2026-10-04", "theme": "grace", "title": "Grace alone", "body_md": bodies[4], "outline_json": `[{"h":"One"},{"h":"Two"}]`, "created_at": int64(1), "updated_at": int64(2)}},
 			{"documents", store.Row{"id": "D2", "title": "Empty", "body_md": "", "created_at": int64(1), "updated_at": int64(2)}},
 		}
 		for _, c := range creates {
@@ -108,7 +110,7 @@ func seed(t *testing.T, s *store.Store) {
 }
 
 var dumpTables = []string{"items", "anchors", "notes", "note_tags", "highlights", "lists", "list_entries", "collections",
-	"collection_items", "reading_plans", "plan_days", "plan_progress", "plan_schedule", "documents"}
+	"collection_items", "reading_plans", "plan_days", "plan_progress", "plan_schedule", "documents", "folders"}
 
 // dump renders the exported tables, row by row, so two libraries can be compared exactly.
 func dump(t *testing.T, s *store.Store) string {

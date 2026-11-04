@@ -10,8 +10,8 @@ export type ToolId = "chat" | "related" | "notes" | "word" | "compare";
 export interface Place {
   id: PlaceId;
   label: string;
-  // The views reached inside this place, the first being where it opens. Places with more than one
-  // view show them as tabs, except the Reader, whose plans page is reached from the Reader itself.
+  // The views reached inside this place, the first being where it opens. The Library shows its views
+  // as tabs; My work shows them in its own column.
   views: { id: string; label: string }[];
   tabs: boolean;
 }
@@ -20,10 +20,12 @@ export interface Place {
 export const PLACES: Place[] = [
   { id: "search", label: "Search", views: [{ id: "search", label: "Search" }], tabs: false },
   { id: "library", label: "Library", views: [{ id: "library", label: "Your library" }, { id: "bibles", label: "Get Bibles" }], tabs: true },
-  { id: "reader", label: "Reader", views: [{ id: "reader", label: "Reader" }, { id: "plans", label: "Reading plans" }], tabs: false },
+  { id: "reader", label: "Reader", views: [{ id: "reader", label: "Reader" }], tabs: false },
+  // My work shows its own column of folders, tags and writing (views/work.ts) instead of tabs.
   {
-    id: "work", label: "My work", tabs: true,
-    views: [{ id: "notes", label: "Notes" }, { id: "sermons", label: "Sermons" }, { id: "lists", label: "Lists" }, { id: "reports", label: "Reports" }],
+    id: "work", label: "My work", tabs: false,
+    views: [{ id: "notes", label: "Notes" }, { id: "sermons", label: "Sermons" }, { id: "lists", label: "Lists" },
+      { id: "plans", label: "Reading plans" }, { id: "reports", label: "Reports" }, { id: "bin", label: "Bin" }],
   },
   { id: "settings", label: "Settings", views: [{ id: "settings", label: "Settings" }, { id: "commands", label: "Commands" }], tabs: false },
 ];

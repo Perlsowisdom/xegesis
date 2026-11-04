@@ -164,7 +164,7 @@ func (im *importer) load(groups map[string]bool) ([]object, error) {
 		if err != nil {
 			return nil, err
 		}
-		if t.name == "collection" {
+		if t.name == "collection" || t.name == "folder" {
 			sortCollections(objs)
 		}
 		out = append(out, objs...)

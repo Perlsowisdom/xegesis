@@ -1,16 +1,25 @@
-// The Sermons section: sermons, lessons and Bible studies. Each has a main passage, an outline of
-// points tied to verses, and the full text; verses are quoted into the text with their credit line
+// The Sermons view of My work: sermons, lessons and Bible studies in a table of Title, Passage, Date
+// preached and Theme, sorted by any column. Double-click or Enter opens one in the Study grid; "Edit
+// outline and text" opens the builder here: its main passage, date preached and theme, an outline of
+// points tied to verses, and the full text, with verses quoted in with their credit line
 // (document.quote keeps each Bible's licence). Changes save on their own after a pause.
 
 import { installedBibles } from "../bibles";
-import { printExportButton } from "../printexport";
+import { segmented } from "../controls";
+import { openInStudy } from "../document/open";
+import { openExport, printExportButton } from "../printexport";
 import { Message, Ref, run } from "../api";
 import { button, clear, field, h, select } from "../dom";
 import { formatTime } from "../helpers";
+import { icon } from "../icons";
 import { flash } from "../listpicker";
-import { navigate, setPassage, state } from "../state";
+import { openPopover } from "../popover";
+import { loadPref, navigate, savePref, setPassage, state } from "../state";
 import type { RichEditor } from "../editor";
-import { DocKind, Point, cleanPoints, docSummary, outlineMarkdown, untitled } from "../sermonwords";
+import { DocKind, KIND_NAME, Point, cleanPoints, outlineMarkdown, untitled } from "../sermonwords";
+import { WorkItem, actionMenu, draggableItem, emptyState, folderName, loadFolders, moreButton, moveMenu, onWorkChanged, workChanged } from "../work";
+import { SermonKey, nextSort, preachedText, sortSermons } from "../workwords";
+import { deleteSermon } from "./notes";
 
 export interface SermonDoc {
   id: string;
@@ -20,33 +29,39 @@ export interface SermonDoc {
   points: Point[];
   body: string;
   words: number;
+  preached_on?: string;
+  theme?: string;
+  folder_id?: string;
   created_at: number;
   updated_at: number;
   deleted_at?: number;
 }
 
-const KINDS: [DocKind | "", string][] = [["", "All kinds"], ["sermon", "Sermons"], ["lesson", "Lessons"], ["study", "Bible studies"]];
+const KINDS: [DocKind | "", string][] = [["", "All"], ["sermon", "Sermons"], ["lesson", "Lessons"], ["study", "Bible studies"]];
+const COLUMNS: [SermonKey, string][] = [["title", "Title"], ["passage", "Passage"], ["preached", "Date preached"], ["theme", "Theme"]];
+const NEW: [DocKind | "note", string][] = [["sermon", "Sermon"], ["lesson", "Lesson"], ["study", "Bible study"], ["note", "Note"]];
+const SORT_KEY = "xegesis.sermons.sort";
 const SAVE_AFTER = 1500;
 
 export function sermonsView() {
   const msg = new Message();
-  const query = h("input", { type: "search", placeholder: "Search titles, passages and text", "aria-label": "Search sermons and lessons" });
-  const kindFilter = select(KINDS as [string, string][], "", { "aria-label": "Kind" });
-  const index = h("ul", { class: "plain doc-index", "aria-label": "Sermons and lessons" });
-  const newKind = select([["sermon", "Sermon"], ["lesson", "Lesson"], ["study", "Bible study"]], "sermon", { "aria-label": "Kind of the new document" });
-  const startForm = h("form", { class: "row" }, newKind, h("button", { type: "submit", class: "primary" }, "New"));
-  const trashToggle = h("button", { type: "button", class: "link", "aria-pressed": "false" }, "Recently deleted");
-  const sidebar = h("div", { class: "lists-index" },
-    h("div", { class: "doc-filters" }, query, kindFilter), index, startForm, trashToggle);
-  const detail = h("section", { class: "list-detail doc-detail", "aria-label": "Sermon or lesson" });
-  const el = h("div", { class: "view" },
-    h("h1", {}, "Sermons and lessons"),
-    h("p", { class: "hint" }, "Plan a sermon, lesson or Bible study: its main passage, an outline of points with their verses, and the full text. Quote verses into the text with their credit line."),
-    msg.el, h("div", { class: "lists-layout" }, sidebar, detail));
+  const sub = h("p", { class: "hint work-sub", "aria-live": "polite" });
+  const query = h("input", { type: "search", placeholder: "Search titles, passages, themes and text", "aria-label": "Search sermons", class: "work-search" });
+  let kindValue: DocKind | "" = "";
+  const kindPills = segmented({ label: "Kind", small: true, value: kindValue, options: KINDS, onChange: (v) => { kindValue = v; void refresh(); } });
+  const newBtn = h("button", { type: "button", class: "primary new-btn", "aria-haspopup": "menu", "aria-expanded": "false" }, icon("plus"), h("span", {}, "New"));
+  const table = h("div", { class: "table-wrap sermon-table-wrap" });
+  const index = h("div", { class: "sermon-index" },
+    h("div", { class: "work-head" }, h("div", { class: "work-heading" }, h("h1", { class: "work-h1" }, "Sermons"), sub), newBtn),
+    h("div", { class: "work-tools" }, query, kindPills),
+    msg.el, table);
+  const detail = h("section", { class: "doc-detail", "aria-label": "Sermon or lesson", hidden: true });
+  const el = h("div", { class: "view work-view" }, index, detail);
 
   let docs: SermonDoc[] = [];
   let openId: string | null = null;
-  let trash = false;
+  let selected = "";
+  let sort = loadPref<{ key: SermonKey; dir: "asc" | "desc" }>(SORT_KEY, { key: "preached", dir: "desc" });
   let timer = 0;
   let editor: RichEditor | null = null;
   let flush: (() => Promise<boolean>) | null = null;
@@ -54,71 +69,123 @@ export function sermonsView() {
   async function refresh() {
     const params: Record<string, unknown> = {};
     if (query.value.trim()) params.query = query.value.trim();
-    if (kindFilter.value) params.kind = kindFilter.value;
-    const got = await msg.attempt(() => run<SermonDoc[]>(trash ? "document.deleted" : "document.list", trash ? {} : params));
+    if (kindValue) params.kind = kindValue;
+    const [got] = await Promise.all([msg.attempt(() => run<SermonDoc[]>("document.list", params)), loadFolders()]);
     if (!got) return;
     docs = got;
-    renderIndex();
-    if (!trash && !openId) {
-      clear(detail, h("div", { class: "empty doc-empty" },
-        h("p", {}, docs.length ? "Choose a sermon or lesson on the left, or start a new one." : "No sermons or lessons yet."),
-        docs.length ? null : h("p", { class: "hint" }, "Choose New to start one. Give it a passage, jot down the points, then write.")));
-    }
+    renderTable();
   }
 
-  function renderIndex() {
-    if (trash) {
-      clear(index, docs.length === 0 ? h("li", { class: "empty" }, "Nothing has been deleted.") : docs.map((d) => h("li", { class: "doc-row" },
-        h("strong", {}, d.title), h("span", { class: "hint" }, ` Deleted ${formatTime(d.deleted_at ?? d.updated_at)}`),
-        button("Restore", async () => {
-          const back = await msg.attempt(() => run<SermonDoc>("document.restore", { id: d.id }));
-          if (back) {
-            flash(`Restored "${back.title}".`);
-            setTrash(false);
-            open(back.id);
-          }
-        }, { "aria-label": `Restore ${d.title}` }))));
+  function renderTable() {
+    const rows = sortSermons(docs, sort.key, sort.dir);
+    const filtered = !!(query.value.trim() || kindValue);
+    sub.textContent = rows.length
+      ? `${rows.length} ${rows.length === 1 ? "item" : "items"}${filtered ? " found" : ""}. Double-click one to open it in Study.`
+      : "";
+    if (rows.length === 0) {
+      clear(table, filtered ? emptyState("search", "Nothing matches", "Try other words, or choose All.")
+        : emptyState("sermon", "No sermons yet", "Start one with New: give it a passage, jot down the points, then write.",
+          button("New sermon", () => void create("sermon"), { class: "primary" })));
       return;
     }
-    clear(index, docs.length === 0 ? h("li", { class: "empty" }, query.value || kindFilter.value ? "None match." : "") :
-      docs.map((d) => h("li", {},
-        h("button", { type: "button", class: "list-pick", "aria-current": d.id === openId ? "true" : null, onclick: () => open(d.id) },
-          h("strong", {}, d.title), h("span", { class: "hint doc-meta" }, docSummary(d))))));
+    const head = h("tr", {}, COLUMNS.map(([key, label]) => {
+      const on = sort.key === key;
+      const b = h("button", { type: "button", class: "sort-btn" }, label,
+        h("span", { class: "sort-mark", "aria-hidden": "true" }, on ? (sort.dir === "asc" ? "▲" : "▼") : ""));
+      b.addEventListener("click", () => {
+        sort = nextSort(sort, key);
+        savePref(SORT_KEY, sort);
+        renderTable();
+        table.querySelector<HTMLElement>(`th[data-key="${key}"] button`)?.focus();
+      });
+      return h("th", { scope: "col", "data-key": key, "aria-sort": on ? (sort.dir === "asc" ? "ascending" : "descending") : "none" }, b);
+    }), h("th", { scope: "col" }, h("span", { class: "sr-only" }, "Actions")));
+    clear(table, h("table", { class: "list sermon-table" }, h("thead", {}, head), h("tbody", {}, rows.map(row))));
   }
 
-  function setTrash(on: boolean) {
-    trash = on;
-    trashToggle.setAttribute("aria-pressed", String(on));
-    trashToggle.textContent = on ? "Back to your documents" : "Recently deleted";
-    startForm.hidden = on;
-    refresh();
+  function row(d: SermonDoc): HTMLElement {
+    const name = d.title || untitled(d.kind);
+    const item: WorkItem = { kind: "sermon", id: d.id, title: name, folder_id: d.folder_id };
+    const open = () => openInStudy({ kind: "sermon", target: d.id, title: name });
+    const menu = (b: HTMLElement) => actionMenu(b, `Actions for ${name}`, [
+      ["Open in Study", open],
+      ["Edit outline and text", () => void openBuilder(d.id)],
+      ["Move to folder…", () => moveMenu(b, msg, item)],
+      ["Print or save…", () => openExport({ title: name, sources: [{ kind: "document", id: d.id }] })],
+      "-",
+      ["Delete", () => void deleteSermon(msg, d), "danger"],
+    ]);
+    const where = [d.kind !== "sermon" ? KIND_NAME[d.kind] : "", d.folder_id ? folderName(d.folder_id) : ""].filter(Boolean);
+    const none = () => h("span", { class: "none", "aria-label": "None" }, "—");
+    const tr = h("tr", { tabindex: "0", class: selected === d.id ? "on" : "", "aria-selected": String(selected === d.id), title: "Double-click to open in Study" },
+      h("td", { class: "sermon-title" }, h("strong", {}, name), where.length ? h("small", { class: "hint" }, where.join(" · ")) : null),
+      h("td", { class: "nowrap" }, d.passage?.display ?? none()),
+      h("td", { class: "nowrap" }, d.preached_on ? preachedText(d.preached_on) : none()),
+      h("td", { class: "theme-cell" }, d.theme || none()),
+      h("td", { class: "row-actions" }, moreButton(`Actions for ${name}`, menu)));
+    const pick = () => {
+      selected = d.id;
+      for (const x of table.querySelectorAll("tr.on")) { x.classList.remove("on"); x.setAttribute("aria-selected", "false"); }
+      tr.classList.add("on");
+      tr.setAttribute("aria-selected", "true");
+    };
+    tr.addEventListener("click", pick);
+    tr.addEventListener("focus", pick);
+    tr.addEventListener("dblclick", open);
+    tr.addEventListener("keydown", (e) => {
+      if (e.target !== tr) return;
+      if (e.key === "Enter") { e.preventDefault(); open(); }
+      else if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) { e.preventDefault(); menu(tr.querySelector<HTMLElement>(".more-btn")!); }
+      else if (e.key === "ArrowDown") { e.preventDefault(); (tr.nextElementSibling as HTMLElement | null)?.focus(); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); (tr.previousElementSibling as HTMLElement | null)?.focus(); }
+    });
+    draggableItem(tr, () => item, () => ({ kind: "sermon", target: d.id, title: name }));
+    return tr;
   }
-  trashToggle.addEventListener("click", async () => {
+
+  async function create(kind: DocKind) {
     if (flush) await flush();
-    setTrash(!trash);
+    const d = await msg.attempt(() => run<SermonDoc>("document.create", { kind }));
+    if (!d) return;
+    workChanged();
+    await openBuilder(d.id, true);
+  }
+
+  // + New offers a sermon first here, the other kinds, and a note (made in the notes view).
+  newBtn.addEventListener("click", () => {
+    const body = h("div", { class: "menu-list" }, NEW.map(([k, label]) =>
+      h("button", { type: "button", onclick: () => (k === "note" ? navigate("notes") : void create(k)) },
+        icon(k === "note" ? "notes" : "sermon"), h("span", {}, label))));
+    openPopover(newBtn, body, { label: "New", menu: true });
   });
 
-  startForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    if (flush) await flush();
-    const d = await msg.attempt(() => run<SermonDoc>("document.create", { kind: newKind.value }));
-    if (d) {
-      query.value = "";
-      kindFilter.value = "";
-      await open(d.id, true);
-    }
-  });
+  // The builder ---------------------------------------------------------------------------------------
 
-  async function open(id: string, fresh = false) {
+  async function openBuilder(id: string, fresh = false) {
     if (flush && openId !== id) await flush();
     const d = await msg.attempt(() => run<SermonDoc>("document.get", { id }));
     if (!d) return;
     openId = id;
-    await refresh();
+    selected = id;
+    index.hidden = true;
+    detail.hidden = false;
     renderDetail(d, fresh);
+    detail.querySelector(".builder-bar")?.after(msg.el);
   }
 
-  // The editor ----------------------------------------------------------------------------------------
+  async function closeBuilder() {
+    if (flush) await flush();
+    editor?.destroy();
+    editor = null;
+    flush = null;
+    openId = null;
+    detail.hidden = true;
+    index.hidden = false;
+    clear(detail);
+    table.before(msg.el);
+    await refresh();
+    table.querySelector<HTMLElement>("tr.on")?.focus();
+  }
 
   function renderDetail(d: SermonDoc, fresh: boolean) {
     editor?.destroy();
@@ -133,6 +200,8 @@ export function sermonsView() {
     const kind = select([["sermon", "Sermon"], ["lesson", "Lesson"], ["study", "Bible study"]], d.kind, { "aria-label": "Kind" });
     const passage = h("input", { type: "text", id: "doc-passage", value: d.passage?.display ?? "", placeholder: "e.g. Romans 8:28-39" });
     const readBtn = button("Read", () => openPassage(passage.value), { title: "Open the passage in the Reader" });
+    const preached = h("input", { type: "date", id: "doc-preached", value: d.preached_on ?? "", class: "date-input" });
+    const theme = h("input", { type: "text", id: "doc-theme", value: d.theme ?? "", placeholder: "e.g. Assurance", maxlength: "200" });
 
     const outline = h("ol", { class: "outline", "aria-label": "Outline" });
     const host = h("div", { class: "editor-host doc-text", "aria-busy": "true" }, h("p", { class: "hint" }, "Loading the editor…"));
@@ -158,6 +227,7 @@ export function sermonsView() {
       saving = (async () => {
         const got = await msg.attempt(() => run<SermonDoc>("document.update", {
           id: d.id, title: title.value, kind: kind.value, passage: passage.value.trim(),
+          preached_on: preached.value, theme: theme.value,
           points: cleanPoints(points), ...(editor ? { body: editor.getMarkdown() } : {}),
         }));
         if (!got) {
@@ -168,10 +238,7 @@ export function sermonsView() {
         Object.assign(d, got);
         status.textContent = `Saved ${formatTime(got.updated_at)}`;
         const row = docs.find((x) => x.id === got.id);
-        if (row) {
-          Object.assign(row, got);
-          renderIndex();
-        }
+        if (row) Object.assign(row, got);
         return true;
       })();
       const ok = await saving;
@@ -231,7 +298,8 @@ export function sermonsView() {
       changed();
     }
 
-    for (const c of [title, passage]) c.addEventListener("input", changed);
+    for (const c of [title, passage, theme]) c.addEventListener("input", changed);
+    preached.addEventListener("change", changed);
     kind.addEventListener("change", () => {
       title.placeholder = untitled(kind.value as DocKind);
       changed();
@@ -271,30 +339,26 @@ export function sermonsView() {
 
     const del = button("Delete", async () => {
       await save();
-      if ((await msg.attempt(() => run("document.delete", { id: d.id }))) === undefined) return;
-      editor?.destroy();
-      editor = null;
       flush = null;
-      openId = null;
-      clear(msg.el, `Deleted "${d.title}". It stays under Recently deleted. `, button("Undo", async () => {
-        if ((await msg.attempt(() => run("document.restore", { id: d.id }))) !== undefined) {
-          msg.ok("Restored.");
-          open(d.id);
-        }
-      }));
-      msg.el.className = "msg ok";
-      msg.el.setAttribute("role", "status");
-      refresh();
+      await deleteSermon(msg, d);
+      await closeBuilder();
     }, { class: "danger" });
+    const back = button("", () => void closeBuilder(), { class: "back-link", title: "Back to the list of sermons" });
+    back.append(icon("prev"), h("span", {}, "All sermons"));
+    const inFolder = d.folder_id ? h("span", { class: "meta-chip folder-chip" }, icon("folder"), folderName(d.folder_id)) : null;
 
     clear(detail,
+      h("div", { class: "row between builder-bar" }, back,
+        h("div", { class: "row doc-actions" }, inFolder, status,
+          button("Open in Study", () => openInStudy({ kind: "sermon", target: d.id, title: d.title || untitled(d.kind) }), { title: "Open it in a tab of the Study grid" }),
+          printExportButton(() => ({ title: d.title, sources: [{ kind: "document", id: d.id }] })),
+          del)),
       title,
       h("div", { class: "row wrap doc-props" },
         field("Kind", kind),
         h("div", { class: "field grow" }, h("label", { for: "doc-passage" }, "Main passage"), h("div", { class: "row" }, passage, readBtn)),
-        h("div", { class: "row doc-actions" }, status,
-          printExportButton(() => ({ title: d.title, sources: [{ kind: "document", id: d.id }] })),
-          del)),
+        field("Date preached", preached),
+        h("div", { class: "field theme-field" }, h("label", { for: "doc-theme" }, "Theme"), theme)),
       h("div", { class: "doc-columns" },
         h("section", { class: "card doc-outline", "aria-label": "Outline" },
           h("div", { class: "row between" }, h("h2", {}, "Outline"), button("Add a point", () => addPoint(points.length, 1))),
@@ -335,9 +399,11 @@ export function sermonsView() {
 
   query.addEventListener("input", () => {
     clearTimeout(timer);
-    timer = window.setTimeout(() => refresh(), 250);
+    timer = window.setTimeout(() => void refresh(), 220);
   });
-  kindFilter.addEventListener("change", () => refresh());
+  query.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && query.value) { e.preventDefault(); query.value = ""; void refresh(); }
+  });
   document.addEventListener("keydown", (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s" && el.offsetParent !== null && flush) {
       e.preventDefault();
@@ -345,19 +411,20 @@ export function sermonsView() {
     }
   });
   window.addEventListener("beforeunload", () => void flush?.());
+  onWorkChanged(() => { if (el.offsetParent !== null && !openId) void refresh(); });
 
   return {
     el,
+    focus: () => (openId ? detail.querySelector<HTMLElement>(".doc-title") : query)?.focus(),
     show: async () => {
-      // #sermons/<id> opens one document, so links and scripts can point at it.
+      // #sermons/<id> opens one document's builder, so links and scripts can point at it.
       const asked = /^#sermons\/(.+)$/.exec(location.hash)?.[1];
       if (asked) {
         history.replaceState(null, "", "#sermons");
-        if (trash) setTrash(false);
-        await open(decodeURIComponent(asked));
+        await openBuilder(decodeURIComponent(asked));
         return;
       }
-      await refresh();
+      if (!openId) await refresh();
     },
   };
 }

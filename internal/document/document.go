@@ -35,10 +35,11 @@ func Register(r *command.Registry) {
 		command.Define("document.create", "Start a new sermon, lesson or Bible study.", true, s.create),
 		command.Define("document.get", "Show one sermon, lesson or study with its outline and text.", false, s.get),
 		command.Define("document.list", "List sermons, lessons and studies, most recently changed first.", false, s.list),
-		command.Define("document.update", "Change a document's title, kind, main passage, outline or text.", true, s.update),
+		command.Define("document.update", "Change a document's title, kind, main passage, outline, text, date preached or theme.", true, s.update),
 		command.Define("document.delete", "Delete a document. It stays in document.deleted until restored.", true, s.delete),
 		command.Define("document.restore", "Bring back a deleted document.", true, s.restore),
 		command.Define("document.deleted", "List deleted documents, most recently deleted first.", false, s.deleted),
+		command.Define("document.move", "File a sermon, lesson or study in a folder, or take it out of its folder.", true, s.move),
 		command.Define("document.quote", "Quote a Bible passage into a document's text, with its reference and credit line, "+
 			"as far as the Bible's licence allows.", true, s.quote),
 	)
@@ -81,16 +82,19 @@ func parseOutline(raw sql.NullString) outline {
 
 // Document is a sermon, lesson or study as callers see it.
 type Document struct {
-	ID        string          `json:"id"`
-	Kind      string          `json:"kind" enum:"sermon,lesson,study"`
-	Title     string          `json:"title"`
-	Passage   *core.RefResult `json:"passage,omitempty" desc:"The main passage"`
-	Points    []Point         `json:"points" desc:"The outline, in order"`
-	Body      string          `json:"body" desc:"The full text, in Markdown"`
-	Words     int             `json:"words" desc:"Words in the text"`
-	CreatedAt int64           `json:"created_at"`
-	UpdatedAt int64           `json:"updated_at"`
-	DeletedAt int64           `json:"deleted_at,omitempty"`
+	ID         string          `json:"id"`
+	Kind       string          `json:"kind" enum:"sermon,lesson,study"`
+	Title      string          `json:"title"`
+	Passage    *core.RefResult `json:"passage,omitempty" desc:"The main passage"`
+	Points     []Point         `json:"points" desc:"The outline, in order"`
+	Body       string          `json:"body" desc:"The full text, in Markdown"`
+	Words      int             `json:"words" desc:"Words in the text"`
+	PreachedOn string          `json:"preached_on,omitempty" desc:"When it was preached or taught, as YYYY-MM-DD"`
+	Theme      string          `json:"theme,omitempty" desc:"Its theme or topic, in a few words"`
+	FolderID   string          `json:"folder_id,omitempty" desc:"The folder it is filed in (folder.list)"`
+	CreatedAt  int64           `json:"created_at"`
+	UpdatedAt  int64           `json:"updated_at"`
+	DeletedAt  int64           `json:"deleted_at,omitempty"`
 }
 
 func refOf(s string) (*core.RefResult, error) {
@@ -165,12 +169,14 @@ func cleanOutline(passage string, points []Point) (string, error) {
 
 func words(s string) int { return len(strings.Fields(s)) }
 
-const docSelect = `SELECT id, kind, title, body_md, outline_json, created_at, updated_at, COALESCE(deleted_at, 0) FROM documents`
+const docSelect = `SELECT id, kind, title, body_md, outline_json, created_at, updated_at, COALESCE(deleted_at, 0),
+	COALESCE(preached_on, ''), COALESCE(theme, ''), COALESCE(folder_id, '') FROM documents`
 
 func scan(rows *sql.Rows) (Document, error) {
 	var d Document
 	var raw sql.NullString
-	if err := rows.Scan(&d.ID, &d.Kind, &d.Title, &d.Body, &raw, &d.CreatedAt, &d.UpdatedAt, &d.DeletedAt); err != nil {
+	if err := rows.Scan(&d.ID, &d.Kind, &d.Title, &d.Body, &raw, &d.CreatedAt, &d.UpdatedAt, &d.DeletedAt,
+		&d.PreachedOn, &d.Theme, &d.FolderID); err != nil {
 		return d, err
 	}
 	o := parseOutline(raw)
@@ -223,6 +229,35 @@ type CreateParams struct {
 	Passage string  `json:"passage,omitempty" desc:"The main passage, e.g. \"Rom 8:28-39\""`
 	Points  []Point `json:"points,omitempty" desc:"The outline"`
 	Body    string  `json:"body,omitempty" desc:"The full text, in Markdown"`
+	// Details a sermon list shows.
+	PreachedOn string `json:"preached_on,omitempty" desc:"When it was preached or taught, as YYYY-MM-DD"`
+	Theme      string `json:"theme,omitempty" desc:"Its theme or topic, in a few words"`
+	FolderID   string `json:"folder_id,omitempty" desc:"File it in this folder (folder.list)"`
+}
+
+const maxTheme = 200
+
+// cleanDate checks a YYYY-MM-DD date; "" means none.
+func cleanDate(s string) (any, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil, nil
+	}
+	if _, err := time.Parse("2006-01-02", s); err != nil {
+		return nil, command.Errorf("bad_params", "the date preached must be YYYY-MM-DD, e.g. 2026-11-01")
+	}
+	return s, nil
+}
+
+func cleanTheme(s string) (any, error) {
+	s = strings.Join(strings.Fields(s), " ")
+	if len(s) > maxTheme {
+		return nil, command.Errorf("bad_params", "the theme can be up to %d characters", maxTheme)
+	}
+	if s == "" {
+		return nil, nil
+	}
+	return s, nil
 }
 
 // untitled is the title a document gets when none is given.
@@ -249,10 +284,25 @@ func (s *service) create(ctx context.Context, env *command.Env, p CreateParams) 
 	if len(p.Body) > maxBody {
 		return Document{}, command.Errorf("bad_params", "the text is too long")
 	}
+	preached, err := cleanDate(p.PreachedOn)
+	if err != nil {
+		return Document{}, err
+	}
+	theme, err := cleanTheme(p.Theme)
+	if err != nil {
+		return Document{}, err
+	}
 	id, t := store.NewID(), now()
 	err = env.Store.Write(ctx, "document.create", func(tx *store.Tx) error {
+		var folder any
+		if p.FolderID != "" {
+			if err := core.LiveFolder(tx, p.FolderID); err != nil {
+				return err
+			}
+			folder = p.FolderID
+		}
 		return tx.Create("documents", store.Row{"id": id, "kind": kind, "title": title, "body_md": p.Body,
-			"outline_json": ol, "created_at": t, "updated_at": t})
+			"outline_json": ol, "created_at": t, "updated_at": t, "preached_on": preached, "theme": theme, "folder_id": folder})
 	})
 	if err != nil {
 		return Document{}, err
@@ -272,10 +322,11 @@ func (s *service) get(ctx context.Context, env *command.Env, p IDParams) (Docume
 }
 
 type ListParams struct {
-	Kind  string `json:"kind,omitempty" enum:"sermon,lesson,study" desc:"Only this kind"`
-	Query string `json:"query,omitempty" desc:"Only documents whose title, passage, outline or text contains these words"`
-	Ref   string `json:"ref,omitempty" desc:"Only documents whose main passage or outline points overlap this reference"`
-	Limit int    `json:"limit,omitempty" desc:"Most documents to return (default 200)"`
+	Kind   string `json:"kind,omitempty" enum:"sermon,lesson,study" desc:"Only this kind"`
+	Query  string `json:"query,omitempty" desc:"Only documents whose title, passage, outline or text contains these words"`
+	Ref    string `json:"ref,omitempty" desc:"Only documents whose main passage or outline points overlap this reference"`
+	Folder string `json:"folder_id,omitempty" desc:"Only documents filed in this folder, or none for those in no folder"`
+	Limit  int    `json:"limit,omitempty" desc:"Most documents to return (default 200)"`
 }
 
 func (s *service) list(ctx context.Context, env *command.Env, p ListParams) ([]Document, error) {
@@ -294,8 +345,16 @@ func (s *service) list(ctx context.Context, env *command.Env, p ListParams) ([]D
 		args = append(args, p.Kind)
 	}
 	for _, w := range strings.Fields(strings.ToLower(p.Query)) {
-		where += ` AND instr(lower(title || ' ' || body_md || ' ' || COALESCE(outline_json, '')), ?) > 0`
+		where += ` AND instr(lower(title || ' ' || body_md || ' ' || COALESCE(outline_json, '') || ' ' || COALESCE(theme, '')), ?) > 0`
 		args = append(args, w)
+	}
+	switch p.Folder {
+	case "":
+	case "none":
+		where += ` AND folder_id IS NULL`
+	default:
+		where += ` AND folder_id = ?`
+		args = append(args, p.Folder)
 	}
 	all, err := query(ctx, env, where+` ORDER BY updated_at DESC, id`, args...)
 	if err != nil {
@@ -343,6 +402,9 @@ type UpdateParams struct {
 	Passage *string  `json:"passage,omitempty" desc:"The main passage; \"\" to clear; omit to keep"`
 	Points  *[]Point `json:"points,omitempty" desc:"The whole outline; omit to keep"`
 	Body    *string  `json:"body,omitempty" desc:"The full text in Markdown; omit to keep"`
+	// A sermon's details.
+	PreachedOn *string `json:"preached_on,omitempty" desc:"When it was preached, as YYYY-MM-DD; \"\" to clear; omit to keep"`
+	Theme      *string `json:"theme,omitempty" desc:"Its theme or topic; \"\" to clear; omit to keep"`
 }
 
 func live(tx *store.Tx, id string) (store.Row, error) {
@@ -379,6 +441,20 @@ func (s *service) update(ctx context.Context, env *command.Env, p UpdateParams) 
 			return Document{}, command.Errorf("bad_params", "the text is too long")
 		}
 		fields["body_md"] = *p.Body
+	}
+	if p.PreachedOn != nil {
+		v, err := cleanDate(*p.PreachedOn)
+		if err != nil {
+			return Document{}, err
+		}
+		fields["preached_on"] = v
+	}
+	if p.Theme != nil {
+		v, err := cleanTheme(*p.Theme)
+		if err != nil {
+			return Document{}, err
+		}
+		fields["theme"] = v
 	}
 	var title string
 	if p.Title != nil {
@@ -448,7 +524,9 @@ func (s *service) restore(ctx context.Context, env *command.Env, p IDParams) (Do
 		if cur["deleted_at"] == nil {
 			return command.Errorf("bad_params", "document %s is not deleted", p.ID)
 		}
-		return tx.Update("documents", store.ByID(p.ID), store.Row{"deleted_at": nil})
+		fields := store.Row{"deleted_at": nil}
+		core.UnfileIfGone(tx, cur, fields)
+		return tx.Update("documents", store.ByID(p.ID), fields)
 	})
 	if err != nil {
 		return Document{}, err
@@ -468,4 +546,30 @@ func (s *service) deleted(ctx context.Context, env *command.Env, p DeletedParams
 		p.Limit = 100
 	}
 	return query(ctx, env, `WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC, id LIMIT ?`, p.Limit)
+}
+
+type MoveParams struct {
+	ID       string `json:"id" required:"true"`
+	FolderID string `json:"folder_id,omitempty" desc:"The folder to file it in (folder.list); empty takes it out of its folder"`
+}
+
+// move files a document in a folder. It is not an edit, so updated_at stays.
+func (s *service) move(ctx context.Context, env *command.Env, p MoveParams) (Document, error) {
+	err := env.Store.Write(ctx, "document.move", func(tx *store.Tx) error {
+		if _, err := live(tx, p.ID); err != nil {
+			return err
+		}
+		var folder any
+		if p.FolderID != "" {
+			if err := core.LiveFolder(tx, p.FolderID); err != nil {
+				return err
+			}
+			folder = p.FolderID
+		}
+		return tx.Update("documents", store.ByID(p.ID), store.Row{"folder_id": folder})
+	})
+	if err != nil {
+		return Document{}, err
+	}
+	return get(ctx, env, p.ID)
 }

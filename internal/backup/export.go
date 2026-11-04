@@ -159,6 +159,10 @@ func chooseGroups(names []string) (map[string]bool, error) {
 		}
 		groups[n] = true
 	}
+	// Notes and documents refer to their folders, so the folders travel with them.
+	if groups["note"] || groups["document"] {
+		groups["folder"] = true
+	}
 	return groups, nil
 }
 

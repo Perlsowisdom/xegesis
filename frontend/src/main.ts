@@ -11,6 +11,7 @@ import { closePopover } from "./popover";
 import { rail } from "./shell/rail";
 import { PLACES, PlaceId, isView, placeForKey, placeOf, viewLabel } from "./shellwords";
 import { applyTheme, loadPref, onPrefs, prefs, savePref, setNavigator } from "./state";
+import { binView } from "./views/bin";
 import { biblesView } from "./views/bibles";
 import { libraryView } from "./views/library";
 import { listsView } from "./views/lists";
@@ -22,6 +23,7 @@ import { searchFor, searchView } from "./views/search";
 import { sermonsView } from "./views/sermons";
 import { settingsView } from "./views/settings";
 import { sidebar } from "./views/sidebar";
+import { WorkSide, workSide } from "./views/work";
 
 interface View {
   el: HTMLElement;
@@ -35,7 +37,7 @@ interface View {
 const makers: Record<string, () => View> = {
   reader: readerView, plans: plansView,
   library: libraryView, bibles: biblesView,
-  notes: notesSectionView, sermons: sermonsView, lists: listsView, reports: reportView,
+  notes: notesSectionView, sermons: sermonsView, lists: listsView, reports: reportView, bin: binView,
   search: searchView, settings: settingsView,
 };
 
@@ -47,6 +49,7 @@ const placeNavs = new Map<PlaceId, { el: HTMLElement; links: Map<string, HTMLEle
 const last: Partial<Record<PlaceId, string>> = loadPref(LAST_KEY, {});
 let current = "reader";
 let theRail: ReturnType<typeof rail>;
+let workCol: WorkSide | null = null;
 
 function view(id: string): View {
   let v = views.get(id);
@@ -58,26 +61,22 @@ function view(id: string): View {
   return v;
 }
 
-// placeNav is the row of tabs at the top of a place with several views (Library, My work), or the
-// way back from the reading plans page to the Reader.
+// placeNav is the row of tabs at the top of a place whose views are tabs (the Library).
 function placeNav(p: PlaceId): { el: HTMLElement; links: Map<string, HTMLElement> } | null {
   const place = PLACES.find((x) => x.id === p)!;
-  if (!place.tabs && p !== "reader") return null;
+  if (!place.tabs) return null;
   let nav = placeNavs.get(p);
   if (!nav) {
     const links = new Map<string, HTMLElement>();
-    const el = place.tabs
-      ? h("nav", { class: "place-tabs", "aria-label": place.label }, h("ul", {}, place.views.map((v) => {
-        const a = h("a", { href: `#${v.id}` }, v.label);
-        a.addEventListener("click", (e) => {
-          e.preventDefault();
-          show(v.id, true);
-        });
-        links.set(v.id, a);
-        return h("li", {}, a);
-      })))
-      : h("nav", { class: "place-tabs back", "aria-label": "Reader" },
-        button("‹ Back to the Reader", () => show("reader", true), { class: "link" }));
+    const el = h("nav", { class: "place-tabs", "aria-label": place.label }, h("ul", {}, place.views.map((v) => {
+      const a = h("a", { href: `#${v.id}` }, v.label);
+      a.addEventListener("click", (e) => {
+        e.preventDefault();
+        show(v.id, true);
+      });
+      links.set(v.id, a);
+      return h("li", {}, a);
+    })));
     nav = { el, links };
     placeNavs.set(p, nav);
     main.prepend(el);
@@ -98,11 +97,24 @@ function show(target: string, focus = false) {
   const place = placeOf(id);
   const v = view(id);
   current = id;
-  last[place.id] = id;
+  // My work comes back to the folder or tag it showed.
+  last[place.id] = id === "notes" && sub ? `${id}/${sub}` : id;
   savePref(LAST_KEY, last);
   for (const [vid, x] of views) x.el.hidden = vid !== id;
   const nav = placeNav(place.id);
-  for (const [p, n] of placeNavs) n.el.hidden = !(p === place.id && (p !== "reader" || id === "plans"));
+  for (const [p, n] of placeNavs) n.el.hidden = p !== place.id;
+  // My work keeps its column of folders, tags and writing beside every one of its views.
+  const inWork = place.id === "work";
+  if (inWork && !workCol) {
+    workCol = workSide((t) => show(t, true));
+    main.prepend(workCol.el);
+    void workCol.reload();
+  }
+  main.classList.toggle("with-work", inWork);
+  if (workCol) {
+    workCol.el.hidden = !inWork;
+    if (inWork) workCol.setCurrent(id);
+  }
   if (nav) for (const [lid, a] of nav.links) {
     if (lid === id) a.setAttribute("aria-current", "page");
     else a.removeAttribute("aria-current");
@@ -117,7 +129,7 @@ function show(target: string, focus = false) {
 function goPlace(p: PlaceId, focus = true) {
   const place = PLACES.find((x) => x.id === p)!;
   const want = last[p];
-  show(want && place.views.some((v) => v.id === want) ? want : place.views[0].id, focus);
+  show(want && place.views.some((v) => v.id === want.split("/")[0]) ? want : place.views[0].id, focus);
 }
 
 // boot waits briefly for the desktop app's bindings, which are injected alongside the page.

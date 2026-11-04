@@ -32,7 +32,7 @@ func Register(r *command.Registry) {
 		command.Define("note.search", "Find notes by words in them, tag, book of the Bible or library book, newest first.", false, noteSearch),
 		command.Define("note.tags", "List the tags in use with how many notes have each, to suggest tags.", false, noteTags),
 		command.Define("note.sources", "List the books of the Bible and library books that have notes, to filter notes by.", false, noteSources),
-		command.Define("note.move", "Attach a note to other verses or a book place, or detach it so it belongs to none.", true, noteMove),
+		command.Define("note.move", "Attach a note to other verses or a book place, detach it so it belongs to none, or file it in a folder.", true, noteMove),
 		command.Define("note.deleted", "List deleted notes, most recently deleted first.", false, noteDeleted),
 		command.Define("note.restore", "Bring a deleted note back.", true, noteRestore),
 		command.Define("history.list", "List the recorded changes to one object, oldest first.", false, historyList),

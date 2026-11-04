@@ -25,8 +25,8 @@ func TestOpenMigratesAndKeepsDevice(t *testing.T) {
 		t.Fatal(err)
 	}
 	v, err := s.SchemaVersion()
-	if err != nil || v != 9 {
-		t.Fatalf("schema version = %d, %v; want 9", v, err)
+	if err != nil || v != 10 {
+		t.Fatalf("schema version = %d, %v; want 10", v, err)
 	}
 	dev := s.Device()
 	s.Close()
@@ -162,6 +162,47 @@ func TestCompositeKeysAndHardDelete(t *testing.T) {
 	}
 	if err := s.Restore(ctx, "history.restore", "collection_items", key, h[0].ID); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestPurgeErasesRowAndHistoryValues(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+	id := NewID()
+	err := s.Write(ctx, "note.create", func(tx *Tx) error {
+		return tx.Create("notes", Row{"id": id, "body_md": "secret", "created_at": int64(1), "updated_at": int64(1)})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Write(ctx, "note.delete", func(tx *Tx) error { return tx.Delete("notes", ByID(id)) })
+	if err := s.Write(ctx, "bin.purge", func(tx *Tx) error { return tx.Purge("notes", ByID(id)) }); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	s.QueryRow(ctx, "SELECT COUNT(*) FROM notes WHERE id = ?", id).Scan(&n)
+	if n != 0 {
+		t.Fatal("row still present")
+	}
+	h, err := s.History(ctx, "notes", id)
+	if err != nil || len(h) != 3 {
+		t.Fatalf("history = %v, %v", h, err)
+	}
+	for _, c := range h {
+		if c.Before != nil || c.After != nil {
+			t.Fatalf("history keeps values: %+v", c)
+		}
+	}
+	if last := h[2]; last.Op != "delete" || last.Field != "purge" {
+		t.Fatalf("purge logged as %+v", last)
+	}
+	// Restoring an earlier change of a purged row brings nothing back.
+	if err := s.Restore(ctx, "history.restore", "notes", ByID(id), h[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	s.QueryRow(ctx, "SELECT COUNT(*) FROM notes WHERE id = ?", id).Scan(&n)
+	if n != 0 {
+		t.Fatal("restore brought a purged row back")
 	}
 }
 

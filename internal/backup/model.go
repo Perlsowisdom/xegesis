@@ -48,8 +48,12 @@ const anyURI = "any://"
 func ts(name string) field { return field{name: name, col: name, kind: fDateTime} }
 
 var objTypes = []objType{
+	{name: "folder", table: "folders", group: "folder", key: []string{"id"}, fields: []field{
+		{name: "name", col: "name", kind: fText}, {name: "parent", col: "parent_id", kind: fRelation, rel: "folder"},
+		{name: "position", col: "sort", kind: fNumber}, ts("created_at"), ts("updated_at"), ts("deleted_at")}},
 	{name: "note", table: "notes", group: "note", key: []string{"id"}, anchor: true, fields: []field{
 		{name: "title", col: "title", kind: fText}, {name: "body", col: "body_md", kind: fBody},
+		{name: "folder", col: "folder_id", kind: fRelation, rel: "folder"},
 		ts("created_at"), ts("updated_at"), ts("deleted_at")}},
 	{name: "note_tag", table: "note_tags", group: "note", key: []string{"note_id", "tag"}, fields: []field{
 		{name: "note", col: "note_id", kind: fRelation, rel: "note"}, {name: "tag", col: "tag", kind: fText}}},
@@ -93,6 +97,8 @@ var objTypes = []objType{
 	{name: "document", table: "documents", group: "document", key: []string{"id"}, fields: []field{
 		{name: "kind", col: "kind", kind: fText}, {name: "title", col: "title", kind: fText},
 		{name: "body", col: "body_md", kind: fBody}, {name: "outline", col: "outline_json", kind: fJSON},
+		{name: "folder", col: "folder_id", kind: fRelation, rel: "folder"},
+		{name: "preached_on", col: "preached_on", kind: fDate}, {name: "theme", col: "theme", kind: fText},
 		ts("created_at"), ts("updated_at"), ts("deleted_at")}},
 }
 
@@ -115,7 +121,7 @@ var anchorFields = []field{
 }
 
 // Groups are the names a caller can pass to choose what to export or import.
-var Groups = []string{"note", "highlight", "list", "collection", "reading_plan", "document"}
+var Groups = []string{"note", "highlight", "list", "collection", "reading_plan", "document", "folder"}
 
 func typeByName(name string) (objType, bool) {
 	if name == "item" {

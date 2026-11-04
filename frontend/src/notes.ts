@@ -82,6 +82,8 @@ export function tagInput(initial: string[]) {
 export interface NoteFormOptions {
   note: Note | null; // null for a new note
   ref?: string; // the passage a new note starts on
+  folderId?: string; // the folder a new note goes in
+  tags?: string[]; // the tags a new note starts with
   onDone(saved: Note | null): void;
 }
 
@@ -92,7 +94,7 @@ export function noteForm(msg: Message, o: NoteFormOptions): HTMLFormElement {
   const ref = h("input", { type: "text", value: original, placeholder: "e.g. Rom 8:28" });
   const attachedToBook = !!n?.item_id;
   const detach = h("input", { type: "checkbox", id: "detach-" + Math.random().toString(36).slice(2) });
-  const tags = tagInput(n?.tags ?? []);
+  const tags = tagInput(n?.tags ?? o.tags ?? []);
   const host = h("div", { class: "editor-host", "aria-busy": "true" }, h("p", { class: "hint" }, "Loading the editor…"));
   const save = h("button", { type: "submit", class: "primary", disabled: true }, n ? "Save" : "Create note");
   let editor: { getMarkdown(): string; focus(): void; destroy(): void } | null = null;
@@ -132,7 +134,7 @@ export function noteForm(msg: Message, o: NoteFormOptions): HTMLFormElement {
     const want = ref.value.trim();
     const saved = await msg.attempt(async () => {
       if (!n) {
-        return run<Note>("note.create", { title: title.value, body, tags: tags.get(), ...(want ? { ref: want } : {}) });
+        return run<Note>("note.create", { title: title.value, body, tags: tags.get(), ...(want ? { ref: want } : {}), ...(o.folderId ? { folder_id: o.folderId } : {}) });
       }
       let note = await run<Note>("note.update", { id: n.id, title: title.value, body, tags: tags.get() });
       const moves = attachedToBook ? detach.checked || !!want : want !== original;
@@ -180,7 +182,7 @@ export function noteCard(n: Note, a: CardActions): HTMLElement {
 export async function deleteNote(msg: Message, n: Note, changed: () => void) {
   const ok = await msg.attempt(() => run("note.delete", { id: n.id }));
   if (ok === undefined) return;
-  clear(msg.el, `Deleted "${noteName(n)}". It stays under Recently deleted. `,
+  clear(msg.el, `"${noteName(n)}" went to the bin. `,
     button("Undo", async () => {
       if ((await msg.attempt(() => run("note.restore", { id: n.id }))) !== undefined) {
         msg.ok("Note restored.");

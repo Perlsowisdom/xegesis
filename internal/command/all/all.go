@@ -12,6 +12,7 @@ import (
 	"github.com/Perlsowisdom/xegesis/internal/command/core"
 	"github.com/Perlsowisdom/xegesis/internal/document"
 	"github.com/Perlsowisdom/xegesis/internal/export"
+	"github.com/Perlsowisdom/xegesis/internal/folder"
 	"github.com/Perlsowisdom/xegesis/internal/integrations/apibible"
 	"github.com/Perlsowisdom/xegesis/internal/integrations/dbl"
 	"github.com/Perlsowisdom/xegesis/internal/integrations/secrets"
@@ -42,5 +43,6 @@ func Registry(dataDir string, s secrets.Store) *command.Registry {
 	plan.Register(r)
 	report.Register(r)
 	document.Register(r)
+	folder.Register(r)
 	return r
 }
