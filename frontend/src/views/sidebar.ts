@@ -13,6 +13,23 @@ import { openInStudy } from "../document/open";
 import { selectedMarkScope } from "../gridhook";
 import { MarkScope, highlightsPanel } from "../highlightspanel";
 
+// fitTabs decides which tabs show in the strip: all of them when they fit, otherwise as many as fit
+// beside the "more" button, always including the chosen one. Returns indices in original order.
+export function fitTabs(widths: number[], selected: number, avail: number, moreW: number): number[] {
+  const all = widths.map((_, i) => i);
+  if (widths.reduce((a, b) => a + b, 0) <= avail) return all;
+  let room = avail - moreW;
+  const keep = new Set<number>();
+  if (selected >= 0 && selected < widths.length) { keep.add(selected); room -= widths[selected]; }
+  for (const i of all) {
+    if (keep.has(i)) continue;
+    if (widths[i] > room) break;
+    keep.add(i);
+    room -= widths[i];
+  }
+  return all.filter((i) => keep.has(i));
+}
+
 // bookOf is the book of the Bible in a displayed reference, such as "1 John" in "1 John 3:16".
 function bookOf(display: string): string {
   return display.replace(/\s+\d+([:.]\d+)?([-–].*)?$/, "").trim() || display;
@@ -69,8 +86,10 @@ function makeSidebar() {
       const d = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
       if (!d) return;
       e.preventDefault();
-      const shown = visibleTools(prefs.sidebar.tools);
-      const next = shown[(shown.indexOf(t.id) + d + shown.length) % shown.length];
+      const strip = stripIds();
+      const i = strip.indexOf(t.id) + d;
+      if (overflowIds.length && (i >= strip.length || i < 0)) { moreBtn.focus(); return; }
+      const next = strip[(i + strip.length) % strip.length];
       select(next, false);
       tabs.get(next)?.focus();
     });
@@ -80,8 +99,73 @@ function makeSidebar() {
     panels.append(panel);
   }
 
-  const el = h("aside", { class: "rightbar", "aria-label": "Study tools", id: "rightbar" },
-    h("div", { class: "rightbar-head" }, tablist), panels);
+  let overflowIds: ToolId[] = [];
+  const stripIds = () => [...tablist.querySelectorAll<HTMLButtonElement>('[role="tab"]')].map((b) => b.id.replace("tool-tab-", "") as ToolId);
+  const moreBtn = h("button", { type: "button", class: "tool-more", "aria-haspopup": "menu", "aria-expanded": "false", "aria-label": "More tools", title: "More tools" }, "⋯");
+  const menu = h("div", { class: "tool-more-menu", role: "menu", "aria-label": "More tools" });
+  menu.hidden = true;
+  moreBtn.hidden = true;
+
+  function closeMenu(refocus: boolean) {
+    if (menu.hidden) return;
+    menu.hidden = true;
+    moreBtn.setAttribute("aria-expanded", "false");
+    if (refocus) moreBtn.focus();
+  }
+  function openMenu() {
+    menu.hidden = false;
+    moreBtn.setAttribute("aria-expanded", "true");
+    menu.querySelector<HTMLElement>("button")?.focus();
+  }
+  moreBtn.addEventListener("click", () => (menu.hidden ? openMenu() : closeMenu(false)));
+  moreBtn.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); openMenu(); }
+    else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+      e.preventDefault();
+      const strip = stripIds();
+      const id = strip[e.key === "ArrowLeft" ? strip.length - 1 : 0];
+      if (id) { select(id, false); tabs.get(id)?.focus(); }
+    } else if (e.key === "Escape") closeMenu(false);
+  });
+  menu.addEventListener("keydown", (e) => {
+    const items = [...menu.querySelectorAll<HTMLButtonElement>("button")];
+    const i = items.indexOf(document.activeElement as HTMLButtonElement);
+    if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeMenu(true); }
+    else if (e.key === "ArrowDown") { e.preventDefault(); items[(i + 1) % items.length]?.focus(); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); items[(i - 1 + items.length) % items.length]?.focus(); }
+    else if (e.key === "Tab") closeMenu(false);
+  });
+  document.addEventListener("pointerdown", (e) => {
+    if (!menu.hidden && !menu.contains(e.target as Node) && !moreBtn.contains(e.target as Node)) closeMenu(false);
+  });
+
+  const head = h("div", { class: "rightbar-head" }, tablist, moreBtn, menu);
+  const el = h("aside", { class: "rightbar", "aria-label": "Study tools", id: "rightbar" }, head, panels);
+
+  // layoutTabs shows as many tabs as fit and puts the rest in the overflow menu.
+  let shownIds: ToolId[] = [];
+  function layoutTabs() {
+    if (!shownIds.length || head.clientWidth === 0) return;
+    const current = activeTool(prefs.sidebar.tools, prefs.sidebar.tool);
+    const cs = getComputedStyle(head);
+    const inner = head.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    tablist.replaceChildren(...shownIds.map((id) => tabs.get(id)!));
+    moreBtn.hidden = false;
+    const moreW = moreBtn.offsetWidth + (parseFloat(cs.columnGap) || 0);
+    const widths = shownIds.map((id) => tabs.get(id)!.offsetWidth);
+    const keep = fitTabs(widths, shownIds.indexOf(current), inner, moreW);
+    const inStrip = new Set(keep.map((i) => shownIds[i]));
+    overflowIds = shownIds.filter((id) => !inStrip.has(id));
+    tablist.replaceChildren(...shownIds.filter((id) => inStrip.has(id)).map((id) => tabs.get(id)!));
+    moreBtn.hidden = overflowIds.length === 0;
+    menu.replaceChildren(...overflowIds.map((id) => {
+      const b = h("button", { type: "button", role: "menuitem", tabindex: "-1" }, TOOLS.find((t) => t.id === id)?.label ?? id);
+      b.addEventListener("click", () => { closeMenu(false); select(id, false); tabs.get(id)?.focus(); });
+      return b;
+    }));
+    if (!overflowIds.length) closeMenu(false);
+  }
+  new ResizeObserver(() => layoutTabs()).observe(head);
 
   function render() {
     const p = prefs.sidebar;
@@ -89,6 +173,7 @@ function makeSidebar() {
     document.body.classList.toggle("sidebar-open", p.open);
     const shown = visibleTools(p.tools);
     const current = activeTool(p.tools, p.tool);
+    shownIds = shown;
     tablist.replaceChildren(...shown.map((id) => tabs.get(id)!));
     for (const t of TOOLS) {
       const on = t.id === current;
@@ -99,14 +184,11 @@ function makeSidebar() {
     }
     if (shown.length === 0) {
       tablist.replaceChildren(h("span", { class: "hint" }, "No tools chosen."));
+      moreBtn.hidden = true;
     }
     if (p.open) {
       load(current);
-      // Keep the chosen tab in view when they do not all fit.
-      const b = tabs.get(current);
-      if (b) requestAnimationFrame(() => {
-        if (b.offsetLeft < tablist.scrollLeft || b.offsetLeft + b.offsetWidth > tablist.scrollLeft + tablist.clientWidth) tablist.scrollLeft = b.offsetLeft - 8;
-      });
+      layoutTabs();
     }
   }
 

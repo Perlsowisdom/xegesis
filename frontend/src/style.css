@@ -153,11 +153,18 @@ kbd { font-family: inherit; font-size: .8rem; border: 1px solid var(--line); bor
 
 /* Right sidebar */
 .rightbar { grid-column: 3; grid-row: 1; width: 340px; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--line); background: var(--panel); }
-.rightbar-head { display: flex; align-items: flex-end; gap: 4px; padding: 6px 6px 0 10px; border-bottom: 1px solid var(--line); }
-.tool-tabs { position: relative; display: flex; gap: 0; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.rightbar-head { position: relative; display: flex; align-items: flex-end; gap: 4px; padding: 6px 6px 0 10px; border-bottom: 1px solid var(--line); }
+.tool-tabs { position: relative; display: flex; gap: 0; flex: 1; min-width: 0; overflow: hidden; }
 .tool-tabs [role="tab"] { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 6px 6px; color: var(--muted); font-size: .82rem; flex: none; }
 .tool-tabs [role="tab"]:hover { color: var(--fg); }
 .tool-tabs [role="tab"][aria-selected="true"] { color: var(--fg); border-bottom-color: var(--accent); font-weight: 600; }
+.tool-more { flex: none; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 6px 8px; color: var(--muted); font-size: .82rem; }
+.tool-more:hover:not(:disabled), .tool-more[aria-expanded="true"] { color: var(--fg); border-color: transparent; }
+.tool-more[hidden] { display: none; }
+.tool-more-menu { position: absolute; right: 6px; top: 100%; z-index: 20; min-width: 150px; display: flex; flex-direction: column; padding: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 18px rgba(0, 0, 0, .18); }
+.tool-more-menu[hidden] { display: none; }
+.tool-more-menu button { border: 0; background: none; text-align: left; border-radius: 6px; padding: 6px 10px; font-size: .85rem; color: var(--fg); }
+.tool-more-menu button:hover, .tool-more-menu button:focus-visible { background: var(--rail-on); outline: none; }
 .tool-panels { flex: 1; overflow: auto; padding: 10px 14px 24px; }
 .tool-panel:focus { outline: none; }
 .rightbar .notes-panel { background: none; border: 0; padding: 0; }
