@@ -18,10 +18,11 @@ export interface DocHost {
   mode(): "read" | "study";
 }
 
-// The pane's ⋯ menu shows whichever of these a view offers.
+// The pane's bar offers whichever of these a view has: ☰ Contents (a place to go, with the recent
+// places), and in ⋯ searching, printing and copying a link to the place shown.
 export interface DocMenu {
   contents?(anchor: HTMLElement): void;
-  history?(anchor: HTMLElement): void;
+  link?(): string | null; // an app address of the place shown, e.g. #passage/John.1
   search?(anchor: HTMLElement): void;
   find?(query: string, anchor: HTMLElement): void | Promise<void>; // the Reader bar's "search in what is open"
   print?(): void;

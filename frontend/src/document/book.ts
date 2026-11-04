@@ -18,6 +18,7 @@ import { closePopover, togglePopover } from "../popover";
 import { markSegments } from "../helpers";
 import type { Locator } from "./open";
 import { attachContextMenu } from "./contextmenu";
+import { contentsPopover } from "./contentspop";
 import { lookUpCard } from "../lookup";
 import { attachMarking } from "../marking";
 import { hlClasses, parseStyle, styleOf } from "../markingwords";
@@ -657,22 +658,38 @@ export function bookDoc(host: DocHost): DocView {
   // The ⋯ menu ----------------------------------------------------------------------------------------
 
   const menu = {
+    // ☰ Contents: the table of contents, narrowed by what is typed, and the places visited.
     contents(anchor: HTMLElement) {
-      if (toc.length === 0) return msg.info("This book has no contents list.");
-      togglePopover(anchor, () => h("div", { class: "menu-list toc-list" }, tocOptions(toc).map(([v, label]) =>
-        button(label, () => {
-          const t = toc[Number(v)];
-          if (t) jump(t.section, { anchor: t.anchor, flash: !!t.anchor });
-        }))), { label: "Contents", side: "below", menu: true });
-    },
-    history(anchor: HTMLElement) {
-      togglePopover(anchor, () => h("div", { class: "menu-list" }, back.length === 0
-        ? h("p", { class: "hint pop-body" }, "No earlier places yet. Following a link or a contents entry adds one.")
-        : [...back].reverse().map((p, i) => button(`${book?.reflowable ? "Section" : "Page"} ${p.section}`, () => {
+      const unit = book?.reflowable ? "Section" : "Page";
+      const entries = tocOptions(toc);
+      contentsPopover(anchor, {
+        placeholder: toc.length ? "Go to a chapter or section…" : `Go to a ${unit.toLowerCase()} number…`,
+        go: (t) => {
+          const n = Number(t);
+          if (Number.isInteger(n) && n > 0) { go(n); return true; }
+          const hit = entries.find(([, label]) => label.trim().toLowerCase().includes(t.toLowerCase()));
+          const e = hit && toc[Number(hit[0])];
+          if (!e) return false;
+          jump(e.section, { anchor: e.anchor, flash: !!e.anchor });
+          return true;
+        },
+        body: (q) => {
+          const shown = entries.filter(([, label]) => !q || label.toLowerCase().includes(q.toLowerCase()));
+          if (toc.length === 0) return h("p", { class: "hint" }, "This book has no contents list. Type a number to go there.");
+          return h("div", { class: "menu-list toc-list" }, shown.length === 0 ? h("p", { class: "hint" }, "No heading has those words.")
+            : shown.map(([v, label]) => button(label, () => {
+              closePopover(true);
+              const t = toc[Number(v)];
+              if (t) jump(t.section, { anchor: t.anchor, flash: !!t.anchor });
+            }, { class: Number(v) === Number(contents.value) ? "on" : "" })));
+        },
+        recent: [...back].reverse().map((p, i) => ({ label: `${unit} ${p.section}`, go: () => {
           back.splice(back.length - 1 - i);
           go(p.section, { para: p.para });
-        }))), { label: "History", side: "below", menu: true });
+        } })),
+      });
     },
+    link: () => (book ? `#book/${encodeURIComponent(book.item_id)}?file=${encodeURIComponent(book.file_id)}${book.reflowable ? "" : `&page=${section}`}` : null),
     print,
     search(anchor: HTMLElement) {
       const q = h("input", { type: "search", "aria-label": "Search in this book", placeholder: "Words to find", autocomplete: "off" });

@@ -23,6 +23,7 @@ import { prefs, setModules, state } from "../state";
 import { searchFor } from "../views/search";
 import { sidebar } from "../views/sidebar";
 import { attachContextMenu, selectedIn } from "./contextmenu";
+import { chapterGrid, contentsPopover } from "./contentspop";
 import { DocHost, DocView, bibleBooks, bibleModules } from "./view";
 
 interface Hit { id: number; module: string; ref: string; text: string; snippet?: string }
@@ -393,17 +394,30 @@ export function bibleDoc(host: DocHost): DocView {
       form.addEventListener("submit", (e) => { e.preventDefault(); void find(q.value.trim(), anchor); });
       togglePopover(anchor, () => form, { label: "Search in this", side: "below" });
     },
+    // ☰ Contents: go to a book or chapter, the chapters of this book, and recent passages.
     contents(anchor: HTMLElement) {
-      togglePopover(anchor, () => h("div", { class: "pop-body bible-contents" },
-        h("h2", { class: "pop-title" }, "Books"),
-        h("div", { class: "row wrap" }, books.map((b) => button(b.name, () => { closePopover(); void go(`${b.name} 1`); }, { class: "chip" })))),
-      { label: "Books of the Bible", side: "below" });
+      const at = parsed ? verseParts(parsed.start) : null;
+      const here = at ? books.find((b) => b.number === at.book) : undefined;
+      contentsPopover(anchor, {
+        placeholder: "Go to a book or chapter…",
+        go: async (t) => {
+          const p = await run<Ref>("verse.parse", { ref: t }).catch(() => null);
+          if (!p) return false;
+          void go(p.display);
+          return true;
+        },
+        body: (q) => {
+          const want = q.toLowerCase();
+          const match = q && !/\d\s*$/.test(q) ? books.filter((b) => b.name.toLowerCase().startsWith(want) || b.osis.toLowerCase().startsWith(want)).slice(0, 8) : [];
+          if (match.length) {
+            return h("div", { class: "book-matches" }, match.map((b) => button(b.name, () => { closePopover(true); void go(`${b.name} 1`); }, { class: "doc-chip chip-plain" })));
+          }
+          return here ? chapterGrid(here.name, here.chapters, at!.chapter, (c) => void go(`${here.name} ${c}`)) : h("p", { class: "hint" }, "Type a book of the Bible.");
+        },
+        recent: history.map((r) => ({ label: r, go: () => void go(r) })),
+      });
     },
-    history(anchor: HTMLElement) {
-      togglePopover(anchor, () => h("div", { class: "menu-list" }, history.length === 0
-        ? h("p", { class: "hint pop-body" }, "No other passages yet.")
-        : history.map((r) => button(r, () => { void go(r); }))), { label: "History", side: "below", menu: true });
-    },
+    link: () => (parsed ? `#passage/${parsed.osis}` : null),
     print() {
       const ids = chosen();
       if (!parsed || ids.length === 0) return msg.info("Choose a passage and at least one Bible to print.");

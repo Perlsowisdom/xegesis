@@ -327,7 +327,7 @@ td.actions button { margin: 0 2px 2px 0; }
   border: 1px solid var(--line); border-radius: 8px; background: var(--bg); overflow: hidden; container: pane / inline-size; }
 .grid-pane.selected { border-color: var(--accent); }
 /* The pane's bar is always one slim row: the tabs scroll sideways, the place box shrinks, and in a
-   narrow pane the Bibles and link buttons move into ⋯ (studygrid.ts paneMenu) and the chapter
+   narrow pane the Bibles button moves into ⋯ (studygrid.ts paneMenu) and the chapter
    arrows go (Alt+← and Alt+→ still work). */
 .grid-bar { display: flex; flex-wrap: nowrap; align-items: center; gap: 2px; padding: 3px 4px; background: var(--panel);
   border-bottom: 1px solid var(--line); height: 38px; min-width: 0; }
@@ -355,7 +355,7 @@ td.actions button { margin: 0 2px 2px 0; }
 .grid-tools .bibles-btn { padding: 2px 8px; font-size: .85rem; max-width: 8rem; height: 28px; min-width: 0; }
 .grid-bar > .icon-btn { flex: none; padding: 4px; border-radius: 6px; }
 @container pane (max-width: 340px) {
-  .grid-tools, .grid-link { display: none; }
+  .grid-tools { display: none; }
 }
 @container pane (max-width: 300px) {
   .grid-place .passage-box > .icon-btn, .grid-place .book-nav > :not(.book-toc) { display: none; }
@@ -1457,3 +1457,36 @@ button.danger-link { color: var(--bad); margin-top: 8px; display: block; }
 .hl-x .icon { width: 14px; height: 14px; }
 .hl-foot { border-top: 1px solid var(--line); margin-top: 10px; padding-top: 8px; }
 .hl-panel .msg { font-size: .84rem; }
+
+/* The pane's ⋯ menu, grouped with faint headings and shortcut hints (studygrid.ts). */
+.popover.pane-menu { background: var(--pop-bg); border-color: var(--pop-line); border-radius: 12px; box-shadow: var(--pop-shadow); animation: pop-in .12s ease-out; }
+.grouped-menu { min-width: 250px; padding: 6px; }
+.menu-head { font-size: .7rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); padding: 8px 10px 3px; }
+.menu-head:first-child { padding-top: 4px; }
+.menu-list button.menu-item { display: flex; align-items: center; justify-content: space-between; gap: 16px; width: 100%; border-radius: 7px; padding: 7px 10px; }
+.menu-list button.menu-item.danger { color: var(--bad); }
+.menu-list button.menu-item:disabled { opacity: .45; }
+.menu-keys { border: 0; background: none; padding: 0; color: var(--faint); font-size: .76rem; font-family: inherit; }
+.menu-list button { border-radius: 7px; transition: background-color .1s; }
+.menu-list button:not(.swatch-btn):hover:not(:disabled), .menu-list button:not(.swatch-btn):focus-visible { background: var(--ghost-hover); }
+.grid-contents .icon { width: 17px; height: 17px; }
+
+/* ☰ Contents (document/contentspop.ts). */
+.contents-pop { width: 280px; }
+.contents-form input { margin-bottom: 8px; }
+.contents-pop .ref-note { margin: -4px 2px 6px; }
+.contents-title { margin: 2px 2px 6px; font-size: .8rem; font-weight: 600; color: var(--muted); }
+.chapter-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; max-height: 240px; overflow: auto; }
+.chapter-btn { border: 0; border-radius: 7px; padding: 0; height: 30px; background: var(--chip-bg); color: var(--text); font-size: .8rem;
+  font-variant-numeric: tabular-nums; transition: background-color .1s; }
+.chapter-btn:hover:not(:disabled) { background: var(--ghost-hover); border: 0; box-shadow: inset 0 0 0 1px var(--chip-line-hover); }
+.chapter-btn.on, .chapter-btn.on:hover:not(:disabled) { background: var(--fill); color: var(--fill-fg); font-weight: 600; box-shadow: none; }
+.book-matches { display: flex; flex-wrap: wrap; gap: 6px; }
+.contents-pop .toc-list { max-height: 300px; overflow: auto; padding: 0; }
+.contents-pop .toc-list button { white-space: normal; font-size: .86rem; padding: 5px 8px; }
+.contents-pop .toc-list button.on { color: var(--accent); font-weight: 600; }
+.contents-recent { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 4px; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--pop-line); font-size: .78rem; }
+.contents-recent-label { color: var(--faint); margin-right: 4px; }
+.recent-link { border: 0; background: none; padding: 1px 4px; border-radius: 5px; color: var(--muted); font-size: inherit; }
+.recent-link:hover:not(:disabled) { background: var(--ghost-hover); color: var(--fg); border: 0; }
+.recent-link + .recent-link::before { content: "·"; margin: 0 6px 0 -2px; color: var(--faint); }
