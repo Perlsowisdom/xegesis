@@ -154,6 +154,9 @@ export function createEditor(host: HTMLElement, opts: EditorOptions = {}): RichE
   host.classList.add("rich-editor", `rich-${variant}`);
   host.replaceChildren(bar.el, content);
   editor.setRootElement(content);
+  // The toolbar sticks to the top: what is jumped to, and the outline strip, keep below it (style.css).
+  const barSize = new ResizeObserver(() => host.style.setProperty("--rt-bar", `${bar.el.offsetHeight}px`));
+  barSize.observe(bar.el);
   const slash = slashMenu(doc, editor, content, opts, (id, anchor) => runInsert(id, anchor));
   const struct = structure({
     editor, host, content, strip: variant === "page",
@@ -504,6 +507,7 @@ export function createEditor(host: HTMLElement, opts: EditorOptions = {}): RichE
     caretHeading,
     destroy() {
       off.forEach((f) => f());
+      barSize.disconnect();
       if (typeof extra === "function") extra();
       slash.destroy();
       struct.destroy();

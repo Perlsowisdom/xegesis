@@ -29,6 +29,8 @@ The others come from the user's requests.
 - Headings can be **folded**: an arrow beside each heading hides its section *(Any)*.
 - A slim **outline strip** at the right edge shows a mark for each heading. Hovering shows the names,
   and clicking jumps to one *(Any)*.
+- Nothing hides behind the sticky toolbar: a heading you jump to stops just below it, and the
+  strip and every popover open above it, also in a short window.
 - The strip is the only outline view, in notes and sermons alike. Sermons have no separate outline
   column (removed in T34g).
 
