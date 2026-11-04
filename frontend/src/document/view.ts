@@ -24,6 +24,7 @@ export interface DocMenu {
   search?(anchor: HTMLElement): void;
   find?(query: string, anchor: HTMLElement): void | Promise<void>; // the Reader bar's "search in what is open"
   print?(): void;
+  bibles?(anchor: HTMLElement): void; // the Bibles picker, offered in ⋯ when the pane is too narrow for its button
 }
 
 export interface DocView {

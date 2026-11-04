@@ -302,15 +302,14 @@ td.actions button { margin: 0 2px 2px 0; }
 .grid-col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; }
 .grid-pane { flex: 1 1 0; min-height: 0; min-width: 0; display: flex; flex-direction: column; position: relative;
   border: 1px solid var(--line); border-radius: 8px; background: var(--bg); overflow: hidden; container: pane / inline-size; }
-/* A narrow pane puts its tabs on a row of their own above the place box. */
-@container pane (max-width: 440px) {
-  .grid-bar { flex-wrap: wrap; }
-  .grid-tabstrip { flex-basis: 100%; }
-  .grid-place { flex: 1 1 8rem; }
-}
 .grid-pane.selected { border-color: var(--accent); }
-.grid-bar { display: flex; align-items: center; gap: 4px; padding: 2px 4px; background: var(--panel); border-bottom: 1px solid var(--line); min-height: 34px; }
-.grid-tabstrip { display: flex; align-items: center; flex: 1 1 auto; min-width: 5rem; overflow-x: auto; scrollbar-width: none; }
+/* The pane's bar is always one slim row: the tabs scroll sideways, the place box shrinks, and in a
+   narrow pane the Bibles and link buttons move into ⋯ (studygrid.ts paneMenu) and the chapter
+   arrows go (Alt+← and Alt+→ still work). */
+.grid-bar { display: flex; flex-wrap: nowrap; align-items: center; gap: 2px; padding: 3px 4px; background: var(--panel);
+  border-bottom: 1px solid var(--line); height: 38px; min-width: 0; }
+.grid-tabstrip { display: flex; align-items: center; flex: 1 1 8rem; min-width: 2.75rem; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.grid-tabstrip::-webkit-scrollbar { display: none; }
 .grid-tabs { display: flex; min-width: 0; }
 .grid-tab { display: inline-flex; align-items: center; border-radius: 6px; max-width: 12rem; flex: none; }
 .grid-tab.on { background: var(--bg); box-shadow: 0 1px 2px rgb(0 0 0 / .1); }
@@ -323,12 +322,23 @@ td.actions button { margin: 0 2px 2px 0; }
 .grid-plus { flex: none; position: sticky; right: 0; background: var(--panel); }
 .grid-plus .icon, .grid-link .icon { width: 17px; height: 17px; }
 .grid-link[aria-pressed="true"] { color: var(--accent); }
-.grid-place { flex: 0 1 13rem; min-width: 0; display: flex; }
+.grid-place { flex: 0 2 11rem; min-width: 5.5rem; display: flex; }
 .grid-place:empty { display: none; }
-.grid-place .passage-box { flex: 1; min-width: 7rem; }
-.grid-place input { padding: 2px 6px; min-width: 0; }
+.grid-place .passage-box, .grid-place .book-nav { flex: 1; min-width: 0; margin: 0; }
+.grid-place input { padding: 2px 8px; min-width: 3rem; height: 28px; }
+.grid-place .icon-btn { padding: 3px; }
+.grid-tools { flex: none; display: flex; }
 .grid-tools:empty { display: none; }
-.grid-tools .bibles-btn { padding: 2px 8px; font-size: .85rem; max-width: 8rem; }
+.grid-tools .bibles-btn { padding: 2px 8px; font-size: .85rem; max-width: 8rem; height: 28px; min-width: 0; }
+.grid-bar > .icon-btn { flex: none; padding: 4px; border-radius: 6px; }
+@container pane (max-width: 340px) {
+  .grid-tools, .grid-link { display: none; }
+}
+@container pane (max-width: 300px) {
+  .grid-place .passage-box > .icon-btn, .grid-place .book-nav > :not(.book-toc) { display: none; }
+  .grid-place { flex-basis: 8rem; min-width: 4.5rem; }
+  .grid-tab { max-width: 8rem; }
+}
 .grid-body { flex: 1; min-height: 0; overflow: auto; padding: 8px 14px; display: flex; flex-direction: column; }
 .grid-body > .doc { flex: 1 0 auto; }
 .grid-body > .doc-book { flex: 1; min-height: 0; display: flex; flex-direction: column; }

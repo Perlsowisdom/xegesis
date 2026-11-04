@@ -45,10 +45,11 @@ export function bibleDoc(host: DocHost): DocView {
   const selbar = h("div", { class: "selbar", role: "toolbar", "aria-label": "Selected verses", hidden: true });
   const picker = h("div", { class: "module-picker", role: "group", "aria-label": "Bibles to show" });
   const biblesBtn = h("button", { type: "button", class: "bibles-btn", "aria-haspopup": "dialog", "aria-expanded": "false", title: "Choose the Bibles to show" }, "Bibles");
-  biblesBtn.addEventListener("click", () => togglePopover(biblesBtn, () => h("div", { class: "pop-body" },
+  const openBibles = (anchor: HTMLElement) => togglePopover(anchor, () => h("div", { class: "pop-body" },
     h("h2", { class: "pop-title" }, "Bibles to show"),
     h("p", { class: "hint" }, "Choose two or more to read them side by side."),
-    picker), { label: "Bibles to show", side: "below" }));
+    picker), { label: "Bibles to show", side: "below" });
+  biblesBtn.addEventListener("click", () => openBibles(biblesBtn));
   const el = h("div", { class: "doc doc-bible" }, msg.el, selbar, text);
 
   const words = { onWord: side.showWord, onRef: (osis: string) => void go(osis) };
@@ -349,6 +350,7 @@ export function bibleDoc(host: DocHost): DocView {
 
   const menu = {
     find,
+    bibles: openBibles,
     search(anchor: HTMLElement) {
       const q = h("input", { type: "search", "aria-label": "Search in these Bibles", placeholder: "Words to find", autocomplete: "off" });
       const form = h("form", { class: "pop-body", role: "search" }, h("h2", { class: "pop-title" }, "Search in this"), q);
