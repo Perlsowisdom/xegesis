@@ -16,6 +16,10 @@ function block(b: Block): Node {
     case "quote":
       return h("blockquote", {}, inline(b.spans));
     case "list":
+      if (b.checked) {
+        return h("ul", { class: "md-checks" }, b.items.map((it, i) => h("li", {},
+          h("span", { class: "md-box", role: "img", "aria-label": b.checked![i] ? "Done" : "Not done" }, b.checked![i] ? "☑" : "☐"), " ", inline(it))));
+      }
       return h(b.ordered ? "ol" : "ul", {}, b.items.map((it) => h("li", {}, inline(it))));
     case "divider":
       return h("hr", { class: "md-hr" });

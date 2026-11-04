@@ -488,6 +488,9 @@ func (l *layout) blocks(bs []Block) {
 			l.para(l.spans(b.Spans, 0.92, 0, true), 10, after, &noticeBar)
 		case Bullet, Numbered:
 			mark := "•"
+			if b.Check != "" {
+				mark = checkMark(b.Check, "[ ]", "[x]")
+			}
 			if b.Kind == Numbered {
 				n++
 				mark = fmt.Sprintf("%d.", n)
@@ -508,6 +511,11 @@ func (l *layout) blocks(bs []Block) {
 			l.para(sp, 0, after, nil)
 		case Table:
 			l.table(b.Table)
+		case Rule:
+			l.need(l.base)
+			l.y -= l.base * 0.5
+			l.cur.rules = append(l.cur.rules, rule{l.ml, l.y, l.ml + l.width(), l.y, 0.6, [3]float64{0.6, 0.6, 0.6}})
+			l.y -= l.base * 0.6
 		default:
 			l.para(l.spans(b.Spans, 1, 0, false), 0, after, nil)
 		}

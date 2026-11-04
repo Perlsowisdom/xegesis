@@ -14,6 +14,7 @@ import { deleteNote, historyDrawer, noteName } from "./notes";
 import { openExport } from "./printexport";
 import { folderName, loadFolders, moveMenu, workChanged } from "./work";
 import { editedText } from "./workwords";
+import { editorInserts } from "./insertpop";
 
 const SAVE_AFTER = 900;
 
@@ -214,7 +215,10 @@ export function notePage(o: NotePageOptions): NotePage {
         o.onSaved?.(got);
         workChanged();
       }
-      if (made) renderChips();
+      if (made) {
+        renderChips();
+        editor?.setFoldKey(got.id);
+      }
     })();
     await saving;
     saving = null;
@@ -258,9 +262,12 @@ export function notePage(o: NotePageOptions): NotePage {
     edHost.removeAttribute("aria-busy");
     editor = createEditor(edHost, {
       markdown: note?.body ?? "", placeholder: compact ? "Write your note…" : "Write your note… Type / for headings, lists and verses.",
-      label: "Text of the note", variant: compact ? "compact" : "page", onChange: changed,
+      label: "Text of the note", variant: compact ? "compact" : "page", onChange: changed, foldKey: note?.id ?? "",
       onVerseRef: verseRefPopover,
-      onVerseQuote: (anchor) => quotePopover(anchor, ref?.display ?? "", (md) => editor?.insertMarkdown(md)),
+      ...editorInserts({
+        say: (w) => msg.info(w), passage: () => ref?.display ?? "", self: () => note?.id,
+        quote: (anchor) => quotePopover(anchor, ref?.display ?? "", (md) => editor?.insertMarkdown(md)),
+      }),
     });
     if (!o.id) tbox.focus();
   }

@@ -17,6 +17,7 @@ import (
 var (
 	headingRe = regexp.MustCompile(`^(#{1,6}) (\S.*)$`)
 	bulletRe  = regexp.MustCompile(`^- \S`)
+	checkRe   = regexp.MustCompile(`^- \[([ x])\] \S`)
 	quoteRe   = regexp.MustCompile(`^>( \S|$)`)
 	linkRe    = regexp.MustCompile(`^\[([^\]\n]+)\]\(([^\s()]+)\)`)
 )
@@ -38,6 +39,20 @@ func parseBlock(src string) []Block {
 		if m := headingRe.FindStringSubmatch(src); m != nil {
 			return []Block{{Kind: Heading, Level: min(len(m[1])+1, 3), Spans: parseInline(m[2], Span{})}}
 		}
+		if src == "---" {
+			return []Block{{Kind: Rule}}
+		}
+	}
+	if all(lines, func(i int, l string) bool { return checkRe.MatchString(l) }) {
+		var out []Block
+		for _, l := range lines {
+			check := "todo"
+			if l[3] == 'x' {
+				check = "done"
+			}
+			out = append(out, Block{Kind: Bullet, Check: check, Spans: parseInline(l[6:], Span{})})
+		}
+		return out
 	}
 	if all(lines, func(i int, l string) bool { return bulletRe.MatchString(l) }) {
 		var out []Block
@@ -288,7 +303,7 @@ func mdBlocks(bs []Block, opt Options) []string {
 			}
 			out = append(out, strings.Join(lines, "\n"))
 		case Bullet:
-			list = append(list, "- "+oneLine(writeInline(b.Spans)))
+			list = append(list, "- "+checkMark(b.Check, "[ ] ", "[x] ")+oneLine(writeInline(b.Spans)))
 		case Numbered:
 			list = append(list, fmt.Sprintf("%d. %s", len(list)+1, oneLine(writeInline(b.Spans))))
 		case Verse:
@@ -301,6 +316,8 @@ func mdBlocks(bs []Block, opt Options) []string {
 			out = append(out, "> "+oneLine(writeInline(b.Spans)))
 		case Table:
 			out = append(out, mdTable(b.Table, opt))
+		case Rule:
+			out = append(out, "---")
 		}
 	}
 	flush()
@@ -341,4 +358,15 @@ func bulletLines(items []string) string {
 }
 
 // oneLine joins the lines of s so it stays one Markdown block line.
+// checkMark is the box before a check-list item: todo or done, or "" for a plain bullet.
+func checkMark(check, todo, done string) string {
+	switch check {
+	case "todo":
+		return todo
+	case "done":
+		return done
+	}
+	return ""
+}
+
 func oneLine(s string) string { return strings.Join(strings.Fields(s), " ") }

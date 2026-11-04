@@ -2,7 +2,7 @@
 // on their own (slashwords.test.ts). Typing "/" in the text opens the menu; the letters after it
 // filter the items by the start of any word in their name or their other names.
 
-export type SlashId = "heading" | "bullets" | "numbers" | "quote" | "versequote" | "divider";
+export type SlashId = "heading" | "bullets" | "numbers" | "quote" | "verseref" | "versequote" | "highlight" | "notelink" | "divider";
 
 export interface SlashItem {
   id: SlashId;
@@ -12,12 +12,17 @@ export interface SlashItem {
   also: string[]; // other words that find it
 }
 
+// The order is the menu's order when nothing is typed; "/verse", "/quote", "/highlight" and
+// "/link" each put their own item first.
 export const SLASH_ITEMS: SlashItem[] = [
   { id: "heading", label: "Heading", hint: "A section title", icon: "H", also: ["title", "section", "point"] },
   { id: "bullets", label: "Bulleted list", hint: "A simple list", icon: "•", also: ["unordered", "list"] },
   { id: "numbers", label: "Numbered list", hint: "A list with numbers", icon: "1.", also: ["ordered", "list"] },
-  { id: "quote", label: "Quote", hint: "Someone else's words", icon: "❝", also: ["citation", "blockquote"] },
-  { id: "versequote", label: "Verse quote", hint: "Bible text, with its credit line", icon: "✦", also: ["bible", "scripture", "passage"] },
+  { id: "verseref", label: "Verse reference", hint: "A chip that opens the passage", icon: "✦", also: ["reference", "ref", "chip"] },
+  { id: "versequote", label: "Quote verses", hint: "Bible text, with its credit line", icon: "❝", also: ["verse text", "bible", "scripture", "passage"] },
+  { id: "highlight", label: "Highlight", hint: "Words you highlighted, with where they are", icon: "▍", also: ["marked"] },
+  { id: "notelink", label: "Link to a note or sermon", hint: "A chip that opens it", icon: "¶", also: ["note", "sermon"] },
+  { id: "quote", label: "Block quote", hint: "Someone else's words", icon: "”", also: ["citation", "blockquote"] },
   { id: "divider", label: "Divider", hint: "A line across the page", icon: "—", also: ["line", "rule", "separator"] },
 ];
 

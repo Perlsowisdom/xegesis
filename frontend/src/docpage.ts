@@ -181,10 +181,10 @@ export function refPopover(anchor: HTMLElement, o: RefOptions): void {
   if (o.value) void check();
 }
 
-// versePopover is the editor's Verse reference button: the reference becomes a link to the passage.
+// verseRefPopover is Insert → Verse reference: the reference becomes a chip that opens the passage.
 export function verseRefPopover(anchor: HTMLElement, selected: string, insert: (label: string, ref: string) => void): void {
   refPopover(anchor, {
-    title: "Link to verses", value: /\d/.test(selected) ? selected : "", action: "Link",
+    title: "Insert a verse reference", value: /\d/.test(selected) ? selected : "", action: "Insert",
     onSave: (r) => insert(r.display, r.osis),
   });
 }
@@ -192,6 +192,14 @@ export function verseRefPopover(anchor: HTMLElement, selected: string, insert: (
 // Quoting verses ---------------------------------------------------------------------------------
 
 let lastBible = "";
+
+// verseQuoteFor quotes verses through document.quote, so the Bible's licence decides.
+export async function verseQuoteFor(ref: string, module: string): Promise<{ md: string } | { reason: string }> {
+  const r = await run<{ allowed: boolean; reason?: string; quote?: string }>("document.quote", { ref, module, preview: true })
+    .catch((err: Error) => ({ allowed: false, reason: err.message, quote: "" }));
+  if (!r.allowed || !r.quote) return { reason: r.reason ?? "the licence does not allow it" };
+  return { md: r.quote.trimEnd() };
+}
 
 // quotePopover finds verses to quote, shows them as they are typed, and gives back the quotation
 // with its credit line, if the Bible's licence allows keeping a copy.
@@ -258,7 +266,7 @@ export function quotePopover(anchor: HTMLElement, initial: string, onInsert: (md
   });
 
   const form = h("form", { class: "pop-body quote-pop" },
-    h("p", { class: "pop-title" }, "Quote verses"),
+    h("p", { class: "pop-title" }, "Insert verse text"),
     input, preview, why,
     h("div", { class: "row quote-actions" }, bibleBtn, h("span", { class: "spacer" }), ok));
   form.addEventListener("submit", async (e) => {
@@ -267,15 +275,14 @@ export function quotePopover(anchor: HTMLElement, initial: string, onInsert: (md
     const ref = input.value.trim();
     if (!ref || !module) return;
     ok.disabled = true;
-    const r = await run<{ allowed: boolean; reason?: string; quote?: string }>("document.quote", { ref, module, preview: true })
-      .catch((err: Error) => ({ allowed: false, reason: err.message, quote: "" }));
+    const r = await verseQuoteFor(ref, module);
     ok.disabled = false;
-    if (!r.allowed || !r.quote) {
-      why.textContent = `Not quoted: ${r.reason ?? "the licence does not allow it"}.`;
+    if ("reason" in r) {
+      why.textContent = `Not quoted: ${r.reason}.`;
       return;
     }
     closePopover();
-    onInsert(r.quote.trimEnd());
+    onInsert(r.md);
   });
   form.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && form.querySelector(".bible-list")) {

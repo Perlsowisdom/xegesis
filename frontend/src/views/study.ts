@@ -30,6 +30,13 @@ function card(el: HTMLElement, spec: TabSpec): HTMLElement {
   return el;
 }
 
+// related lets a Related card be dropped into a note or sermon too, where its words are quoted
+// (if the commentary's licence allows) with its place.
+function related(el: HTMLElement, info: { module: string; name: string; ref: string; osis: string; text: string }): HTMLElement {
+  el.addEventListener("dragstart", (e) => e.dataTransfer?.setData("application/x-xegesis-related", JSON.stringify(info)));
+  return el;
+}
+
 export function relatedPanel(go: (ref: string) => void) {
   const passageBox = h("div", { class: "study-passage", "aria-live": "polite" });
   const el = h("div", { class: "study" }, passageBox);
@@ -57,12 +64,13 @@ export function relatedPanel(go: (ref: string) => void) {
     for (const x of r.cross_references) byVerse.set(x.from_ref, [...(byVerse.get(x.from_ref) ?? []), x]);
     clear(passageBox,
       h("h3", {}, display ? `On ${display}` : "On this passage"),
-      r.commentaries.map((c, i) => card(h("details", { class: "commentary", open: i === 0 },
+      r.commentaries.map((c, i) => related(card(h("details", { class: "commentary", open: i === 0 },
         h("summary", {}, c.name, h("span", { class: "sr-only" }, " (drag into the grid to open it in a pane)")),
         c.entries.map((e) => h("div", { class: "entry" },
           h("h4", {}, e.ref),
           paragraphs(e.markup || e.text, handlers))),
-        c.attribution ? h("p", { class: "attribution" }, c.attribution) : null), { kind: "commentary", modules: [c.module], title: c.name })),
+        c.attribution ? h("p", { class: "attribution" }, c.attribution) : null), { kind: "commentary", modules: [c.module], title: c.name }),
+        { module: c.module, name: c.name, ref: c.entries[0]?.ref ?? display, osis: ref, text: c.entries.map((e) => e.text).join("\n") })),
       byVerse.size ? h("details", { class: "crossrefs", open: r.commentaries.length === 0 },
         h("summary", {}, `Cross-references (${r.cross_references.length})`),
         h("dl", {}, [...byVerse].map(([from, xs]) => [

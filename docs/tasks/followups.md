@@ -72,7 +72,7 @@ Design first: mock-up for approval, then build.
 
 ## After T34d (4 November 2026)
 
-- HTML and Word exports still show `---` dividers as text instead of a rule.
+- ~~HTML and Word exports still show `---` dividers as text instead of a rule.~~ Fixed in T34e (rules in HTML, Word, PDF).
 - T34d was checked in a browser preview with stand-in data. The real app was only seen on its start screen.
 
 ## User testing of T34d (4 November 2026): editors still miss the mark
@@ -84,3 +84,17 @@ Design first: mock-up for approval, then build.
 - The sermon toolbar duplicates verse insertion (the Verse reference button and the Quote verses button), and the sparkle icon reads as "AI" rather than "insert reference".
 - The user feels the note and sermon editors keep missing the mark despite examples and detailed instructions.
   Next: study Any's editor and the user's examples hands-on first, write behaviour-level acceptance tests, and test typing in the real app before calling it done.
+
+## From T34e (4 November 2026)
+
+- **Real-app interface tests exist** (`frontend/e2e/`, `npm run e2e`): they build the desktop app,
+  start it on a copy of the scratch library with a WebView2 debugging port, and type into it with
+  real key events through `playwright-core`. This is the start of T30 (interface tests): new screens
+  should add a `*.e2e.mjs` file there. Wails clears the `WEBVIEW2_*` variables, so the test build
+  (only) uses a patched copy of its WebView2 loader through a temporary `go.work`; see `e2e/app.mjs`.
+- The scratch library has no commentary, so dragging a Related card was checked with the data a card
+  carries, not by dragging a real card. Recheck with a commentary installed.
+- Folding remembers sections by heading level and words: renaming a folded heading unfolds it.
+- Reference chips open passages and notes in the Study grid; plain links still need Ctrl+click.
+- Highlights are quoted as whole verses until T34f; `highlightText` (src/insertwords.ts) already takes
+  a character range for it.

@@ -173,13 +173,21 @@ export function bibleDoc(host: DocHost): DocView {
     lookUp(w.textContent ?? "", w, w.getBoundingClientRect());
   });
 
-  function verseEl(v: Verse) {
+  function verseEl(v: Verse, module: string) {
     const n = verseParts(v.id).verse;
     const end = v.end && v.end !== v.id ? `–${verseParts(v.end).verse}` : "";
     const base = v.base_id || v.id;
     const num = h("button", { type: "button", class: "vnum", "aria-label": `verse ${n}${end}`, "aria-pressed": "false",
       title: "Select this verse to highlight it, note it or add it to a list" }, `${n}${end}`);
     num.addEventListener("click", () => pick(base));
+    // A verse number can be dragged into a note or sermon, where the verse is quoted.
+    num.draggable = true;
+    num.addEventListener("dragstart", (e) => {
+      if (!e.dataTransfer) return;
+      e.dataTransfer.setData("application/x-xegesis-verse", JSON.stringify({ ref: v.ref, module }));
+      e.dataTransfer.setData("text/plain", v.ref);
+      e.dataTransfer.effectAllowed = "copy";
+    });
     return h("span", { class: "verse", "data-verse": v.id, "data-base": base }, num, " ", content(v), " ");
   }
 
@@ -190,7 +198,7 @@ export function bibleDoc(host: DocHost): DocView {
     clear(text,
       h("header", {}, h("h2", { class: "module-name" }, m?.name || c.module)),
       c.verses.length === 0 ? h("p", { class: "empty" }, "This Bible has no text for this passage.") : null,
-      c.verses.map((v) => [heading(v, last), verseEl(v)]),
+      c.verses.map((v) => [heading(v, last), verseEl(v, c.module)]),
       c.attribution ? h("footer", { class: "attribution" }, c.attribution) : null);
     paint();
   }

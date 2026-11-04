@@ -27,6 +27,7 @@ const (
 	Verse  // Num is the verse number
 	Table  // side-by-side Bibles
 	Notice // what was left out and why
+	Rule   // a divider line
 )
 
 // Block is one paragraph-like unit.
@@ -34,6 +35,7 @@ type Block struct {
 	Kind  Kind
 	Level int    // Heading: 1 to 3
 	Num   string // Verse: the verse number; Numbered: the item number
+	Check string // Bullet: "todo" or "done" for a check-list item, else ""
 	Spans []Span
 	Table *Grid
 }

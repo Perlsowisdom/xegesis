@@ -3,7 +3,7 @@
 // further blank line is an empty paragraph; at the edges every blank line is an empty paragraph.
 //
 // The reader is deliberately conservative. It recognises only what the writer emits in exactly that
-// form (headings "# ", bullets "- ", numbers "1. ", quotes "> ", a divider "---", **bold**, *italic*,
+// form (headings "# ", bullets "- ", check items "- [ ] ", numbers "1. ", quotes "> ", a divider "---", **bold**, *italic*,
 // <u>underline</u>, `code`, [text](url)); anything else stays literal text, so a note written by hand
 // is not rewritten. A quote whose last line is a credit ("> — [Rom 8:28](#passage/…) (KJV)…", as
 // document.quote writes it) is a verse quotation, kept line for line.
@@ -23,7 +23,8 @@ export type Block =
   | { type: "paragraph"; spans: Span[] }
   | { type: "heading"; level: number; spans: Span[] }
   | { type: "quote"; spans: Span[] }
-  | { type: "list"; ordered: boolean; items: Span[][] }
+  // A check list ("- [ ] " and "- [x] ") has checked, one flag per item.
+  | { type: "list"; ordered: boolean; items: Span[][]; checked?: boolean[] }
   | { type: "divider" }
   // lines are the quotation's lines without their "> " (a bare ">" is ""); the last is the credit.
   | { type: "versequote"; lines: string[] };
@@ -92,6 +93,9 @@ function parseBlock(src: string): Block {
   }
   if (lines.length > 1 && lines.every((l) => l === ">" || l.startsWith("> ")) && /^> — \S/.test(lines[lines.length - 1])) {
     return { type: "versequote", lines: lines.map((l) => l.slice(2)) };
+  }
+  if (lines.every((l) => /^- \[[ x]\] \S/.test(l))) {
+    return { type: "list", ordered: false, items: lines.map((l) => parseInline(l.slice(6))), checked: lines.map((l) => l[3] === "x") };
   }
   if (lines.every((l) => /^- \S/.test(l))) {
     return { type: "list", ordered: false, items: lines.map((l) => parseInline(l.slice(2))) };
@@ -195,6 +199,7 @@ function writeBlock(b: Block): string {
     case "quote":
       return writeInline(b.spans).split("\n").map((l) => `> ${l}`).join("\n");
     case "list":
+      if (b.checked) return b.items.map((it, i) => `- [${b.checked![i] ? "x" : " "}] ${writeInline(it)}`).join("\n");
       return b.items.map((it, i) => `${b.ordered ? `${i + 1}. ` : "- "}${writeInline(it)}`).join("\n");
     case "divider":
       return "---";
@@ -248,4 +253,59 @@ function wrap(m: Mark, text: string, url?: string): string {
   const marked = m === "bold" ? `**${body}**` : m === "italic" ? `*${body}*` : m === "code" ? `\`${body}\``
     : m === "underline" ? `<u>${body}</u>` : `[${body}](${url})`;
   return m === "link" ? marked : lead + marked + trail;
+}
+
+// Pasting ---------------------------------------------------------------------------------------
+
+// parsePasted reads Markdown pasted as plain text, more freely than stored notes are read: each
+// line is looked at on its own, so "# Title" straight above a paragraph is still a heading; "*" and
+// "+" bullets, "1)" numbers, "__bold__" and "_italic_" are understood; each other line is a
+// paragraph of its own. Blank lines only separate.
+export function parsePasted(text: string): Block[] {
+  const out: Block[] = [];
+  let list: Extract<Block, { type: "list" }> | null = null;
+  let quote: Span[][] | null = null;
+  const end = () => {
+    if (quote) out.push({ type: "quote", spans: joinLines(quote) });
+    list = null;
+    quote = null;
+  };
+  const item = (ordered: boolean, check: boolean | null, body: string) => {
+    if (quote) end();
+    const kind = (l: typeof list) => !!l && l.ordered === ordered && !!l.checked === (check !== null);
+    if (!kind(list)) {
+      end();
+      list = { type: "list", ordered, items: [], ...(check !== null ? { checked: [] } : {}) };
+      out.push(list);
+    }
+    list!.items.push(pastedInline(body));
+    if (check !== null) list!.checked!.push(check);
+  };
+  const rule = /^\s*([-*_])(\s*\1){2,}\s*$/;
+  for (const raw of text.replace(/\r\n?/g, "\n").split("\n")) {
+    const line = raw.replace(/\s+$/, "");
+    let m: RegExpExecArray | null;
+    if (!line.trim()) end();
+    else if ((m = /^\s*[-*+] \[([ xX])\]\s+(.*)$/.exec(line))) item(false, m[1] !== " ", m[2]);
+    else if ((m = /^\s*[-*+]\s+(.*)$/.exec(line)) && !rule.test(line)) item(false, null, m[1]);
+    else if ((m = /^\s*\d{1,3}[.)]\s+(.*)$/.exec(line))) item(true, null, m[1]);
+    else if ((m = /^>\s?(.*)$/.exec(line))) {
+      if (list) end();
+      (quote ??= []).push(pastedInline(m[1]));
+    } else {
+      end();
+      if ((m = /^(#{1,6})\s+(.+)$/.exec(line))) out.push({ type: "heading", level: m[1].length, spans: pastedInline(m[2]) });
+      else if (rule.test(line)) out.push({ type: "divider" });
+      else out.push({ type: "paragraph", spans: pastedInline(line) });
+    }
+  }
+  end();
+  return out;
+}
+
+// pastedInline also reads underscores for bold and italic, but only round whole words.
+function pastedInline(s: string): Span[] {
+  return parseInline(s
+    .replace(/(^|[^\w_])__(?=\S)([^_]*?\S)__(?![\w_])/g, "$1**$2**")
+    .replace(/(^|[^\w_])_(?=[^\s_])([^_]*?[^\s_])_(?![\w_])/g, "$1*$2*"));
 }
