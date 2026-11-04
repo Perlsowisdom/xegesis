@@ -4,6 +4,7 @@
 // document alone, full width, and switching keeps your place because the same view stays mounted.
 
 import { Message } from "../api";
+import { segmented, settingRow } from "../controls";
 import { button, h } from "../dom";
 import { studyGrid } from "../document/studygrid";
 import { setOpener } from "../document/open";
@@ -120,29 +121,23 @@ export function readerView() {
 }
 
 // readingControls are the Read mode settings, in the Aa popover and in Settings → Appearance.
-let radios = 0;
 export function readingControls(): HTMLElement {
-  const size = h("output", { "aria-live": "polite" }, `${prefs.reading.size}%`);
+  const size = h("output", { "aria-live": "polite", class: "size-out" }, `${prefs.reading.size}%`);
   const set = (patch: Partial<ReadingPrefs>) => {
     setPrefs({ reading: { ...prefs.reading, ...patch } });
     size.textContent = `${prefs.reading.size}%`;
   };
-  const group = ++radios;
-  const choice = (key: "font" | "width" | "spacing" | "theme", label: string, options: [string, string][]) =>
-    h("fieldset", {}, h("legend", {}, label), options.map(([v, l]) => {
-      const b = h("input", { type: "radio", name: `reading-${key}-${group}`, checked: prefs.reading[key] === v });
-      b.addEventListener("change", () => set({ [key]: v } as Partial<ReadingPrefs>));
-      return h("label", { class: "check" }, b, " ", l);
-    }));
+  const choice = <K extends "font" | "width" | "spacing" | "theme">(key: K, label: string, hint: string | undefined, options: [ReadingPrefs[K], string][]) =>
+    settingRow(label, hint, segmented({ label, value: prefs.reading[key], small: true, options, onChange: (v) => set({ [key]: v } as Partial<ReadingPrefs>) }));
+  const stepper = h("div", { class: "stepper", role: "group", "aria-label": "Text size" },
+    button("A−", () => set({ size: stepSize(prefs.reading.size, -1) }), { "aria-label": "Smaller text", title: `Smaller (down to ${TEXT_SIZES[0]}%)` }),
+    size,
+    button("A+", () => set({ size: stepSize(prefs.reading.size, 1) }), { "aria-label": "Larger text", title: `Larger (up to ${TEXT_SIZES[TEXT_SIZES.length - 1]}%)` }));
   return h("div", { class: "pop-body reading-controls" },
     h("h2", { class: "pop-title" }, "Reading"),
-    h("div", { class: "row", role: "group", "aria-label": "Text size" },
-      h("span", {}, "Text size"),
-      button("A−", () => set({ size: stepSize(prefs.reading.size, -1) }), { "aria-label": "Smaller text", title: `Smaller (down to ${TEXT_SIZES[0]}%)` }),
-      size,
-      button("A+", () => set({ size: stepSize(prefs.reading.size, 1) }), { "aria-label": "Larger text", title: `Larger (up to ${TEXT_SIZES[TEXT_SIZES.length - 1]}%)` })),
-    choice("font", "Typeface", [["serif", "Book (serif)"], ["sans", "Plain (sans serif)"]]),
-    choice("width", "Line length", [["narrow", "Comfortable"], ["wide", "Full width"]]),
-    choice("spacing", "Line spacing", [["tight", "Tight"], ["normal", "Normal"], ["loose", "Loose"]]),
-    choice("theme", "Page", [["auto", "Match the app"], ["light", "Light"], ["sepia", "Sepia"], ["dark", "Dark"]]));
+    settingRow("Text size", undefined, stepper),
+    choice("font", "Typeface", undefined, [["serif", "Book"], ["sans", "Plain"]]),
+    choice("width", "Line length", undefined, [["narrow", "Comfortable"], ["wide", "Full width"]]),
+    choice("spacing", "Line spacing", undefined, [["tight", "Tight"], ["normal", "Normal"], ["loose", "Loose"]]),
+    choice("theme", "Page", "Read mode's own page colour.", [["auto", "App"], ["light", "Light"], ["sepia", "Sepia"], ["dark", "Dark"]]));
 }

@@ -4,6 +4,7 @@
 
 import { Highlight, Message, Module, Ref, run } from "../api";
 import { onBibles } from "../bibles";
+import { chip } from "../controls";
 import { button, clear, h } from "../dom";
 import {
   Book, Column, Verse, alignColumns, highlightFor, markSegments, neighbourChapters, selectionRuns, verseParts, verseRangeText,
@@ -254,15 +255,13 @@ export function bibleDoc(host: DocHost): DocView {
   function renderPicker() {
     const on = new Set(chosen());
     clear(picker, modules.length === 0 ? h("span", { class: "hint" }, "No Bibles installed.") : modules.map((m) => {
-      const box = h("input", { type: "checkbox", value: m.id, checked: on.has(m.id) });
-      box.addEventListener("change", () => {
+      return chip({ label: m.abbreviation || m.id, title: m.name, value: m.id, checked: on.has(m.id), onChange: () => {
         const ids = [...picker.querySelectorAll<HTMLInputElement>("input:checked")].map((b) => b.value);
         // The choice is remembered for this tab, and as the default for new Bible tabs.
         setModules(ids);
         host.update({ modules: ids });
         void read(host.ref());
-      });
-      return h("label", { class: "check chip", title: m.name }, box, " ", m.abbreviation || m.id);
+      } });
     }));
   }
 
