@@ -13,6 +13,7 @@ The others come from the user's requests.
 | Type `### ` | It becomes a small heading (H3) *(Any)* |
 | Type `**word**` | **word** turns bold and the stars disappear *(Any)* |
 | Type `*word*` or `_word_` | *word* turns italic *(Any)* |
+| Type `__word__` | <u>word</u> is underlined (not bold). It is saved in the Markdown as `<u>word</u>` |
 | Type `` `code` `` | It shows as inline code *(Any)* |
 | Type `- ` or `* ` | A bulleted list starts *(Any)* |
 | Type `1. ` | A numbered list starts *(Any)* |
@@ -20,7 +21,7 @@ The others come from the user's requests.
 | Type `[] ` | A checkbox item starts *(Any)* |
 | Type `---` and press Enter | A divider line appears *(Any)* |
 | Press Backspace at the start of a heading or list item | It turns back into plain text |
-| Paste Markdown text | It arrives formatted, not as raw symbols |
+| Paste Markdown text | It arrives formatted, not as raw symbols (`__word__` underlines here too) |
 
 ## Headings and structure
 

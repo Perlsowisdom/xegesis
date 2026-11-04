@@ -53,8 +53,9 @@ import {
   ListItemNode, ListNode, REMOVE_LIST_COMMAND, registerCheckList, registerList,
 } from "@lexical/list";
 import {
-  BOLD_ITALIC_STAR, BOLD_ITALIC_UNDERSCORE, BOLD_STAR, BOLD_UNDERSCORE, CHECK_LIST, HEADING, INLINE_CODE, ITALIC_STAR,
+  BOLD_ITALIC_STAR, BOLD_STAR, CHECK_LIST, HEADING, INLINE_CODE, ITALIC_STAR,
   ITALIC_UNDERSCORE, LINK, ORDERED_LIST, QUOTE, UNORDERED_LIST, registerMarkdownShortcuts, type ElementTransformer,
+  type TextFormatTransformer,
 } from "@lexical/markdown";
 import { $findMatchingParent } from "@lexical/utils";
 import {
@@ -184,7 +185,7 @@ export function createEditor(host: HTMLElement, opts: EditorOptions = {}): RichE
     }, COMMAND_PRIORITY_LOW),
     registerHistory(editor, createEmptyHistoryState(), 300),
     registerMarkdownShortcuts(editor, [DIVIDER, HEADING, QUOTE, CHECK_LIST, UNORDERED_LIST, ORDERED_LIST,
-      BOLD_ITALIC_STAR, BOLD_ITALIC_UNDERSCORE, BOLD_STAR, BOLD_UNDERSCORE, ITALIC_STAR, ITALIC_UNDERSCORE, INLINE_CODE, LINK]),
+      BOLD_ITALIC_STAR, BOLD_STAR, UNDERLINE, ITALIC_STAR, ITALIC_UNDERSCORE, INLINE_CODE, LINK]),
     editor.registerCommand(KEY_BACKSPACE_COMMAND, (e) => {
       if (!$plainAtStart()) return false;
       e?.preventDefault();
@@ -526,6 +527,9 @@ function topBlock(): LexicalNode | null {
 }
 
 // Markdown as you type ----------------------------------------------------------------------------
+
+// UNDERLINE: __text__ underlines (not bold, as in some Markdown); it is stored as <u>text</u>.
+const UNDERLINE: TextFormatTransformer = { format: ["underline"], intraword: false, tag: "__", type: "text-format" };
 
 // DIVIDER turns a line of "---" (or "***") into a divider when Enter or a space is typed after it.
 const DIVIDER: ElementTransformer = {

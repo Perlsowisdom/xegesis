@@ -122,6 +122,11 @@ describe("pasted Markdown", () => {
     expect(bs[4]).toEqual({ type: "quote", spans: [{ text: "quoted" }, { text: "", br: true }, { text: "more" }] });
     expect(bs[6]).toMatchObject({ checked: [true, false] });
   });
+  it("reads __double underscores__ as underline, not bold", () => {
+    expect(parsePasted("an __underlined__ word")[0]).toEqual({ type: "paragraph",
+      spans: [{ text: "an " }, { text: "underlined", underline: true }, { text: " word" }] });
+    expect(toMarkdown(parsePasted("an __underlined__ word"))).toBe("an <u>underlined</u> word");
+  });
   it("leaves underscores inside words alone", () => {
     expect(parsePasted("snake_case_name")).toEqual([{ type: "paragraph", spans: [{ text: "snake_case_name" }] }]);
   });

@@ -60,6 +60,25 @@ export default [
     },
   },
   {
+    row: "Type `__word__`: underline (not bold), saved as <u>word</u> and read back",
+    shot: "md-05b-underline.png",
+    async run(t) {
+      const n = await t.openNote("");
+      await t.focusEnd();
+      await t.type("Keep __this__ in mind and **that** too");
+      t.assert.deepEqual(await t.editor().locator(".rt-u").allTextContents(), ["this"]);
+      t.assert.equal(await t.editor().locator("strong, .rt-b").first().textContent(), "that");
+      t.assert.equal((await t.blocks())[0].text, "Keep this in mind and that too");
+      t.assert.equal(await t.saved(), "Keep <u>this</u> in mind and **that** too");
+      // Read back: leave and open the note again.
+      await t.page.evaluate(() => { location.hash = "#reader"; });
+      await t.page.waitForTimeout(300);
+      await t.page.evaluate((id) => { location.hash = `#notes/note/${id}`; }, n.id);
+      await t.current(".note-page");
+      t.assert.deepEqual(await t.editor().locator(".rt-u").allTextContents(), ["this"]);
+    },
+  },
+  {
     row: "Type `` `code` ``: inline code",
     shot: "md-06-code.png",
     async run(t) {

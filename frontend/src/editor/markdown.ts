@@ -259,7 +259,7 @@ function wrap(m: Mark, text: string, url?: string): string {
 
 // parsePasted reads Markdown pasted as plain text, more freely than stored notes are read: each
 // line is looked at on its own, so "# Title" straight above a paragraph is still a heading; "*" and
-// "+" bullets, "1)" numbers, "__bold__" and "_italic_" are understood; each other line is a
+// "+" bullets, "1)" numbers, "__underline__" and "_italic_" are understood; each other line is a
 // paragraph of its own. Blank lines only separate.
 export function parsePasted(text: string): Block[] {
   const out: Block[] = [];
@@ -303,9 +303,9 @@ export function parsePasted(text: string): Block[] {
   return out;
 }
 
-// pastedInline also reads underscores for bold and italic, but only round whole words.
+// pastedInline also reads underscores for underline and italic, but only round whole words.
 function pastedInline(s: string): Span[] {
   return parseInline(s
-    .replace(/(^|[^\w_])__(?=\S)([^_]*?\S)__(?![\w_])/g, "$1**$2**")
+    .replace(/(^|[^\w_])__(?=\S)([^_]*?\S)__(?![\w_])/g, "$1<u>$2</u>")
     .replace(/(^|[^\w_])_(?=[^\s_])([^_]*?[^\s_])_(?![\w_])/g, "$1*$2*"));
 }
