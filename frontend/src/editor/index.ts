@@ -19,6 +19,7 @@ import {
   $getNodeByKey,
   $getRoot,
   $getSelection,
+  $insertNodes,
   $isElementNode,
   $isLineBreakNode,
   $isParagraphNode,
@@ -31,12 +32,14 @@ import {
   FORMAT_TEXT_COMMAND,
   KEY_ARROW_DOWN_COMMAND,
   KEY_ARROW_UP_COMMAND,
+  KEY_BACKSPACE_COMMAND,
   KEY_DOWN_COMMAND,
   KEY_ENTER_COMMAND,
   KEY_ESCAPE_COMMAND,
   KEY_TAB_COMMAND,
   LexicalEditor,
   LexicalNode,
+  PASTE_COMMAND,
   SELECTION_CHANGE_COMMAND,
   createEditor as createLexical,
   type Klass,
@@ -44,20 +47,21 @@ import {
 import { createEmptyHistoryState, registerHistory } from "@lexical/history";
 import { $createLinkNode, $isLinkNode, LinkNode, TOGGLE_LINK_COMMAND, $toggleLink } from "@lexical/link";
 import {
-  $createListItemNode, $createListNode, $isListNode, INSERT_ORDERED_LIST_COMMAND, INSERT_UNORDERED_LIST_COMMAND,
-  ListItemNode, ListNode, REMOVE_LIST_COMMAND, registerList,
+  $createListItemNode, $createListNode, $isListItemNode, $isListNode, INSERT_ORDERED_LIST_COMMAND, INSERT_UNORDERED_LIST_COMMAND,
+  ListItemNode, ListNode, REMOVE_LIST_COMMAND, registerCheckList, registerList,
 } from "@lexical/list";
 import {
-  BOLD_ITALIC_STAR, BOLD_STAR, HEADING, INLINE_CODE, ITALIC_STAR, LINK, ORDERED_LIST, QUOTE, UNORDERED_LIST,
-  registerMarkdownShortcuts,
+  BOLD_ITALIC_STAR, BOLD_ITALIC_UNDERSCORE, BOLD_STAR, BOLD_UNDERSCORE, CHECK_LIST, HEADING, INLINE_CODE, ITALIC_STAR,
+  ITALIC_UNDERSCORE, LINK, ORDERED_LIST, QUOTE, UNORDERED_LIST, registerMarkdownShortcuts, type ElementTransformer,
 } from "@lexical/markdown";
+import { $findMatchingParent } from "@lexical/utils";
 import {
   $createHeadingNode, $createQuoteNode, $isHeadingNode, $isQuoteNode, HeadingNode, QuoteNode, registerRichText,
 } from "@lexical/rich-text";
 import { $setBlocksType } from "@lexical/selection";
 import { icon } from "../icons";
 import { closePopover, openPopover } from "../popover";
-import { Block, Span, parseMarkdown, toMarkdown } from "./markdown";
+import { Block, Span, parseMarkdown, parsePasted, toMarkdown } from "./markdown";
 import { $createDividerNode, $createVerseQuoteNode, $isDividerNode, $isVerseQuoteNode, DividerNode, VerseQuoteNode } from "./nodes";
 import { SLASH_ITEMS, SlashId, filterSlash, slashQuery } from "./slashwords";
 
@@ -107,7 +111,10 @@ export function createEditor(host: HTMLElement, opts: EditorOptions = {}): RichE
   const editor = createLexical({
     namespace: "xegesis-notes",
     nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, LinkNode, DividerNode, VerseQuoteNode, ...(opts.nodes ?? [])],
-    theme: { text: { underline: "rt-u", bold: "rt-b", italic: "rt-i", code: "rt-code" }, link: "rt-link" },
+    theme: {
+      text: { underline: "rt-u", bold: "rt-b", italic: "rt-i", code: "rt-code" }, link: "rt-link",
+      list: { checklist: "rt-checklist", listitemChecked: "rt-checked", listitemUnchecked: "rt-unchecked" },
+    },
     onError: (e) => {
       throw e;
     },
@@ -138,12 +145,20 @@ export function createEditor(host: HTMLElement, opts: EditorOptions = {}): RichE
   const off = [
     registerRichText(editor),
     registerList(editor),
+    registerCheckList(editor),
     editor.registerCommand(TOGGLE_LINK_COMMAND, (url) => {
       $toggleLink(typeof url === "string" && url ? url : null);
       return true;
     }, COMMAND_PRIORITY_LOW),
     registerHistory(editor, createEmptyHistoryState(), 300),
-    registerMarkdownShortcuts(editor, [HEADING, QUOTE, UNORDERED_LIST, ORDERED_LIST, BOLD_ITALIC_STAR, BOLD_STAR, ITALIC_STAR, INLINE_CODE, LINK]),
+    registerMarkdownShortcuts(editor, [DIVIDER, HEADING, QUOTE, CHECK_LIST, UNORDERED_LIST, ORDERED_LIST,
+      BOLD_ITALIC_STAR, BOLD_ITALIC_UNDERSCORE, BOLD_STAR, BOLD_UNDERSCORE, ITALIC_STAR, ITALIC_UNDERSCORE, INLINE_CODE, LINK]),
+    editor.registerCommand(KEY_BACKSPACE_COMMAND, (e) => {
+      if (!$plainAtStart()) return false;
+      e?.preventDefault();
+      return true;
+    }, COMMAND_PRIORITY_HIGH),
+    editor.registerCommand(PASTE_COMMAND, (e) => pasteMarkdown(e), COMMAND_PRIORITY_HIGH),
     editor.registerUpdateListener(({ dirtyElements, dirtyLeaves, tags }) => {
       syncEmpty();
       slash.check();
@@ -363,6 +378,65 @@ function topBlock(): LexicalNode | null {
   return $isRangeSelection(s) ? s.anchor.getNode().getTopLevelElement() : null;
 }
 
+// Markdown as you type ----------------------------------------------------------------------------
+
+// DIVIDER turns a line of "---" (or "***") into a divider when Enter or a space is typed after it.
+const DIVIDER: ElementTransformer = {
+  dependencies: [DividerNode],
+  export: (n) => ($isDividerNode(n) ? "---" : null),
+  regExp: /^(?:---|\*\*\*) ?/,
+  triggerOnEnter: true,
+  replace(parent) {
+    if (!/^(?:---|\*\*\*)$/.test(parent.getTextContent().trim()) || !$isParagraphNode(parent)) return false;
+    const d = $createDividerNode();
+    const p = $createParagraphNode();
+    parent.replace(d);
+    d.insertAfter(p);
+    p.select();
+  },
+  type: "element",
+};
+
+// $plainAtStart is Backspace at the very start of a heading, quote or list item: it becomes plain
+// text, as in other editors, instead of joining the line above.
+function $plainAtStart(): boolean {
+  const s = $getSelection();
+  if (!$isRangeSelection(s) || !s.isCollapsed() || s.anchor.offset !== 0) return false;
+  const node = s.anchor.getNode();
+  const li = $findMatchingParent(node, $isListItemNode);
+  const block = li ?? node.getTopLevelElement();
+  if (!block || !$isElementNode(block)) return false;
+  const first = block.getFirstDescendant();
+  if (node !== block && node !== first) return false;
+  if (li && $isListItemNode(li)) {
+    // A nested item moves out a level first, as Lexical does.
+    return li.collapseAtStart(s);
+  }
+  if (!$isHeadingNode(block) && !$isQuoteNode(block)) return false;
+  const p = $createParagraphNode();
+  p.append(...block.getChildren());
+  block.replace(p);
+  p.selectStart();
+  return true;
+}
+
+// pasteMarkdown puts pasted plain text in as Markdown, formatted. Copies with their own formatting
+// (from a web page, or from this editor) are left to Lexical.
+function pasteMarkdown(e: ClipboardEvent | KeyboardEvent | InputEvent): boolean {
+  const data = "clipboardData" in e ? e.clipboardData : null;
+  if (!data || data.types.includes("text/html") || data.types.includes("application/x-lexical-editor") || data.files.length) return false;
+  const text = data.getData("text/plain");
+  if (!text) return false;
+  const blocks = parsePasted(text);
+  const s = $getSelection();
+  if (!$isRangeSelection(s) || blocks.length === 0) return false;
+  e.preventDefault();
+  // One line of text goes in where the caret is, as words, not as a new paragraph.
+  if (blocks.length === 1 && blocks[0].type === "paragraph") s.insertNodes(spanNodes(blocks[0].spans));
+  else $insertNodes(fromBlocks(blocks));
+  return true;
+}
+
 // Lexical <-> blocks -----------------------------------------------------------------------------
 
 function spanNodes(spans: Span[]): LexicalNode[] {
@@ -401,8 +475,8 @@ export function fromBlocks(blocks: Block[]): LexicalNode[] {
       case "quote":
         return $createQuoteNode().append(...spanNodes(b.spans));
       case "list": {
-        const list = $createListNode(b.ordered ? "number" : "bullet");
-        b.items.forEach((it) => list.append($createListItemNode().append(...spanNodes(it))));
+        const list = $createListNode(b.checked ? "check" : b.ordered ? "number" : "bullet");
+        b.items.forEach((it, i) => list.append($createListItemNode(b.checked ? b.checked[i] : undefined).append(...spanNodes(it))));
         return list;
       }
       case "divider":
@@ -441,8 +515,10 @@ export function toBlocks(nodes: LexicalNode[]): Block[] {
     if ($isDividerNode(n)) return { type: "divider" };
     if ($isVerseQuoteNode(n)) return { type: "versequote", lines: n.getLines() };
     if ($isListNode(n)) {
+      const items = n.getChildren();
       return { type: "list", ordered: n.getListType() === "number",
-        items: n.getChildren().map((li) => ($isElementNode(li) ? inline(li) : [{ text: li.getTextContent() }])) };
+        items: items.map((li) => ($isElementNode(li) ? inline(li) : [{ text: li.getTextContent() }])),
+        ...(n.getListType() === "check" ? { checked: items.map((li) => $isListItemNode(li) && !!li.getChecked()) } : {}) };
     }
     if ($isElementNode(n)) return { type: "paragraph", spans: inline(n) };
     return { type: "paragraph", spans: [{ text: n.getTextContent() }] };

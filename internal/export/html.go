@@ -55,7 +55,7 @@ func htmlBlocks(b *strings.Builder, bs []Block, opt Options) {
 			}
 			fmt.Fprintf(b, "<%s>", tag)
 			for ; i < len(bs) && bs[i].Kind == bl.Kind; i++ {
-				fmt.Fprintf(b, `<li dir="auto">%s</li>`, inlineHTML(bs[i].Spans))
+				fmt.Fprintf(b, `<li dir="auto">%s%s</li>`, checkMark(bs[i].Check, "☐ ", "☑ "), inlineHTML(bs[i].Spans))
 			}
 			i--
 			fmt.Fprintf(b, "</%s>", tag)
@@ -79,6 +79,8 @@ func htmlBlocks(b *strings.Builder, bs []Block, opt Options) {
 			fmt.Fprintf(b, `<p class="xd-notice" role="note">%s</p>`, inlineHTML(bl.Spans))
 		case Table:
 			tableHTML(b, bl.Table, opt)
+		case Rule:
+			b.WriteString(`<hr>`)
 		default:
 			fmt.Fprintf(b, `<p dir="auto">%s</p>`, inlineHTML(bl.Spans))
 		}

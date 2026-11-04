@@ -250,7 +250,11 @@ func docxBlocks(b *strings.Builder, bs []Block, opt Options, links *relList) {
 		case Quote:
 			b.WriteString(para("Quote", rtl, runs(bl.Spans, links)))
 		case Bullet:
-			b.WriteString(para("ListItem", rtl, run("• ", runStyle{})+runs(bl.Spans, links)))
+			mark := "• "
+			if bl.Check != "" {
+				mark = checkMark(bl.Check, "☐ ", "☑ ")
+			}
+			b.WriteString(para("ListItem", rtl, run(mark, runStyle{})+runs(bl.Spans, links)))
 		case Numbered:
 			n++
 			b.WriteString(para("ListItem", rtl, run(fmt.Sprintf("%d. ", n), runStyle{})+runs(bl.Spans, links)))
@@ -272,6 +276,8 @@ func docxBlocks(b *strings.Builder, bs []Block, opt Options, links *relList) {
 			b.WriteString(para("", rtl, content.String()))
 		case Table:
 			docxTable(b, bl.Table, opt, links)
+		case Rule:
+			b.WriteString(`<w:p><w:pPr><w:pBdr><w:bottom w:val="single" w:sz="6" w:space="1" w:color="999999"/></w:pBdr></w:pPr></w:p>`)
 		default:
 			b.WriteString(para("", rtl, runs(bl.Spans, links)))
 		}

@@ -1241,13 +1241,22 @@ input.inline-chip[type=text] { height: 28px; border-radius: 999px; padding: 0 12
 .rich-text p { margin: 0 0 12px; }
 .rich-text h1, .rich-text h2, .rich-text h3, .rich-text h4 { font-family: var(--reading); font-weight: 600; color: var(--fg); text-transform: none;
   letter-spacing: 0; scroll-margin-top: 56px; border-radius: 4px; }
-.rich-text h1 { font-size: 1.45rem; margin: 26px 0 8px; }
-.rich-text h2 { font-size: 1.3rem; margin: 22px 0 6px; }
-.rich-text h3 { font-size: 1.1rem; margin: 18px 0 4px; }
+.rich-text h1 { font-size: 1.75rem; line-height: 1.25; margin: 28px 0 10px; }
+.rich-text h2 { font-size: 1.38rem; line-height: 1.3; margin: 22px 0 6px; }
+.rich-text h3 { font-size: 1.14rem; margin: 18px 0 4px; }
 .rich-text h4, .rich-text h5, .rich-text h6 { font-size: 1rem; margin: 14px 0 4px; }
 .rich-text > :first-child { margin-top: 0; }
 .rich-text ul, .rich-text ol { margin: 0 0 12px; padding-left: 1.6em; }
 .rich-text li { margin: 2px 0; }
+.rich-text ul.rt-checklist { padding-left: 0; list-style: none; }
+.rich-text li.rt-checked, .rich-text li.rt-unchecked { position: relative; list-style: none; padding-left: 1.75em; outline: none; }
+.rich-text li.rt-checked::before, .rich-text li.rt-unchecked::before { content: ""; position: absolute; left: 0; top: .34em; width: 1.05em; height: 1.05em;
+  box-sizing: border-box; border: 1.5px solid var(--muted); border-radius: 4px; background: var(--bg); cursor: pointer; }
+.rich-text li.rt-checked::before { border-color: var(--accent); background: var(--accent); }
+.rich-text li.rt-checked::after { content: ""; position: absolute; left: .36em; top: .5em; width: .3em; height: .58em; border: solid var(--accent-fg);
+  border-width: 0 2px 2px 0; transform: rotate(45deg); pointer-events: none; }
+.rich-text li.rt-checked { color: var(--muted); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--muted) 60%, transparent); }
+.rich-text li.rt-unchecked:focus-visible::before, .rich-text li.rt-checked:focus-visible::before { outline: 2px solid var(--focus); outline-offset: 2px; }
 .rich-text blockquote { margin: 10px 0 14px; padding: 10px 14px; border-left: 3px solid var(--accent); background: var(--quote-bg);
   border-radius: 0 8px 8px 0; font-style: italic; }
 .rich-text .rt-u { text-decoration: underline; text-underline-offset: 3px; }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseMarkdown, splitBlocks, joinBlocks, toMarkdown } from "./markdown";
+import { parseMarkdown, parsePasted, splitBlocks, joinBlocks, toMarkdown } from "./markdown";
 
 const round = (md: string) => toMarkdown(parseMarkdown(md));
 
@@ -99,5 +99,33 @@ describe("underline, dividers and verse quotations", () => {
   it("reads underline", () => {
     expect(parseMarkdown("<u>a</u>")[0]).toEqual({ type: "paragraph", spans: [{ text: "a", underline: true }] });
     expect(round("<u>unclosed")).toBe("<u>unclosed");
+  });
+});
+
+describe("check lists", () => {
+  it("round-trip with their ticks", () => {
+    expect(round("- [ ] read\n- [x] pray")).toBe("- [ ] read\n- [x] pray");
+    expect(parseMarkdown("- [x] done")[0]).toEqual({ type: "list", ordered: false, items: [[{ text: "done" }]], checked: [true] });
+  });
+  it("leave a mixed list a plain list", () => {
+    expect(parseMarkdown("- [ ] a\n- b")[0]).not.toHaveProperty("checked");
+  });
+});
+
+describe("pasted Markdown", () => {
+  it("reads each line on its own", () => {
+    const bs = parsePasted("# Title\nSome **bold** and _italic_.\n* one\n+ two\n1) first\n2) second\n> quoted\n> more\n***\n- [x] done\n- [ ] not yet");
+    expect(bs.map((b) => b.type)).toEqual(["heading", "paragraph", "list", "list", "quote", "divider", "list"]);
+    expect(bs[1]).toEqual({ type: "paragraph", spans: [{ text: "Some " }, { text: "bold", bold: true }, { text: " and " }, { text: "italic", italic: true }, { text: "." }] });
+    expect(bs[2]).toMatchObject({ ordered: false, items: [[{ text: "one" }], [{ text: "two" }]] });
+    expect(bs[3]).toMatchObject({ ordered: true });
+    expect(bs[4]).toEqual({ type: "quote", spans: [{ text: "quoted" }, { text: "", br: true }, { text: "more" }] });
+    expect(bs[6]).toMatchObject({ checked: [true, false] });
+  });
+  it("leaves underscores inside words alone", () => {
+    expect(parsePasted("snake_case_name")).toEqual([{ type: "paragraph", spans: [{ text: "snake_case_name" }] }]);
+  });
+  it("skips blank lines and keeps plain lines as paragraphs", () => {
+    expect(parsePasted("a\r\n\r\nb").map((b) => b.type)).toEqual(["paragraph", "paragraph"]);
   });
 });

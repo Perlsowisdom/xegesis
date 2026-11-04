@@ -182,3 +182,17 @@ func TestReportShape(t *testing.T) {
 		t.Errorf("credits = %v", c)
 	}
 }
+
+func TestCheckListsAndDividers(t *testing.T) {
+	bs := parseNote("- [ ] read\n- [x] pray\n\n---\n\nAfter")
+	if len(bs) != 4 || bs[0].Check != "todo" || bs[1].Check != "done" || bs[2].Kind != Rule || spansText(bs[0].Spans) != "read" {
+		t.Fatalf("blocks %+v", bs)
+	}
+	d := Doc{Pieces: []Piece{{Blocks: bs}}}
+	if out := string(Markdown(d)); !strings.Contains(out, "- [ ] read\n- [x] pray\n\n---\n\nAfter") {
+		t.Errorf("markdown %q", out)
+	}
+	if h := HTML(d); !strings.Contains(h, "☐ read") || !strings.Contains(h, "☑ pray") || !strings.Contains(h, "<hr>") || strings.Contains(h, ">---<") {
+		t.Errorf("html %s", h)
+	}
+}
