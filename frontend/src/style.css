@@ -1221,7 +1221,7 @@ input.inline-chip[type=text] { height: 28px; border-radius: 999px; padding: 0 12
 .rich-toolbar > .ghost-btn.text { height: 30px; }
 .rich-toolbar .verse-tool { color: var(--verse); }
 .rich-hint { margin-left: auto; padding: 0 8px 0 12px; color: var(--faint); font-size: .78rem; white-space: nowrap; }
-.page-text { container-type: inline-size; }
+.page-text { container-type: inline-size; width: 100%; }
 @container (max-width: 520px) { .rich-hint { display: none; } }
 .rich-text { position: relative; min-height: 10rem; outline: none; font-family: var(--reading); font-size: 1.08rem; line-height: 1.7; color: var(--text);
   overflow-wrap: break-word; padding-bottom: 2rem; }
@@ -1342,3 +1342,40 @@ button.danger-link { color: var(--bad); margin-top: 8px; display: block; }
 }
 .work-page .doc-page { padding-top: 0; }
 @media (max-width: 700px) { .doc-page { padding: 0 2px 60px; } }
+
+/* A sermon page: the outline in a narrow column at the left, the page beside it (sermonpage.ts). */
+.sermon-layout { display: grid; grid-template-columns: 240px minmax(0, 1fr); align-items: start; container-type: inline-size; width: 100%; }
+.sermon-main { min-width: 0; }
+.outline-col { position: sticky; top: 0; max-height: 100vh; overflow: auto; padding: 8px 14px 20px 0; margin-right: 8px;
+  border-right: 1px solid var(--line); scrollbar-width: thin; }
+.outline-head { display: flex; align-items: center; justify-content: space-between; margin: 0 0 8px 8px; }
+.outline-title { font-size: .74rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.outline-list { list-style: none; margin: 0; padding: 0; }
+.outline-point { display: flex; align-items: baseline; gap: 7px; width: 100%; text-align: left; border: 0; border-radius: 7px; padding: 7px 8px;
+  background: transparent; color: var(--text); font-size: .86rem; line-height: 1.35; white-space: normal; cursor: pointer; position: relative;
+  transition: background-color .12s, color .12s; }
+.outline-point:hover:not(:disabled) { background: var(--ghost-hover); border: 0; }
+.outline-point.on { background: var(--well-on); color: var(--fg); }
+:root:not([data-theme="dark"]) .outline-point.on { background: var(--rail-on); }
+.outline-point.level-2 { padding-left: 26px; font-size: .82rem; color: var(--muted); }
+.outline-point.level-2.on { color: var(--fg); }
+.outline-point:focus-visible { outline-offset: -2px; }
+.outline-num { flex: none; min-width: 14px; color: var(--faint); font-variant-numeric: tabular-nums; font-size: .8rem; }
+.outline-label { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.outline-ref { flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: .72rem; }
+.outline-point.dragging { opacity: .45; }
+.outline-point.drop-before::before, .outline-point.drop-after::after { content: ""; position: absolute; left: 6px; right: 6px; height: 2px;
+  border-radius: 2px; background: var(--accent); }
+.outline-point.drop-before::before { top: -1px; }
+.outline-point.drop-after::after { bottom: -1px; }
+.outline-empty { color: var(--muted); font-size: .82rem; line-height: 1.45; padding: 4px 8px; }
+.outline-hint { color: var(--faint); font-size: .76rem; line-height: 1.5; margin: 14px 8px 0; }
+.kind-menu button.on { color: var(--accent); font-weight: 600; }
+.sermon-page { padding-top: 0; }
+@container (max-width: 680px) {
+  .sermon-main { grid-column: 1 / -1; }
+  .outline-col { display: none; }
+}
+.work-view:has(> .work-page:not([hidden])) { max-width: none; }
+.grid-body .sermon-layout { margin: 0 -6px; }
+.grid-body .outline-col { top: -8px; }
