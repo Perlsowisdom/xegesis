@@ -74,3 +74,13 @@ Design first: mock-up for approval, then build.
 
 - HTML and Word exports still show `---` dividers as text instead of a rule.
 - T34d was checked in a browser preview with stand-in data. The real app was only seen on its start screen.
+
+## User testing of T34d (4 November 2026): editors still miss the mark
+
+- Markdown shortcuts do not work in the note editor (typing ## , **, - , > should format, as in Any or Obsidian).
+- Highlights cover whole verses only. They must cover any part of a verse, down to words and characters.
+- There is no way to insert a verse or a highlight into a note.
+- The sermon editor has no way to choose the heading size (H1, H2, H3).
+- The sermon toolbar duplicates verse insertion (the Verse reference button and the Quote verses button), and the sparkle icon reads as "AI" rather than "insert reference".
+- The user feels the note and sermon editors keep missing the mark despite examples and detailed instructions.
+  Next: study Any's editor and the user's examples hands-on first, write behaviour-level acceptance tests, and test typing in the real app before calling it done.
