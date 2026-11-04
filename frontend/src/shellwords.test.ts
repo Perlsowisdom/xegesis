@@ -7,10 +7,10 @@ import {
 
 describe("places", () => {
   it("puts every former section in a place", () => {
-    const where = Object.fromEntries(["bibles", "library", "notes", "lists", "plans", "sermons", "reports", "search", "settings", "commands", "reader"]
+    const where = Object.fromEntries(["bibles", "library", "notes", "lists", "plans", "sermons", "reports", "bin", "search", "settings", "commands", "reader"]
       .map((v) => [v, placeOf(v).id]));
     expect(where).toEqual({
-      bibles: "library", library: "library", notes: "work", lists: "work", plans: "reader", sermons: "work",
+      bibles: "library", library: "library", notes: "work", lists: "work", plans: "work", sermons: "work", bin: "work",
       reports: "work", search: "search", settings: "settings", commands: "settings", reader: "reader",
     });
   });

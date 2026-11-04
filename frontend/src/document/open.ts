@@ -1,6 +1,7 @@
 // Opening things in the study grid from anywhere in the app: a library book at a place, a passage,
 // a note. Views call these; document/studygrid.ts registers the handler when it starts.
 
+import { navigate, prefs, setPrefs } from "../state";
 import type { TabSpec } from "./grid";
 
 // Locator is where a search hit starts (search.query's locator).
@@ -36,4 +37,22 @@ export function openInGrid(spec: TabSpec): void {
 
 export function openBook(r: BookRequest): void {
   openInGrid({ kind: "book", itemId: r.itemId, fileId: r.fileId, locator: r.locator as Record<string, unknown> | undefined });
+}
+
+// openInStudy shows the Reader in Study mode and opens a tab there: a note, a sermon or a book next
+// to whatever is already open.
+export function openInStudy(spec: TabSpec): void {
+  showReader("study");
+  openInGrid(spec);
+}
+
+// readBook shows a library book in Read mode.
+export function readBook(r: BookRequest): void {
+  showReader("read");
+  openBook(r);
+}
+
+function showReader(mode: "read" | "study"): void {
+  if (prefs.reading.mode !== mode) setPrefs({ reading: { ...prefs.reading, mode } });
+  navigate("reader");
 }

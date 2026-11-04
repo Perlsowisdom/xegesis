@@ -188,6 +188,7 @@ export interface Note {
   item_title?: string;
   locator?: Record<string, unknown> | null;
   tags: string[];
+  folder_id?: string;
   created_at: number;
   updated_at: number;
   deleted_at?: number;

@@ -30,9 +30,22 @@ export function sermonDoc(host: DocHost): DocView {
     let timer = 0;
     let dirty = false;
     const status = h("span", { class: "hint save-state", "aria-live": "polite" }, `Saved ${formatTime(d.updated_at)}`);
+    // The date preached and theme are edited here too; each saves when it changes.
+    const preached = h("input", { type: "date", value: d.preached_on ?? "", class: "fact-input", "aria-label": "Date preached" });
+    const theme = h("input", { type: "text", value: d.theme ?? "", placeholder: "Add a theme", class: "fact-input", "aria-label": "Theme", maxlength: "200" });
+    const saveFact = async (params: Record<string, string>) => {
+      status.textContent = "Saving…";
+      const got = await msg.attempt(() => run<SermonDoc>("document.update", { id: d.id, ...params }));
+      status.textContent = got ? `Saved ${formatTime(got.updated_at)}` : "Not saved: see the message above";
+    };
+    preached.addEventListener("change", () => void saveFact({ preached_on: preached.value }));
+    theme.addEventListener("change", () => void saveFact({ theme: theme.value }));
+    theme.addEventListener("keydown", (e) => { if (e.key === "Enter") theme.blur(); });
     const facts = h("dl", { class: "sermon-facts" },
       h("dt", {}, "Passage"), h("dd", {}, d.passage ? button(d.passage.display, () => host.go(d.passage!.display), { class: "link", title: "Show this passage in the linked panes" }) : "None yet"),
       h("dt", {}, "Kind"), h("dd", {}, KIND_NAME[d.kind] ?? d.kind),
+      h("dt", {}, "Preached"), h("dd", {}, preached),
+      h("dt", {}, "Theme"), h("dd", {}, theme),
       h("dt", {}, "Changed"), h("dd", {}, formatTime(d.updated_at)));
     const outline = d.points.length === 0 ? null : h("ol", { class: "outline-view", "aria-label": "Outline" }, d.points.map((p) =>
       h("li", { class: `level-${p.level === 2 ? 2 : 1}` }, p.h || "Untitled point",
