@@ -1,5 +1,6 @@
-// The right sidebar: study tools beside whatever is open. Its tabs are AI chat, Related, Notes, Word
-// and Compare; Settings → Right sidebar chooses which show and in what order. Tools follow the
+// The right sidebar: study tools beside whatever is open. Its tabs are AI chat, Related, Notes,
+// Highlights, Word and Compare; Settings → Right sidebar chooses which show and in what order. It
+// opens and closes with the Reader's sidebar button and Ctrl+., so it has no close button of its own. Tools follow the
 // passage in the Reader and load only while they are visible. At phone width it is a sheet.
 
 import { installedBibles } from "../bibles";
@@ -7,7 +8,6 @@ import { chip } from "../controls";
 import { Message, Module, Ref, run } from "../api";
 import { button, clear, h } from "../dom";
 import { Column, alignColumns, verseParts } from "../helpers";
-import { icon } from "../icons";
 import { WordInfo } from "../markup";
 import { openInStudy } from "../document/open";
 import { selectedMarkScope } from "../gridhook";
@@ -58,8 +58,6 @@ function makeSidebar() {
   };
 
   const tablist = h("div", { class: "tool-tabs", role: "tablist", "aria-label": "Study tools" });
-  const closeBtn = h("button", { type: "button", class: "icon-btn", "aria-label": "Close the sidebar", title: "Close the sidebar (Ctrl+.)" }, icon("close"));
-  closeBtn.addEventListener("click", () => setOpen(false));
   const panels = h("div", { class: "tool-panels" });
   const tabs = new Map<ToolId, HTMLButtonElement>();
   const panelEls = new Map<ToolId, HTMLElement>();
@@ -83,7 +81,7 @@ function makeSidebar() {
   }
 
   const el = h("aside", { class: "rightbar", "aria-label": "Study tools", id: "rightbar" },
-    h("div", { class: "rightbar-head" }, tablist, closeBtn), panels);
+    h("div", { class: "rightbar-head" }, tablist), panels);
 
   function render() {
     const p = prefs.sidebar;
