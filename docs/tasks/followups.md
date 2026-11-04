@@ -84,3 +84,11 @@ Design first: mock-up for approval, then build.
 - The sermon toolbar duplicates verse insertion (the Verse reference button and the Quote verses button), and the sparkle icon reads as "AI" rather than "insert reference".
 - The user feels the note and sermon editors keep missing the mark despite examples and detailed instructions.
   Next: study Any's editor and the user's examples hands-on first, write behaviour-level acceptance tests, and test typing in the real app before calling it done.
+
+## From T34e (4 November 2026)
+
+- **Real-app interface tests exist** (`frontend/e2e/`, `npm run e2e`): they build the desktop app,
+  start it on a copy of the scratch library with a WebView2 debugging port, and type into it with
+  real key events through `playwright-core`. This is the start of T30 (interface tests): new screens
+  should add a `*.e2e.mjs` file there. Wails clears the `WEBVIEW2_*` variables, so the test build
+  (only) uses a patched copy of its WebView2 loader through a temporary `go.work`; see `e2e/app.mjs`.
