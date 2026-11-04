@@ -8,6 +8,7 @@ import { bound, onEvent } from "./api";
 import { biblesChanged } from "./bibles";
 import { button, h } from "./dom";
 import { closePopover } from "./popover";
+import { closeMarking } from "./marking";
 import { rail } from "./shell/rail";
 import { PLACES, PlaceId, isView, placeForKey, placeOf, viewLabel } from "./shellwords";
 import { applyTheme, loadPref, onPrefs, prefs, savePref, setNavigator } from "./state";
@@ -94,6 +95,7 @@ function show(target: string, focus = false) {
   if (sub && !location.hash.startsWith(`#${id}/${sub}`)) history.replaceState(null, "", `#${id}/${sub}`);
   else if (!sub && location.hash !== `#${id}` && !location.hash.startsWith(`#${id}/`)) history.replaceState(null, "", `#${id}`);
   closePopover();
+  closeMarking();
 
   const place = placeOf(id);
   const v = view(id);
