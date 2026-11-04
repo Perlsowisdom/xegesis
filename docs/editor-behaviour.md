@@ -1,4 +1,4 @@
-# Editor behaviour checklist (draft for the user's approval)
+# Editor behaviour checklist (approved by the user, 4 November 2026)
 
 The notes and sermon editors must pass each check below **by typing in the real app**. Each check is
 "do this → see that". Behaviours marked *(Any)* were seen in the Any desktop app on 4 November 2026.
