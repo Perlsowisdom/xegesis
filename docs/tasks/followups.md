@@ -69,3 +69,8 @@ Design first: mock-up for approval, then build.
   Words should look like plain text until you ask to look one up.
 - **Bug: the auto-hide "show rail" button sits on top of page headers.** It covers "My work". Content
   must never be overlapped: the user reported "the sidebar cuts off part of the text UI".
+
+## After T34d (4 November 2026)
+
+- HTML and Word exports still show `---` dividers as text instead of a rule.
+- T34d was checked in a browser preview with stand-in data. The real app was only seen on its start screen.
