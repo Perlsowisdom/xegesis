@@ -14,6 +14,7 @@ import {
 import { icon } from "../icons";
 import { addToList } from "../listpicker";
 import { renderMarkup } from "../markup";
+import { chapterOsis, chapterToggle } from "../chapterwords";
 import { closePopover, togglePopover } from "../popover";
 import { openExport } from "../printexport";
 import { lookUpCard } from "../lookup";
@@ -70,6 +71,10 @@ export function bibleDoc(host: DocHost): DocView {
   let seq = 0;
   let wanted: string | null = null;
   let alive = true;
+  // The whole chapter is shown instead of the verses asked for (this pane only; reset on a new passage).
+  let expanded = false;
+  let expandedFor = "";
+  let chapter: { ref: string; start: number; end: number } | null = null;
 
   function chosen(): string[] {
     const want = host.tab().modules?.length ? host.tab().modules! : state.modules;
@@ -96,6 +101,14 @@ export function bibleDoc(host: DocHost): DocView {
     if (!p || n !== seq || !alive) return;
     parsed = p;
     input.value = p.display;
+    if (p.display !== expandedFor) expanded = false;
+    const co = chapterOsis(p, books);
+    chapter = null;
+    if (co) {
+      const c = await run<Ref>("verse.parse", { ref: co }).catch(() => null);
+      if (n !== seq || !alive) return;
+      if (c) chapter = { ref: c.osis, start: c.start, end: c.end };
+    }
     neighbours = books.length ? neighbourChapters(p.start, books) : { prev: null, next: null };
     prev.disabled = !neighbours.prev;
     next.disabled = !neighbours.next;
@@ -114,10 +127,30 @@ export function bibleDoc(host: DocHost): DocView {
       return;
     }
     await loadHighlights();
-    const r = await msg.attempt(() => run<{ ref: string; columns: Column[] }>("bible.parallel", { modules: ids, ref: p.osis, markup: true }));
+    const r = await msg.attempt(() => run<{ ref: string; columns: Column[] }>("bible.parallel", { modules: ids, ref: expanded && chapter ? chapter.ref : p.osis, markup: true }));
     if (!r || n !== seq || !alive) return;
     if (ids.length === 1) renderSingle(r.columns[0]);
     else renderParallel(r.columns);
+    if (expanded) markChosen(p);
+  }
+
+  // chapterButton sits one line below the passage: show the whole chapter, or only the verses asked for.
+  function chapterButton(): HTMLElement | null {
+    const t = parsed && chapter ? chapterToggle(parsed, chapter, expanded, books) : null;
+    if (!t || !parsed) return null;
+    const display = parsed.display;
+    return h("p", { class: "chapter-toggle-row" }, button(t.label, () => {
+      expanded = t.expand;
+      expandedFor = display;
+      void read(host.ref());
+    }, { class: "chapter-toggle" }));
+  }
+
+  // markChosen scrolls the verses asked for into view in the whole chapter and marks them briefly.
+  function markChosen(p: Ref) {
+    const els = [...text.querySelectorAll<HTMLElement>("[data-base]")].filter((e) => Number(e.dataset.base) >= p.start && Number(e.dataset.base) <= p.end);
+    for (const e of els) e.classList.add("jumped");
+    els[0]?.scrollIntoView({ block: "center" });
   }
 
   function heading(v: Verse, last: { chapter: number }) {
@@ -199,6 +232,7 @@ export function bibleDoc(host: DocHost): DocView {
       h("header", {}, h("h2", { class: "module-name" }, m?.name || c.module)),
       c.verses.length === 0 ? h("p", { class: "empty" }, "This Bible has no text for this passage.") : null,
       c.verses.map((v) => [heading(v, last), verseEl(v, c.module)]),
+      chapterButton(),
       c.attribution ? h("footer", { class: "attribution" }, c.attribution) : null);
     paint();
   }
@@ -214,6 +248,7 @@ export function bibleDoc(host: DocHost): DocView {
         h("tr", { "data-base": r.base },
           h("th", { scope: "row" }, verseButton(r.base)),
           r.cells.map((v) => h("td", { lang: "" }, v ? content(v) : "")))))),
+    chapterButton(),
     columns.some((c) => c.attribution)
       ? h("footer", { class: "attribution" }, columns.filter((c) => c.attribution).map((c) => h("p", {}, `${c.module}: ${c.attribution}`)))
       : null);
