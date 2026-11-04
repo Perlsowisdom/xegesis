@@ -17,6 +17,7 @@ import { icon } from "./icons";
 import { openPopover } from "./popover";
 import { openExport } from "./printexport";
 import { DocKind, KIND_NAME, migrateOutline, outlineOf, pointsOf, untitled } from "./sermonwords";
+import { outlineMarks } from "./editor/structurewords";
 import type { SermonDoc } from "./views/sermons";
 import { folderName, loadFolders, moveMenu, workChanged } from "./work";
 import { deleteSermon } from "./views/notes";
@@ -185,17 +186,16 @@ export function sermonPage(o: SermonPageOptions): SermonPage {
     const heads = editor.headings();
     const points = outlineOf(parseMarkdown(editor.getMarkdown()));
     const here = editor.caretHeading();
-    let n = 0;
-    let sub = 0;
+    const marks = outlineMarks(heads.map((x) => x.level));
     clear(outlineList, heads.length === 0
       ? h("li", { class: "outline-empty" }, "No points yet. Add a heading to the text, or choose +.")
       : heads.map((hd, i) => {
-        const main = hd.level <= 2;
-        if (main) { n++; sub = 0; } else sub++;
+        const { depth, label } = marks[i];
         const refs = points[i]?.refs.map((r) => r.label).join("; ") ?? "";
-        const b = h("button", { type: "button", class: `outline-point level-${main ? 1 : 2}${hd.key === here ? " on" : ""}`, draggable: "true",
-          "data-key": hd.key, "aria-current": hd.key === here ? "true" : null, title: "Go to this point. Drag to move its section." },
-        h("span", { class: "outline-num", "aria-hidden": "true" }, main ? String(n) : String.fromCharCode(96 + Math.min(sub, 26))),
+        const b = h("button", { type: "button", class: `outline-point depth-${depth}${hd.key === here ? " on" : ""}`, draggable: "true",
+          "data-key": hd.key, "data-level": String(hd.level), "aria-current": hd.key === here ? "true" : null,
+          title: `${["Large", "Medium", "Small"][hd.level - 1] ?? "Small"} heading. Go to this point; drag to move its section.` },
+        h("span", { class: "outline-num", "aria-hidden": "true" }, label),
         h("span", { class: "outline-label" }, hd.text.replace(/^\d{1,3}[.)]\s+/, "") || h("span", { class: "untitled" }, "Untitled point")),
         refs ? h("span", { class: "outline-ref" }, refs) : null);
         b.addEventListener("click", () => editor?.revealHeading(hd.key));
@@ -246,7 +246,7 @@ export function sermonPage(o: SermonPageOptions): SermonPage {
     const refocus = () => queueMicrotask(() => outlineList.querySelector<HTMLElement>(`[data-key="${editor?.headings().find((x) => x.text === cur.text)?.key ?? key}"]`)?.focus());
     if (mod && (e.code === "BracketRight" || e.code === "BracketLeft")) {
       e.preventDefault();
-      editor?.setHeadingLevel(key, e.code === "BracketRight" ? 3 : 2);
+      editor?.setHeadingLevel(key, Math.min(3, Math.max(1, cur.level + (e.code === "BracketRight" ? 1 : -1))));
       refocus();
     } else if (e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
       // Alt+↑ and Alt+↓ move the point's section, the keyboard way to drag it.
@@ -323,7 +323,7 @@ export function sermonPage(o: SermonPageOptions): SermonPage {
     quoteBtn.addEventListener("click", () => quotePopover(quoteBtn, passage?.display ?? "", (md) => editor?.insertMarkdown(md)));
     editor = createEditor(edHost, {
       markdown: got.body, placeholder: "Write here… Headings become the outline. Type / for more.", label: "Text of the sermon or lesson",
-      onChange: changed, onHeadings: renderOutline, tools: [quoteBtn],
+      onChange: changed, onHeadings: renderOutline, tools: [quoteBtn], foldKey: got.id,
       onVerseRef: verseRefPopover,
       onVerseQuote: (anchor) => quotePopover(anchor, passage?.display ?? "", (md) => editor?.insertMarkdown(md)),
     });

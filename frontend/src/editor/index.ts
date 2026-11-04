@@ -59,11 +59,13 @@ import {
   $createHeadingNode, $createQuoteNode, $isHeadingNode, $isQuoteNode, HeadingNode, QuoteNode, registerRichText,
 } from "@lexical/rich-text";
 import { $setBlocksType } from "@lexical/selection";
+import { h } from "../dom";
 import { icon } from "../icons";
 import { closePopover, openPopover } from "../popover";
 import { Block, Span, parseMarkdown, parsePasted, toMarkdown } from "./markdown";
 import { $createDividerNode, $createVerseQuoteNode, $isDividerNode, $isVerseQuoteNode, DividerNode, VerseQuoteNode } from "./nodes";
 import { SLASH_ITEMS, SlashId, filterSlash, slashQuery } from "./slashwords";
+import { structure } from "./structure";
 
 export interface HeadingInfo {
   key: string;
@@ -83,6 +85,8 @@ export interface EditorOptions {
   onVerseQuote?(anchor: HTMLElement): void;
   onVerseRef?(anchor: HTMLElement, selected: string, insert: (label: string, ref: string) => void): void;
   onHeadings?(): void; // the headings changed
+  // Folded sections are remembered under this key (the note's or sermon's id) on this device.
+  foldKey?: string;
   nodes?: Klass<LexicalNode>[];
   setup?(editor: LexicalEditor): void | (() => void);
 }
@@ -103,6 +107,7 @@ export interface RichEditor {
   setHeadingLevel(key: string, level: number): void;
   addHeading(level?: number): void;
   caretHeading(): string | null; // the heading the caret is in or under
+  setFoldKey(key: string): void; // once a new note has an id
 }
 
 const MOD = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl+";
@@ -134,6 +139,14 @@ export function createEditor(host: HTMLElement, opts: EditorOptions = {}): RichE
   host.replaceChildren(bar.el, content);
   editor.setRootElement(content);
   const slash = slashMenu(doc, editor, content, opts);
+  const struct = structure({
+    editor, host, content, strip: variant === "page",
+    headings: () => headings(),
+    blockKeys: () => editor.getEditorState().read(() => $getRoot().getChildren().map((n) => ({
+      key: n.getKey(), level: $isHeadingNode(n) ? Number(n.getTag().slice(1)) : 0 }))),
+    reveal: (key) => reveal(key),
+    caretBlock: () => editor.getEditorState().read(() => topBlock()?.getKey() ?? null),
+  });
 
   let source = opts.markdown ?? "";
   let dirty = false;
@@ -161,6 +174,7 @@ export function createEditor(host: HTMLElement, opts: EditorOptions = {}): RichE
     editor.registerCommand(PASTE_COMMAND, (e) => pasteMarkdown(e), COMMAND_PRIORITY_HIGH),
     editor.registerUpdateListener(({ dirtyElements, dirtyLeaves, tags }) => {
       syncEmpty();
+      struct.apply();
       slash.check();
       const sig = JSON.stringify(headings().map((x) => [x.key, x.level, x.text]));
       if (sig !== headingSig) {
@@ -173,6 +187,7 @@ export function createEditor(host: HTMLElement, opts: EditorOptions = {}): RichE
     }),
     editor.registerCommand(SELECTION_CHANGE_COMMAND, () => {
       bar.sync();
+      struct.caretMoved();
       return false;
     }, COMMAND_PRIORITY_LOW),
     editor.registerCommand(KEY_DOWN_COMMAND, (e: KeyboardEvent) => shortcut(e), COMMAND_PRIORITY_LOW),
@@ -188,6 +203,7 @@ export function createEditor(host: HTMLElement, opts: EditorOptions = {}): RichE
   content.addEventListener("click", onClick);
   const extra = opts.setup?.(editor);
   syncEmpty();
+  struct.setKey(opts.foldKey ?? "");
 
   // syncEmpty shows the placeholder while the text is one empty paragraph.
   function syncEmpty() {
@@ -211,7 +227,9 @@ export function createEditor(host: HTMLElement, opts: EditorOptions = {}): RichE
     if (!e.shiftKey && !e.altKey && k === "k") return run(() => bar.askLink());
     if (e.shiftKey && !e.altKey && k === "k" && opts.onVerseRef) return run(() => bar.askVerse());
     if (!e.shiftKey && !e.altKey && k === "u") return run(() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "underline"));
-    if (e.altKey && !e.shiftKey && (e.code === "Digit2" || e.code === "Digit3")) return run(() => bar.toggleHeading(e.code === "Digit2" ? "h2" : "h3"));
+    // Ctrl+Alt+1, 2 and 3 make a large, medium or small heading; Ctrl+Alt+0 plain text.
+    const digit = /^Digit([0-3])$/.exec(e.code);
+    if (e.altKey && !e.shiftKey && digit) return run(() => bar.setHeading(Number(digit[1])));
     if (e.shiftKey && !e.altKey && (e.code === "Digit8" || e.code === "Digit7")) return run(() => bar.toggleList(e.code === "Digit8" ? "bullet" : "number"));
     if (e.shiftKey && !e.altKey && e.code === "Digit9") return run(() => bar.toggleQuote());
     // Ctrl+] and Ctrl+[ make a heading deeper or higher (a point becomes a sub-point and back).
@@ -228,7 +246,7 @@ export function createEditor(host: HTMLElement, opts: EditorOptions = {}): RichE
 
   function shiftHeading(key: string, by: number) {
     const cur = headings().find((x) => x.key === key);
-    if (cur) setHeadingLevel(key, Math.min(3, Math.max(2, cur.level + by)));
+    if (cur) setHeadingLevel(key, Math.min(3, Math.max(1, cur.level + by)));
   }
 
   function load(md: string) {
@@ -323,6 +341,22 @@ export function createEditor(host: HTMLElement, opts: EditorOptions = {}): RichE
     editor.focus();
   }
 
+  function reveal(key: string) {
+    const el = editor.getElementByKey(key);
+    if (!el) return;
+    // The caret goes there first, then the heading is scrolled to the top (putting the caret in
+    // the text scrolls on its own, which would undo the scroll the other way round).
+    editor.update(() => {
+      const n = $getNodeByKey(key);
+      if (n && $isElementNode(n)) n.selectEnd();
+    }, { discrete: true });
+    editor.focus();
+    requestAnimationFrame(() => el.scrollIntoView({ block: "start", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" }));
+    el.classList.remove("rt-flash");
+    void el.offsetWidth;
+    el.classList.add("rt-flash");
+  }
+
   function caretHeading(): string | null {
     return editor.getEditorState().read(() => {
       let b = topBlock();
@@ -344,18 +378,8 @@ export function createEditor(host: HTMLElement, opts: EditorOptions = {}): RichE
     insertMarkdown,
     headings,
     headingElement: (key) => editor.getElementByKey(key),
-    revealHeading(key) {
-      const el = editor.getElementByKey(key);
-      if (!el) return;
-      el.scrollIntoView({ block: "start", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
-      editor.update(() => {
-        const n = $getNodeByKey(key);
-        if (n && $isElementNode(n)) n.selectEnd();
-      });
-      el.classList.remove("rt-flash");
-      void el.offsetWidth;
-      el.classList.add("rt-flash");
-    },
+    revealHeading: (key) => reveal(key),
+    setFoldKey: (key) => struct.setKey(key),
     moveSection,
     setHeadingLevel,
     addHeading,
@@ -364,6 +388,7 @@ export function createEditor(host: HTMLElement, opts: EditorOptions = {}): RichE
       off.forEach((f) => f());
       if (typeof extra === "function") extra();
       slash.destroy();
+      struct.destroy();
       content.removeEventListener("click", onClick);
       editor.setRootElement(null);
       host.replaceChildren();
@@ -558,14 +583,42 @@ function toolbar(doc: Document, editor: LexicalEditor, opts: EditorOptions, vari
     return p && $isLinkNode(p) ? p.getURL() : null;
   };
 
-  function toggleHeading(tag: "h2" | "h3") {
+  // setHeading makes the caret's block a heading of a size, 0 being plain text. Choosing the size
+  // it already has makes it plain text again.
+  function setHeading(level: number) {
     editor.update(() => {
       const s = sel();
       if (!s) return;
       const b = topBlock();
-      const same = b && $isHeadingNode(b) && (b.getTag() === tag || tag === "h2");
-      $setBlocksType(s, () => (same ? $createParagraphNode() : $createHeadingNode(tag)));
+      const same = !level || (b && $isHeadingNode(b) && b.getTag() === `h${level}`);
+      $setBlocksType(s, () => (same ? $createParagraphNode() : $createHeadingNode(`h${level}` as "h1")));
     });
+  }
+  const headingLevel = () => {
+    const b = topBlock();
+    return b && $isHeadingNode(b) ? Number(b.getTag().slice(1)) : 0;
+  };
+
+  // The heading button offers the three sizes and plain text.
+  function askHeading() {
+    const now = editor.getEditorState().read(headingLevel);
+    const sizes: [number, string, string, string][] = [
+      [1, "Large heading", "h-large", `${MOD}Alt+1`], [2, "Medium heading", "h-medium", `${MOD}Alt+2`],
+      [3, "Small heading", "h-small", `${MOD}Alt+3`], [0, "Normal text", "h-normal", `${MOD}Alt+0`],
+    ];
+    const list = h("div", { class: "menu-list heading-menu" }, sizes.map(([lv, name, cls, keys]) => {
+      const b = h("button", { type: "button", class: `${cls}${lv === now ? " on" : ""}`, "aria-checked": String(lv === now), "data-level": String(lv) },
+        h("span", { class: "hm-name" }, name), h("kbd", { class: "hm-keys" }, keys));
+      b.addEventListener("mousedown", (e) => e.preventDefault());
+      b.addEventListener("click", () => {
+        closePopover();
+        if (lv !== now) setHeading(lv);
+        editor.focus();
+      });
+      return b;
+    }));
+    openPopover(el.querySelector<HTMLElement>("[data-tool=heading]")!, list, { label: "Heading size", menu: true, side: "below" });
+    list.querySelector<HTMLElement>(".on, button")?.focus();
   }
   function toggleList(type: "bullet" | "number") {
     const on = editor.getEditorState().read(isList(type));
@@ -585,7 +638,7 @@ function toolbar(doc: Document, editor: LexicalEditor, opts: EditorOptions, vari
     { id: "italic", label: "Italic", keys: `${MOD}I`, glyph: "I", cls: "t-italic", run: () => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "italic"), active: isFormat("italic") },
     { id: "underline", label: "Underline", keys: `${MOD}U`, glyph: "U", cls: "t-underline", run: () => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "underline"), active: isFormat("underline") },
     "|",
-    { id: "heading", label: "Heading", keys: `${MOD}Alt+2`, glyph: "H", cls: "t-heading", run: () => toggleHeading("h2"), active: isHeading },
+    { id: "heading", label: "Heading size", keys: `${MOD}Alt+1, 2 or 3`, glyph: "H", cls: "t-heading", run: () => askHeading(), active: isHeading },
     { id: "bullets", label: "Bulleted list", keys: `${MOD}Shift+8`, icon: "bullets", run: () => toggleList("bullet"), active: isList("bullet") },
     { id: "numbers", label: "Numbered list", keys: `${MOD}Shift+7`, icon: "numbers", run: () => toggleList("number"), active: isList("number") },
     { id: "quote", label: "Quote", keys: `${MOD}Shift+9`, icon: "quote", run: () => toggleQuote(), active: isQuote },
@@ -609,7 +662,8 @@ function toolbar(doc: Document, editor: LexicalEditor, opts: EditorOptions, vari
     if (t.keys) b.setAttribute("aria-keyshortcuts", t.keys.replace("⌘", "Meta+").replace("Ctrl+", "Control+"));
     if (t.icon) b.append(icon(t.icon));
     else b.textContent = t.glyph ?? "";
-    if (t.active) b.setAttribute("aria-pressed", "false");
+    if (t.active && t.id !== "heading") b.setAttribute("aria-pressed", "false");
+    if (t.id === "heading") b.setAttribute("aria-haspopup", "menu");
     // Keep the selection in the text while a button is used.
     b.addEventListener("mousedown", (e) => e.preventDefault());
     b.addEventListener("click", () => {
@@ -719,7 +773,7 @@ function toolbar(doc: Document, editor: LexicalEditor, opts: EditorOptions, vari
       if (active) b.setAttribute("aria-pressed", String(active()));
     }
   }
-  return { el, sync, askLink, askVerse, toggleHeading, toggleList, toggleQuote };
+  return { el, sync, askLink, askVerse, setHeading, toggleList, toggleQuote };
 }
 
 function insertLinkAtCaret(editor: LexicalEditor, label: string, url: string) {

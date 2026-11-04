@@ -1246,6 +1246,7 @@ input.inline-chip[type=text] { height: 28px; border-radius: 999px; padding: 0 12
 .rich-text h3 { font-size: 1.14rem; margin: 18px 0 4px; }
 .rich-text h4, .rich-text h5, .rich-text h6 { font-size: 1rem; margin: 14px 0 4px; }
 .rich-text > :first-child { margin-top: 0; }
+.rich-text :is(h1, h2, h3, h4, h5, h6) { scroll-margin-top: 72px; }
 .rich-text ul, .rich-text ol { margin: 0 0 12px; padding-left: 1.6em; }
 .rich-text li { margin: 2px 0; }
 .rich-text ul.rt-checklist { padding-left: 0; list-style: none; }
@@ -1268,6 +1269,52 @@ input.inline-chip[type=text] { height: 28px; border-radius: 999px; padding: 0 12
 .rich-text .rt-flash { animation: flash-bg 1.1s ease-out; }
 @keyframes flash-bg { from { background: color-mix(in srgb, var(--fill) 28%, transparent); } to { background: transparent; } }
 .rich-divider { padding: 10px 0 14px; cursor: default; }
+/* Folding: an arrow beside each heading, outside the text; folded sections are hidden. */
+.rich-text .rt-folded-away { display: none; }
+.rich-text .rt-folded::after { content: " …"; color: var(--faint); font-weight: 400; }
+.rt-fold-gutter { position: absolute; top: 0; left: -28px; width: 24px; height: 0; }
+.rt-fold { position: absolute; left: 0; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 6px; background: transparent;
+  color: var(--faint); opacity: 0; display: grid; place-items: center; cursor: pointer; transition: opacity .12s, transform .15s; }
+.rt-fold::before { content: ""; width: 0; height: 0; border-left: 4.5px solid transparent; border-right: 4.5px solid transparent;
+  border-top: 6px solid currentColor; transition: transform .15s; }
+.rt-fold.closed::before { transform: rotate(-90deg); }
+.rt-fold.hover, .rt-fold.closed, .rt-fold:hover, .rt-fold:focus-visible, .rich-editor:focus-within .rt-fold.hover { opacity: 1; }
+.rt-fold:hover { background: var(--ghost-hover); color: var(--fg); border: 0; }
+.rt-fold.closed { color: var(--accent); }
+.rich-compact .rt-fold-gutter { left: -20px; }
+@media (prefers-reduced-motion: reduce) { .rt-fold, .rt-fold::before { transition: none; } }
+/* The outline strip: a mark per heading at the right edge; hovering shows the names. */
+.rt-strip { position: absolute; top: 0; bottom: 0; right: -34px; width: 22px; z-index: 4; }
+.rt-strip-inner { position: sticky; top: 30vh; }
+.rt-strip-marks { display: flex; flex-direction: column; align-items: flex-end; gap: 7px; padding: 6px 2px; }
+.rt-strip-mark { display: block; height: 3px; width: 14px; padding: 0; border: 0; border-radius: 2px; background: var(--line); cursor: pointer; }
+.rt-strip-mark.depth-1 { width: 10px; }
+.rt-strip-mark.depth-2 { width: 6px; }
+.rt-strip-mark.on { background: var(--accent); }
+.rt-strip-mark:hover { background: var(--muted); border: 0; }
+.rt-strip-names { position: absolute; top: -6px; right: -4px; display: none; flex-direction: column; min-width: 200px; max-width: 280px;
+  max-height: 60vh; overflow: auto; padding: 6px; background: var(--pop-bg); border: 1px solid var(--pop-line);
+  border-radius: 10px; box-shadow: var(--pop-shadow); }
+.rt-strip:hover .rt-strip-names, .rt-strip:focus-within .rt-strip-names { display: flex; }
+.rt-strip-name { text-align: left; border: 0; background: none; border-radius: 6px; padding: 5px 8px; font-size: .82rem; line-height: 1.3;
+  color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.rt-strip-name.depth-0 { font-weight: 600; color: var(--fg); }
+.rt-strip-name.depth-1 { padding-left: 18px; }
+.rt-strip-name.depth-2 { padding-left: 30px; color: var(--muted); }
+.rt-strip-name.on { color: var(--accent); }
+.rt-strip-name:hover, .rt-strip-name:focus-visible { background: var(--ghost-hover); border: 0; }
+.grid-body .rt-strip { right: -16px; }
+@media (max-width: 700px) { .rt-strip { display: none; } }
+/* The heading-size menu. */
+.heading-menu { min-width: 230px; }
+.heading-menu button { justify-content: space-between; }
+.heading-menu .hm-name { font-family: var(--reading); font-weight: 600; color: var(--fg); }
+.heading-menu .h-large .hm-name { font-size: 1.3rem; }
+.heading-menu .h-medium .hm-name { font-size: 1.1rem; }
+.heading-menu .h-small .hm-name { font-size: .98rem; }
+.heading-menu .h-normal .hm-name { font-weight: 400; font-size: .95rem; }
+.heading-menu button.on .hm-name { color: var(--accent); }
+.heading-menu .hm-keys { font: inherit; font-size: .72rem; color: var(--faint); }
 .rich-divider hr { border: 0; border-top: 1px solid var(--line); margin: 0; }
 /* A verse quotation: the verses in the reading face, the credit in small sans type. */
 .verse-quote { position: relative; margin: 10px 0 14px; padding: 10px 14px; border-left: 3px solid var(--accent); background: var(--quote-bg);
@@ -1377,8 +1424,10 @@ button.danger-link { color: var(--bad); margin-top: 8px; display: block; }
 .outline-point:hover:not(:disabled) { background: var(--ghost-hover); border: 0; }
 .outline-point.on { background: var(--well-on); color: var(--fg); }
 :root:not([data-theme="dark"]) .outline-point.on { background: var(--rail-on); }
-.outline-point.level-2 { padding-left: 26px; font-size: .82rem; color: var(--muted); }
-.outline-point.level-2.on { color: var(--fg); }
+.outline-point.depth-0 { font-weight: 600; color: var(--fg); }
+.outline-point.depth-1 { padding-left: 24px; font-size: .84rem; }
+.outline-point.depth-2 { padding-left: 42px; font-size: .8rem; color: var(--muted); }
+.outline-point.depth-2.on { color: var(--fg); }
 .outline-point:focus-visible { outline-offset: -2px; }
 .outline-num { flex: none; min-width: 14px; color: var(--faint); font-variant-numeric: tabular-nums; font-size: .8rem; }
 .outline-label { flex: 1; min-width: 0; overflow-wrap: anywhere; }
