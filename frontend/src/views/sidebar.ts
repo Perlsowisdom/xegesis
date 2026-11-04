@@ -100,7 +100,14 @@ function makeSidebar() {
     if (shown.length === 0) {
       tablist.replaceChildren(h("span", { class: "hint" }, "No tools chosen."));
     }
-    if (p.open) load(current);
+    if (p.open) {
+      load(current);
+      // Keep the chosen tab in view when they do not all fit.
+      const b = tabs.get(current);
+      if (b) requestAnimationFrame(() => {
+        if (b.offsetLeft < tablist.scrollLeft || b.offsetLeft + b.offsetWidth > tablist.scrollLeft + tablist.clientWidth) tablist.scrollLeft = b.offsetLeft - 8;
+      });
+    }
   }
 
   function load(id: ToolId) {

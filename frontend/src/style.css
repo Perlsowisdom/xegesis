@@ -154,8 +154,9 @@ kbd { font-family: inherit; font-size: .8rem; border: 1px solid var(--line); bor
 /* Right sidebar */
 .rightbar { grid-column: 3; grid-row: 1; width: 340px; display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--line); background: var(--panel); }
 .rightbar-head { display: flex; align-items: flex-end; gap: 4px; padding: 6px 6px 0 10px; border-bottom: 1px solid var(--line); }
-.tool-tabs { display: flex; gap: 0; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
-.tool-tabs [role="tab"] { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 6px 7px; color: var(--muted); font-size: .85rem; }
+.tool-tabs { position: relative; display: flex; gap: 0; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.tool-tabs [role="tab"] { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 6px 6px; color: var(--muted); font-size: .82rem; flex: none; }
+.tool-tabs [role="tab"]:hover { color: var(--fg); }
 .tool-tabs [role="tab"][aria-selected="true"] { color: var(--fg); border-bottom-color: var(--accent); font-weight: 600; }
 .tool-panels { flex: 1; overflow: auto; padding: 10px 14px 24px; }
 .tool-panel:focus { outline: none; }
