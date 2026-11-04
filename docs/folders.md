@@ -48,6 +48,16 @@ uses), and a list's entries. Their earlier changes stay in the change history so
 of them, but lose their values (`store.Tx.Purge`): what is deleted for good cannot be read back from the
 history either. The purge is logged as a `delete` whose field is `purge`. See ADR 0010.
 
+## Interface
+
+My work (`views/work.ts`) has a column beside each of its views: Folders ("All notes", then the folders, with a "+"
+button that makes one named inline, and a ⋯ menu to rename, nest, move or delete), Tags with their counts, and Writing
+(Sermons, Lists, Reading plans, Reports). Each section folds away and remembers it on the device; the Bin is
+pinned at the bottom. Notes and sermons show as cards (`views/notes.ts`); sermons also as a table of Title,
+Passage, Date preached and Theme (`views/sermons.ts`). Dragging a card or row onto a folder moves it there;
+"Move to folder…" in its ⋯ menu does the same from the keyboard. Double-click or Enter opens an item in the
+Study grid. The Bin (`views/bin.ts`) restores, and deletes for good after asking.
+
 ## Export
 
 `export.data` writes folders as objects of type `folder` (with a `parent` relation and a `position`), and a

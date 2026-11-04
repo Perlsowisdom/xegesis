@@ -15,6 +15,9 @@ type Section = "folders" | "tags" | "writing";
 const OPEN_KEY = "xegesis.work.sections";
 const FOLDERS_KEY = "xegesis.work.openFolders";
 const FOLDER_TYPE = "application/x-xegesis-folder";
+const TAGS_KEY = "xegesis.work.allTags";
+// The Tags section shows this many until "more" is chosen, so Writing stays in reach.
+const FEW_TAGS = 8;
 
 const WRITING: { view: string; label: string; icon: string }[] = [
   { view: "sermons", label: "Sermons", icon: "sermon" },
@@ -38,6 +41,7 @@ export function workSide(go: (target: string) => void): WorkSide {
   let tags: TagCount[] = [];
   let total = 0;
   let binCount = 0;
+  let allTags = loadPref<boolean>(TAGS_KEY, false);
   let editing: { kind: "new"; parent?: string } | { kind: "rename"; id: string } | null = null;
 
   const folderList = h("ul", { class: "work-tree", role: "list" });
@@ -98,8 +102,16 @@ export function workSide(go: (target: string) => void): WorkSide {
       tree.map((t) => folderItem(t, here)),
       editing?.kind === "new" && !editing.parent ? h("li", {}, nameBox("", (name) => create(name))) : null,
       tree.length === 0 && editing?.kind !== "new" ? h("li", { class: "work-hint" }, button("New folder", () => startNew(), { class: "link" }), " for notes and sermons together") : null);
+    // A tag being shown stays listed even when the list is short.
+    const few = allTags || tags.length <= FEW_TAGS + 2 ? tags
+      : tags.filter((t, i) => i < FEW_TAGS || here({ kind: "tag", tag: t.tag }));
     clear(tagList, tags.length === 0 ? h("li", { class: "work-hint" }, "Tags you give notes show here.")
-      : tags.map((t) => h("li", {}, link(scopeHash({ kind: "tag", tag: t.tag }), t.tag, "tag", t.count, here({ kind: "tag", tag: t.tag }), { title: `Notes tagged ${t.tag}` }))));
+      : few.map((t) => h("li", {}, link(scopeHash({ kind: "tag", tag: t.tag }), t.tag, "tag", t.count, here({ kind: "tag", tag: t.tag }), { title: `Notes tagged ${t.tag}` }))),
+    tags.length > FEW_TAGS + 2 ? h("li", {}, button(allTags ? "Fewer tags" : `${tags.length - few.length} more tags`, () => {
+      allTags = !allTags;
+      savePref(TAGS_KEY, allTags);
+      render();
+    }, { class: "work-more" })) : null);
     clear(writingList, WRITING.map((w) => h("li", {}, link(w.view, w.label, w.icon, null, view === w.view))));
     if (view === "bin") bin.setAttribute("aria-current", "page");
     else bin.removeAttribute("aria-current");
