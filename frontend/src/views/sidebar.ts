@@ -2,6 +2,8 @@
 // and Compare; Settings → Right sidebar chooses which show and in what order. Tools follow the
 // passage in the Reader and load only while they are visible. At phone width it is a sheet.
 
+import { installedBibles } from "../bibles";
+import { chip } from "../controls";
 import { Message, Module, Ref, run } from "../api";
 import { button, clear, h } from "../dom";
 import { Column, alignColumns, verseParts } from "../helpers";
@@ -177,12 +179,10 @@ function comparePanel() {
   function renderPicker() {
     const on = new Set(chosen());
     clear(picker, modules.map((m) => {
-      const box = h("input", { type: "checkbox", value: m.id, checked: on.has(m.id) });
-      box.addEventListener("change", () => {
+      return chip({ label: m.abbreviation || m.id, title: m.name, value: m.id, checked: on.has(m.id), onChange: () => {
         savePref(COMPARE_KEY, [...picker.querySelectorAll<HTMLInputElement>("input:checked")].map((b) => b.value));
         void draw();
-      });
-      return h("label", { class: "check chip", title: m.name }, box, " ", m.abbreviation || m.id);
+      } });
     }));
   }
 
@@ -206,7 +206,7 @@ function comparePanel() {
   }
 
   async function refresh() {
-    modules = (await msg.attempt(() => run<Module[]>("bible.modules"))) ?? [];
+    modules = await installedBibles();
     renderPicker();
     await draw();
   }

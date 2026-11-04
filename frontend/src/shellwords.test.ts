@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   RAIL_DEFAULTS, SIDEBAR_DEFAULTS, activeTool, addRecent, gridButtonPlace, isView, moveTool, normalizeProvider, normalizeRail,
-  normalizeReading, normalizeSidebar, normalizeTools, placeForKey, placeOf, providerText, railPlaces, showTool, stepSize,
+  normalizeReading, normalizeSidebar, normalizeTheme, normalizeTools, placeForKey, placeOf, providerText, railPlaces, showTool, stepSize,
   toggleHidden, visibleTools,
 } from "./shellwords";
 
@@ -101,5 +101,14 @@ describe("assistant and recent searches", () => {
     let r: string[] = [];
     for (const q of ["love", "grace", "  Love  ", "", "a", "b", "c", "d", "e", "f"]) r = addRecent(r, q);
     expect(r).toEqual(["f", "e", "d", "c", "b", "a", "Love", "grace"]);
+  });
+});
+
+describe("app theme", () => {
+  it("matches the system unless Light or Dark was chosen", () => {
+    expect(normalizeTheme(undefined)).toBe("system");
+    expect(normalizeTheme("sepia")).toBe("system");
+    expect(normalizeTheme("light")).toBe("light");
+    expect(normalizeTheme("dark")).toBe("dark");
   });
 });

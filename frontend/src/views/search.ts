@@ -1,6 +1,8 @@
 // Search: tabs for words in the installed Bibles, words in the library's books, and books that
 // cite a passage (views/librarysearch.ts).
 
+import { installedBibles } from "../bibles";
+import { chip } from "../controls";
 import { Message, Module, Ref, paramEnum, run } from "../api";
 import { clear, field, h, select } from "../dom";
 import { markSegments } from "../helpers";
@@ -105,11 +107,10 @@ export function searchView() {
       tabs.select(0);
       query.value = asked;
     }
-    installed = (await msg.attempt(() => run<Module[]>("bible.modules"))) ?? [];
+    installed = await installedBibles();
     const checked = new Set([...modules.querySelectorAll<HTMLInputElement>("input:checked")].map((b) => b.value));
     clear(modules, h("span", { class: "hint" }, installed.length ? "Bibles:" : "No Bibles installed."),
-      installed.map((m) => h("label", { class: "check chip" },
-        h("input", { type: "checkbox", value: m.id, checked: checked.size ? checked.has(m.id) : true }), " ", m.abbreviation || m.id)));
+      installed.map((m) => chip({ label: m.abbreviation || m.id, title: m.name, value: m.id, checked: checked.size ? checked.has(m.id) : true })));
     if (asked) await search();
   }
 

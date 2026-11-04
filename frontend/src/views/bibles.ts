@@ -2,6 +2,8 @@
 // installing one from a file or folder. Every action is a bible.* command.
 
 import { CatalogueItem, Message, Module, paramEnum, pick, run } from "../api";
+import { biblesChanged } from "../bibles";
+import { chip } from "../controls";
 import { badge, button, clear, field, h, select } from "../dom";
 import { licenceChooser, licenceLine, plainName, termsText } from "../licence";
 import { kindLabel } from "../markupwords";
@@ -67,7 +69,8 @@ function getBibles(changed: () => void) {
   const search = h("input", { type: "search", placeholder: "Search names", "aria-label": "Search Bibles" });
   const licence = select([["", "Any licence"], ["public_domain", "Public domain"], ["creative_commons", "Free to share"],
     ["open_other", "Other licences"]], "", { "aria-label": "Licence" });
-  const installable = h("input", { type: "checkbox", checked: true });
+  const installableChip = chip({ label: "Only ones Xegesis can install", checked: true });
+  const installable = installableChip.querySelector("input")!;
   const status = h("p", { class: "hint", role: "status" });
   const list = h("div", { class: "table-wrap" });
   const dialog = h("div");
@@ -78,7 +81,7 @@ function getBibles(changed: () => void) {
   const disableButton = button("Turn off catalogues", () => disable(), { hidden: true });
   const toolbar = h("div", { class: "row wrap" },
     what, language, h("div", { class: "grow" }, search), licence,
-    h("label", { class: "check" }, installable, " Only ones Xegesis can install"),
+    installableChip,
     button("Refresh catalogues", () => refresh()),
     disableButton);
 
@@ -238,6 +241,8 @@ function installedList(changed: () => void) {
       run<{ module: string; name: string; version: string; installed_version: string }[]>("bible.updates").catch(() => []),
     ]);
     if (!ms) return;
+    // This list is shown again after every install, removal and licence change: tell the panes.
+    void biblesChanged();
     clear(updates, ups.length ? h("p", { class: "msg", role: "status" },
       `Updates are available for ${ups.map((u) => `${u.name} (${u.installed_version || "?"} → ${u.version})`).join(", ")}. ` +
       "Update them from Get Bibles.") : null);

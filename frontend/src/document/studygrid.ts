@@ -333,7 +333,17 @@ export function studyGrid(o: StudyGridOptions) {
     const menu = m?.view.menu ?? {};
     // A menu item that opens another popover waits for the menu to close first.
     const later = (fn: () => void) => () => setTimeout(fn, 0);
+    // A narrow pane hides its Bibles and link buttons (style.css); they are offered here instead.
+    const ui = uis.get(paneId);
+    const folded = (x?: HTMLElement) => !!x && !x.hidden && getComputedStyle(x).display === "none";
+    const extra: HTMLElement[] = [];
+    if (menu.bibles && folded(ui?.tools)) extra.push(button("Bibles to show…", later(() => menu.bibles!(anchor))));
+    if (p && folded(ui?.link)) {
+      extra.push(button(p.linked ? "Unlink from the other panes" : "Link to the other panes", () => setGrid(setLinked(g, paneId, !p.linked)),
+        { title: p.linked ? "Keep this pane's own passage" : "Follow the shared passage" }));
+    }
     return h("div", { class: "menu-list" },
+      extra,
       button("Contents", later(() => menu.contents?.(anchor)), { disabled: !menu.contents }),
       button("History", later(() => menu.history?.(anchor)), { disabled: !menu.history }),
       button("Search in this", later(() => menu.search?.(anchor)), { disabled: !menu.search }),

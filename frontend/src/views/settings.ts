@@ -6,10 +6,11 @@
 // Pages are addressed as #settings/<page>, so Help and the sidebar can link straight to one.
 
 import { Message, run } from "../api";
+import { segmented, settingRow, tick } from "../controls";
 import { badge, button, clear, field, h } from "../dom";
 import { icon } from "../icons";
 import { railControls } from "../shell/rail";
-import { LOCAL_PROVIDERS, ONLINE_PROVIDERS, Provider, ToolId, moveTool, providerText, showTool, toolLabel } from "../shellwords";
+import { APP_THEMES, LOCAL_PROVIDERS, ONLINE_PROVIDERS, Provider, ToolId, moveTool, providerText, showTool, toolLabel } from "../shellwords";
 import { prefs, setPrefs } from "../state";
 import { commandsView } from "./commands";
 import { dataSection } from "./data";
@@ -103,11 +104,16 @@ function pageEl(title: string, intro: string | null, ...children: (Node | null)[
 function appearancePage(): PageView {
   const rail = h("div", {});
   const reading = h("div", {});
+  const theme = segmented({ label: "Theme", value: prefs.theme, options: APP_THEMES, onChange: (v) => setPrefs({ theme: v }) });
   const el = pageEl("Appearance", null,
-    h("h3", {}, "Rail"), rail,
+    h("h3", {}, "Theme"),
+    h("div", { class: "settings-card" },
+      settingRow("Colours", "Light, dark, or the same as your computer. Kept on this device.", theme)),
+    h("h3", {}, "Rail"),
+    h("div", { class: "settings-card" }, rail),
     h("h3", {}, "Reading"),
     h("p", { class: "hint" }, "How Bible text looks in Read mode. The Aa button in the Reader changes the same settings."),
-    reading);
+    h("div", { class: "settings-card" }, reading));
   return {
     el,
     show: () => {
@@ -117,21 +123,30 @@ function appearancePage(): PageView {
   };
 }
 
+const TOOL_HINTS: Record<ToolId, string> = {
+  chat: "Ask questions about what you are reading.",
+  related: "Cross-references, commentaries and your notes for the passage.",
+  notes: "Your notes on the passage.",
+  word: "The original word under a tapped word.",
+  compare: "The passage in several Bibles, verse by verse.",
+};
+
 function sidebarPage(): PageView {
   const list = h("ol", { class: "tool-order" });
   const toggle = button("", () => setPrefs({ sidebar: { ...prefs.sidebar, open: !prefs.sidebar.open } }));
-  const el = pageEl("Right sidebar", "Choose the tools in the right sidebar and their order. Untick a tool to hide it.", list,
+  const el = pageEl("Right sidebar", "Choose which tools appear in the right sidebar, and their order.", list,
     h("div", { class: "row wrap" }, toggle));
 
   function render(focus?: { id: ToolId; which: "up" | "down" | "box" }) {
     toggle.textContent = prefs.sidebar.open ? "Hide the sidebar now" : "Show the sidebar now";
     const tools = prefs.sidebar.tools;
     clear(list, tools.map((t, i) => {
-      const box = h("input", { type: "checkbox", checked: t.shown, "data-tool": t.id });
-      box.addEventListener("change", () => {
-        setPrefs({ sidebar: { ...prefs.sidebar, tools: showTool(prefs.sidebar.tools, t.id, box.checked) } });
-        render({ id: t.id, which: "box" });
-      });
+      const box = tick({ label: toolLabel(t.id), hint: TOOL_HINTS[t.id], checked: t.shown, attrs: { "data-tool": t.id },
+        onChange: (on) => {
+          setPrefs({ sidebar: { ...prefs.sidebar, tools: showTool(prefs.sidebar.tools, t.id, on) } });
+          render({ id: t.id, which: "box" });
+        } });
+      box.classList.add("grow");
       const move = (by: -1 | 1) => {
         setPrefs({ sidebar: { ...prefs.sidebar, tools: moveTool(prefs.sidebar.tools, t.id, by) } });
         render({ id: t.id, which: by < 0 ? "up" : "down" });
@@ -141,8 +156,7 @@ function sidebarPage(): PageView {
           type: "button", class: "icon-btn", "aria-label": `Move ${toolLabel(t.id)} ${which}`, title: `Move ${which}`, disabled,
           "data-tool": t.id, "data-which": which, onclick: () => move(by),
         }, icon(which));
-      return h("li", { class: "tool-row" },
-        h("label", { class: "check grow" }, box, " ", toolLabel(t.id)),
+      return h("li", { class: `tool-row${t.shown ? "" : " off"}` }, box,
         arrow("up", -1, i === 0), arrow("down", 1, i === tools.length - 1));
     }));
     if (focus) {

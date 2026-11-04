@@ -4,7 +4,8 @@
 // back over the page when the pointer reaches the left edge, from the "show rail" button, or from
 // Alt+0 or F6. At phone width the same element becomes a dock at the bottom (style.css).
 
-import { button, h, id } from "../dom";
+import { chip, segmented, settingRow, toggleSwitch } from "../controls";
+import { button, h } from "../dom";
 import { openGridPresets } from "../gridhook";
 import { icon } from "../icons";
 import { closePopover, popoverOpen, togglePopover } from "../popover";
@@ -173,27 +174,22 @@ export function rail(shell: HTMLElement, hooks: RailHooks) {
 // Appearance. Each change is saved at once.
 export function railControls(): HTMLElement {
   const r = prefs.rail;
-  const name = id("width");
-  const radio = (value: "condensed" | "expanded", label: string) => {
-    const box = h("input", { type: "radio", name, value, checked: r.width === value });
-    box.addEventListener("change", () => setPrefs({ rail: { ...prefs.rail, width: value } }));
-    return h("label", { class: "check" }, box, " ", label);
-  };
-  const check = (label: string, on: boolean, set: (on: boolean) => void, hint?: string) => {
-    const box = h("input", { type: "checkbox", checked: on });
-    box.addEventListener("change", () => set(box.checked));
-    return h("div", { class: "check-row" }, h("label", { class: "check" }, box, " ", label), hint ? h("small", { class: "hint" }, hint) : null);
-  };
+  const set = (patch: Partial<typeof r>) => setPrefs({ rail: { ...prefs.rail, ...patch } });
   return h("div", { class: "rail-controls" },
-    h("fieldset", {}, h("legend", {}, "Width"),
-      radio("condensed", "Condensed: icons only"),
-      radio("expanded", "Expanded: icons and labels")),
-    h("fieldset", {}, h("legend", {}, "Show on the rail"),
-      HIDEABLE.map((p) => check(placeLabel(p), !r.hidden.includes(p), (on) => setPrefs({ rail: toggleHidden(prefs.rail, p, !on) })))),
-    check("Hide automatically", r.autoHide, (on) => setPrefs({ rail: { ...prefs.rail, autoHide: on } }),
-      "The rail comes back when you point at the left edge of the window, or press Alt+0."),
-    check("Grid presets on the rail", r.gridOnRail, (on) => setPrefs({ rail: { ...prefs.rail, gridOnRail: on } }),
-      "In Study mode. When off, they are in the Reader's top bar."));
+    settingRow("Width", "Icons only, or icons with their names.", segmented({
+      label: "Rail width", value: r.width, small: true,
+      options: [["condensed", "Condensed"], ["expanded", "Expanded"]],
+      onChange: (width) => set({ width }),
+    })),
+    h("div", { class: "setting stacked" },
+      h("div", { class: "setting-text" }, h("span", { class: "setting-label", id: "rail-show" }, "Show on the rail"),
+        h("small", { class: "hint" }, "The Reader is always there.")),
+      h("div", { class: "chips-row", role: "group", "aria-labelledby": "rail-show" },
+        HIDEABLE.map((p) => chip({ label: placeLabel(p), checked: !r.hidden.includes(p), onChange: (on) => setPrefs({ rail: toggleHidden(prefs.rail, p, !on) }) })))),
+    toggleSwitch({ label: "Hide automatically", checked: r.autoHide, onChange: (autoHide) => set({ autoHide }),
+      hint: "The rail comes back when you point at the left edge of the window, or press Alt+0." }),
+    toggleSwitch({ label: "Grid presets on the rail", checked: r.gridOnRail, onChange: (gridOnRail) => set({ gridOnRail }),
+      hint: "In Study mode. When off, they are in the Reader's top bar." }));
 }
 
 function helpContent(hooks: RailHooks): HTMLElement {

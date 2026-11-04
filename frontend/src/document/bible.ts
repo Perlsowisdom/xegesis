@@ -3,6 +3,8 @@
 // chapter. Words tagged with Strong's numbers open in the sidebar's Word tool.
 
 import { Highlight, Message, Module, Ref, run } from "../api";
+import { onBibles } from "../bibles";
+import { chip } from "../controls";
 import { button, clear, h } from "../dom";
 import {
   Book, Column, Verse, alignColumns, highlightFor, markSegments, neighbourChapters, selectionRuns, verseParts, verseRangeText,
@@ -43,10 +45,11 @@ export function bibleDoc(host: DocHost): DocView {
   const selbar = h("div", { class: "selbar", role: "toolbar", "aria-label": "Selected verses", hidden: true });
   const picker = h("div", { class: "module-picker", role: "group", "aria-label": "Bibles to show" });
   const biblesBtn = h("button", { type: "button", class: "bibles-btn", "aria-haspopup": "dialog", "aria-expanded": "false", title: "Choose the Bibles to show" }, "Bibles");
-  biblesBtn.addEventListener("click", () => togglePopover(biblesBtn, () => h("div", { class: "pop-body" },
+  const openBibles = (anchor: HTMLElement) => togglePopover(anchor, () => h("div", { class: "pop-body" },
     h("h2", { class: "pop-title" }, "Bibles to show"),
     h("p", { class: "hint" }, "Choose two or more to read them side by side."),
-    picker), { label: "Bibles to show", side: "below" }));
+    picker), { label: "Bibles to show", side: "below" });
+  biblesBtn.addEventListener("click", () => openBibles(biblesBtn));
   const el = h("div", { class: "doc doc-bible" }, msg.el, selbar, text);
 
   const words = { onWord: side.showWord, onRef: (osis: string) => void go(osis) };
@@ -253,15 +256,13 @@ export function bibleDoc(host: DocHost): DocView {
   function renderPicker() {
     const on = new Set(chosen());
     clear(picker, modules.length === 0 ? h("span", { class: "hint" }, "No Bibles installed.") : modules.map((m) => {
-      const box = h("input", { type: "checkbox", value: m.id, checked: on.has(m.id) });
-      box.addEventListener("change", () => {
+      return chip({ label: m.abbreviation || m.id, title: m.name, value: m.id, checked: on.has(m.id), onChange: () => {
         const ids = [...picker.querySelectorAll<HTMLInputElement>("input:checked")].map((b) => b.value);
         // The choice is remembered for this tab, and as the default for new Bible tabs.
         setModules(ids);
         host.update({ modules: ids });
         void read(host.ref());
-      });
-      return h("label", { class: "check chip", title: m.name }, box, " ", m.abbreviation || m.id);
+      } });
     }));
   }
 
@@ -349,6 +350,7 @@ export function bibleDoc(host: DocHost): DocView {
 
   const menu = {
     find,
+    bibles: openBibles,
     search(anchor: HTMLElement) {
       const q = h("input", { type: "search", "aria-label": "Search in these Bibles", placeholder: "Words to find", autocomplete: "off" });
       const form = h("form", { class: "pop-body", role: "search" }, h("h2", { class: "pop-title" }, "Search in this"), q);
@@ -373,6 +375,14 @@ export function bibleDoc(host: DocHost): DocView {
     },
   };
 
+  // A Bible installed or removed while this pane is open shows at once.
+  const stopBibles = onBibles((list) => {
+    if (!alive) return;
+    modules = list;
+    renderPicker();
+    void read(host.ref());
+  });
+
   void (async () => {
     [modules, books] = await Promise.all([bibleModules(), bibleBooks()]);
     if (!alive) return;
@@ -392,6 +402,7 @@ export function bibleDoc(host: DocHost): DocView {
     destroy() {
       alive = false;
       seq++;
+      stopBibles();
     },
   };
 }

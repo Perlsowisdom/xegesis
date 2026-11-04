@@ -5,11 +5,12 @@
 // (api.ts); the shell itself only switches views.
 
 import { bound, onEvent } from "./api";
+import { biblesChanged } from "./bibles";
 import { button, h } from "./dom";
 import { closePopover } from "./popover";
 import { rail } from "./shell/rail";
 import { PLACES, PlaceId, isView, placeForKey, placeOf, viewLabel } from "./shellwords";
-import { loadPref, onPrefs, prefs, savePref, setNavigator } from "./state";
+import { applyTheme, loadPref, onPrefs, prefs, savePref, setNavigator } from "./state";
 import { biblesView } from "./views/bibles";
 import { libraryView } from "./views/library";
 import { listsView } from "./views/lists";
@@ -189,9 +190,17 @@ function boot(tries = 10) {
     show("library");
     view("library").drop?.(paths as string[]);
   });
-  onEvent("library:changed", () => views.get("library")?.changed?.());
+  onEvent("library:changed", () => {
+    views.get("library")?.changed?.();
+    void biblesChanged();
+  });
+  // A Bible installed from the command line or another window shows when you come back.
+  window.addEventListener("focus", () => void biblesChanged());
   const start = location.hash.slice(1);
   if (!follow(location.hash)) show(start && isView(start.split("/")[0]) ? start : "reader");
 }
 
+// The theme is set before the first paint, so a Light choice never flashes dark.
+applyTheme();
+onPrefs(applyTheme);
 window.addEventListener("load", () => boot());

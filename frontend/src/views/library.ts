@@ -3,6 +3,7 @@
 // selection. Every action is a library.* command.
 
 import { AddResult, CollectionNode, Facet, Folder, Item, ItemSummary, Message, Vocabulary, pick, pickFiles, run } from "../api";
+import { segmented, segmentedValue, setSegmented } from "../controls";
 import { badge, button, clear, field, h, select } from "../dom";
 import { changedFields, formatTime, pageLabel } from "../helpers";
 import { collectionsSidebar } from "../collections";
@@ -155,7 +156,8 @@ function catalogue(getFolders: () => Folder[], getSide: () => ReturnType<typeof 
   const folder = select([["", "All folders"]], "");
   const typeSel = select([["", "Any type"]], "");
   const tradSel = select([["", "Any tradition"]], "");
-  const bySel = select([["", "Anyone"], ["auto", "Set automatically"], ["user", "Set by you"]], "");
+  const bySel = segmented({ label: "Chosen by", value: "", small: true, options: [["", "Anyone"], ["auto", "Automatically"], ["user", "By you"]],
+    onChange: () => { offset = 0; refresh(); } });
   let vocab: Vocabulary = { types: [], traditions: [] };
   const table = h("div", { class: "table-wrap", "aria-live": "polite" });
   const pager = h("div", { class: "row" });
@@ -172,7 +174,8 @@ function catalogue(getFolders: () => Folder[], getSide: () => ReturnType<typeof 
   // tradition, year and author for browsing.
   const more = h("details", { class: "more-filters" }, h("summary", {}, "More filters"),
     h("div", { class: "filters" }, field("Author", author), field("Folder", folder),
-      field("Type", typeSel), field("Tradition", tradSel), field("Chosen", bySel)));
+      field("Type", typeSel), field("Tradition", tradSel),
+      h("div", { class: "field" }, h("span", { class: "field-label" }, "Chosen"), bySel)));
   const filters = h("form", { role: "search", "aria-label": "Filter books" },
     h("div", { class: "row wrap" }, field("Title", text), h("button", { type: "submit", class: "primary" }, "Search")), more);
   filters.addEventListener("submit", (e) => {
@@ -180,7 +183,7 @@ function catalogue(getFolders: () => Folder[], getSide: () => ReturnType<typeof 
     offset = 0;
     refresh();
   });
-  for (const s of [folder, typeSel, tradSel, bySel]) s.addEventListener("change", () => { offset = 0; refresh(); });
+  for (const s of [folder, typeSel, tradSel]) s.addEventListener("change", () => { offset = 0; refresh(); });
   const rules = traditionsPanel(() => { loadVocab().then(refresh); });
   // Xegesis sets types by itself; this re-runs it for books whose type was left unset.
   rules.el.append(h("p", {}, button("Look again at books without a type", suggestAll)));
@@ -283,7 +286,7 @@ function catalogue(getFolders: () => Folder[], getSide: () => ReturnType<typeof 
     if (since) p.added_since = since;
     if (typeSel.value) p.type = typeSel.value;
     if (tradSel.value) p.tradition = tradSel.value;
-    if (bySel.value) p.set_by = bySel.value;
+    if (segmentedValue(bySel)) p.set_by = segmentedValue(bySel);
     const r = await msg.attempt(() => run<{ items: ItemSummary[]; total: number }>("library.items", p));
     if (!r) return;
     reviewing.hidden = !since;
@@ -360,7 +363,8 @@ function catalogue(getFolders: () => Folder[], getSide: () => ReturnType<typeof 
       offset = 0;
       collection = null;
       getSide().reset();
-      text.value = author.value = folder.value = typeSel.value = tradSel.value = bySel.value = "";
+      text.value = author.value = folder.value = typeSel.value = tradSel.value = "";
+      setSegmented(bySel, "");
       refresh();
       el.scrollIntoView({ block: "start" });
     },

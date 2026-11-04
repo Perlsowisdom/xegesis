@@ -206,6 +206,15 @@ export function stepSize(size: number, by: -1 | 1): number {
 
 // Assistant ----------------------------------------------------------------------------------------
 
+// The app's colours: Match the system (the default), or always Light or Dark. Read mode's page
+// colour (ReadingPrefs.theme) is separate.
+export type AppTheme = "system" | "light" | "dark";
+export const APP_THEMES: [AppTheme, string][] = [["system", "Match the system"], ["light", "Light"], ["dark", "Dark"]];
+
+export function normalizeTheme(v: unknown): AppTheme {
+  return v === "light" || v === "dark" ? v : "system";
+}
+
 export type Provider = "off" | "claude" | "openai" | "gemini" | "openrouter" | "claude-code" | "codex" | "local";
 
 export const ONLINE_PROVIDERS: { id: Provider; label: string }[] = [
