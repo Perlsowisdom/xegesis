@@ -1,6 +1,6 @@
 # 0010: Deleting for good erases values from the history
 
-Status: Proposed (T34c). Extends 0004.
+Status: Accepted (approved by the user, 3 November 2026; T34c). Extends 0004.
 
 ## Context
 
