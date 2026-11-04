@@ -32,7 +32,10 @@ Small issues to fold into the next task that touches each area, or a tidy-up pas
 - Next stages: T34c (Library and My work: Filter popover, folders holding notes and sermons,
   collapsible sections, bin) and T36 (the AI assistant).
 
-## User testing of T34a/T34b (3 November 2026): fix first
+## User testing of T34a/T34b (3 November 2026): fixed 3 November (branch m2/t34-fixes)
+
+All five fixed. Left: some secondary forms (export options, plan weekdays, licence choices, Move to…)
+still use native selects or tick-box lists rather than the new controls.
 
 1. **The study grid doesn't fill the window.** Three panes are squeezed into about 300px on the left,
    with the header controls wrapping, text one word per line, and horizontal scrollbars in each pane.
