@@ -78,3 +78,26 @@ describe("reading", () => {
     expect(parseMarkdown("> a")[0]).toMatchObject({ type: "quote" });
   });
 });
+
+describe("underline, dividers and verse quotations", () => {
+  it("round-trips them", () => {
+    for (const md of [
+      "Some <u>underlined</u> and **<u>bold underlined</u>** text",
+      "Above\n\n---\n\nBelow",
+      "> **28** And we know that all things work together for good.\n> — [Romans 8:28](#passage/Rom.8.28) (KJV). Public domain.",
+      "> **1** In the beginning.\n>\n> — [Genesis 1:1](#passage/Gen.1.1) (WEB)",
+    ]) expect(round(md)).toBe(md);
+  });
+  it("reads a credit line as a verse quotation", () => {
+    const [b] = parseMarkdown("> **28** text\n> — [Rom 8:28](#passage/Rom.8.28) (KJV)");
+    expect(b).toEqual({ type: "versequote", lines: ["**28** text", "— [Rom 8:28](#passage/Rom.8.28) (KJV)"] });
+  });
+  it("keeps a plain quote a quote", () => {
+    expect(parseMarkdown("> just quoted\n> — said someone")[0]).toMatchObject({ type: "versequote" });
+    expect(parseMarkdown("> just quoted\n> more")[0]).toMatchObject({ type: "quote" });
+  });
+  it("reads underline", () => {
+    expect(parseMarkdown("<u>a</u>")[0]).toEqual({ type: "paragraph", spans: [{ text: "a", underline: true }] });
+    expect(round("<u>unclosed")).toBe("<u>unclosed");
+  });
+});

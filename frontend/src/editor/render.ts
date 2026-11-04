@@ -3,6 +3,7 @@
 
 import { h } from "../dom";
 import { Block, Span, parseMarkdown } from "./markdown";
+import { verseQuoteEl } from "./versequote";
 
 export function renderMarkdown(md: string): HTMLElement {
   return h("div", { class: "md" }, parseMarkdown(md).map(block));
@@ -16,6 +17,10 @@ function block(b: Block): Node {
       return h("blockquote", {}, inline(b.spans));
     case "list":
       return h(b.ordered ? "ol" : "ul", {}, b.items.map((it) => h("li", {}, inline(it))));
+    case "divider":
+      return h("hr", { class: "md-hr" });
+    case "versequote":
+      return verseQuoteEl(b.lines);
     default:
       return b.spans.length === 0 ? h("p", { class: "md-empty", "aria-hidden": "true" }) : h("p", {}, inline(b.spans));
   }
@@ -26,6 +31,7 @@ function inline(spans: Span[]): Node[] {
     if (s.br) return h("br");
     let n: Node = document.createTextNode(s.text);
     if (s.code) n = h("code", {}, n);
+    if (s.underline) n = h("u", {}, n);
     if (s.italic) n = h("em", {}, n);
     if (s.bold) n = h("strong", {}, n);
     // Links to app addresses (#passage/…, as saved reports have) can be followed; others only show.

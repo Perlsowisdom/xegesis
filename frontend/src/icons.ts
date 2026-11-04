@@ -30,6 +30,16 @@ const PATHS: Record<string, string> = {
   filter: '<path d="M4 5.5h16l-6 7.5v5.5l-4 1.5v-7z"/>',
   covers: '<rect x="4" y="4" width="6.5" height="7" rx="1"/><rect x="13.5" y="4" width="6.5" height="7" rx="1"/><rect x="4" y="13.5" width="6.5" height="7" rx="1"/><rect x="13.5" y="13.5" width="6.5" height="7" rx="1"/>',
   rows: '<path d="M4 6h16M4 12h16M4 18h16"/>',
+  bullets: '<path d="M10 6.5h10M10 12h10M10 17.5h10"/><circle cx="5" cy="6.5" r="1.3" fill="currentColor" stroke="none"/><circle cx="5" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="5" cy="17.5" r="1.3" fill="currentColor" stroke="none"/>',
+  numbers: '<path d="M10 6.5h10M10 12h10M10 17.5h10"/><path d="M4 4.8l1.4-.8v5M3.6 10.4c.3-.6 1-1 1.7-.8.9.3 1 1.2.4 1.9L3.6 14h2.6M3.7 16.2c.4-.4 1-.6 1.6-.4.8.3.8 1.3 0 1.6.9.2 1 1.4.1 1.7-.6.2-1.3 0-1.7-.4" stroke-width="1.3"/>',
+  quote: '<path d="M5 17.5c0-4 1-7.5 4.5-9.5M5 17.5h4v-4H5zM14 17.5c0-4 1-7.5 4.5-9.5M14 17.5h4v-4h-4z"/>',
+  chevron: '<path d="M7 10l5 5 5-5"/>',
+  calendar: '<rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 9.5h17M8 3v4M16 3v4"/>',
+  copy: '<rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5V6a1.5 1.5 0 0 0-1.5-1.5H6A1.5 1.5 0 0 0 4.5 6v8A1.5 1.5 0 0 0 6 15.5h2.5"/>',
+  pen: '<path d="M4 20l1-4.5L15.5 5a2 2 0 0 1 3 3L8 18.5z"/><path d="M13.5 7l3 3"/>',
+  highlight: '<path d="M14.5 4.5l5 5-8.5 8.5H6v-5z"/><path d="M4 20.5h16"/>',
+  contents: '<path d="M4 6h16M4 12h16M4 18h10"/>',
+  drag: '<path d="M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01" stroke-width="2.6"/>',
   unlink:'<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/><path d="M4 4l16 16"/>',
 };
 

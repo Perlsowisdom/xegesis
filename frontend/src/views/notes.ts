@@ -7,7 +7,8 @@ import { Message, Note, run } from "../api";
 import { openInStudy } from "../document/open";
 import { button, clear, h, select } from "../dom";
 import { icon } from "../icons";
-import { deleteNote, historyDrawer, noteForm, noteName, placeOf } from "../notes";
+import { deleteNote, historyDrawer, noteName, placeOf } from "../notes";
+import { NotePage, notePage } from "../notepage";
 import { openPopover } from "../popover";
 import { openExport } from "../printexport";
 import { untitled } from "../sermonwords";
@@ -15,7 +16,7 @@ import { navigate } from "../state";
 import {
   WorkItem, actionMenu, draggableItem, emptyState, folderName, loadFolders, moreButton, moveMenu, onWorkChanged, workChanged,
 } from "../work";
-import { Scope, editedText, firstLine, newChoices, preachedText, scopeOf } from "../workwords";
+import { Scope, editedText, firstLine, newChoices, preachedText, scopeHash, scopeOf } from "../workwords";
 import type { SermonDoc } from "./sermons";
 
 interface Sources {
@@ -39,13 +40,15 @@ export function notesSectionView() {
   const chipsRow = h("div", { class: "chips-row active-chips" });
   const newBtn = h("button", { type: "button", class: "primary new-btn", "aria-haspopup": "menu", "aria-expanded": "false", "aria-keyshortcuts": "Alt+N" }, icon("plus"), h("span", {}, "New"));
   const list = h("ul", { class: "work-cards", "aria-label": "Notes and sermons" });
-  const editor = h("div", { class: "note-editor" });
   const more = h("div", { class: "row center" });
   const drawer = historyDrawer(msg, () => void refresh());
-  const el = h("div", { class: "view work-view" },
+  const index = h("div", { class: "notes-index" },
     h("div", { class: "work-head" }, h("div", { class: "work-heading" }, title, sub), newBtn),
     h("div", { class: "work-tools" }, query, filterBtn, chipsRow),
-    msg.el, editor, list, more, drawer.el);
+    msg.el, list, more);
+  const pageHost = h("div", { class: "work-page", hidden: true });
+  const el = h("div", { class: "view work-view" }, index, pageHost, drawer.el);
+  let page: NotePage | null = null;
 
   let scope: Scope = { kind: "all" };
   let cards: Card[] = [];
@@ -171,8 +174,8 @@ export function notesSectionView() {
     const line = firstLine(n.body);
     const place = placeOf(n);
     const li = card(item, "Note", "notes", open, (b) => actionMenu(b, `Actions for ${noteName(n)}`, [
+      ["Open here", () => openPage(n.id)],
       ["Open in Study", open],
-      ["Edit details", () => edit(n)],
       ["Move to folder…", () => moveMenu(b, msg, item)],
       ["History", () => void drawer.open(n)],
       ["Print or save…", () => openExport({ title: noteName(n), sources: [{ kind: "note", id: n.id }] })],
@@ -215,21 +218,46 @@ export function notesSectionView() {
 
   // Editing and making things -----------------------------------------------------------------------
 
-  function edit(n: Note | null) {
-    clear(editor, noteForm(msg, {
-      note: n,
-      folderId: !n && scope.kind === "folder" ? scope.id : undefined,
-      tags: !n && scope.kind === "tag" ? [scope.tag] : undefined,
-      onDone: (saved) => {
-        clear(editor);
-        if (!saved) return;
-        msg.ok(n ? "Note saved." : "Note made. Double-click it to open it in Study.");
-        selected = saved.id;
-        workChanged();
-      },
-    }));
-    editor.scrollIntoView({ block: "nearest" });
+  // openPage shows one note as a page in place of the list; a new note when no id is given.
+  function openPage(id?: string) {
+    void closePage(false);
+    const back = button("", () => void closePage(true), { class: "crumb crumb-back", title: "Back to the list" });
+    back.append(icon("prev"), h("span", {}, "My work"));
+    page = notePage({
+      id,
+      folderId: !id && scope.kind === "folder" ? scope.id : undefined,
+      tags: !id && scope.kind === "tag" ? [scope.tag] : undefined,
+      home: back,
+      onSaved: (n) => { selected = n.id; },
+      onDeleted: () => void closePage(true),
+      more: [["Open in Study", () => {
+        const n = page?.note();
+        if (n) openInStudy({ kind: "note", target: n.id, title: noteName(n) });
+      }]],
+    });
+    clear(pageHost, page.el);
+    index.hidden = true;
+    pageHost.hidden = false;
+    main()?.scrollTo({ top: 0 });
   }
+
+  async function closePage(showList: boolean) {
+    const p = page;
+    page = null;
+    if (p) {
+      await p.flush();
+      p.destroy();
+    }
+    if (!showList) return;
+    clear(pageHost);
+    pageHost.hidden = true;
+    index.hidden = false;
+    await refresh();
+    list.querySelector<HTMLElement>(".work-card.on")?.focus();
+  }
+
+  const main = () => el.closest("main");
+  const edit = (n: Note | null) => openPage(n?.id);
 
   async function newSermon() {
     const folder = scope.kind === "folder" ? scope.id : undefined;
@@ -289,13 +317,20 @@ export function notesSectionView() {
     el,
     focus: () => query.focus(),
     show: async () => {
-      const next = scopeOf(location.hash);
+      const next = /^#notes\/note\//.test(location.hash) ? scope : scopeOf(location.hash);
+      // #notes/note/<id> opens one note's page, so links and other views can point at it.
+      const asked = /^#notes\/note\/(.+)$/.exec(location.hash)?.[1];
+      if (asked) {
+        history.replaceState(null, "", `#${scopeHash(scope)}`);
+        openPage(decodeURIComponent(asked));
+        return;
+      }
       if (JSON.stringify(next) !== JSON.stringify(scope)) {
         scope = next;
         limit = PAGE;
         query.value = "";
-        clear(editor);
       }
+      if (page) await closePage(true);
       await Promise.all([loadSources(), refresh()]);
     },
   };

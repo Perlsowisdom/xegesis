@@ -118,6 +118,9 @@ func inlineHTML(spans []Span) string {
 		if s.Code {
 			t = "<code>" + t + "</code>"
 		}
+		if s.Under {
+			t = "<u>" + t + "</u>"
+		}
 		if s.Italic {
 			t = "<em>" + t + "</em>"
 		}

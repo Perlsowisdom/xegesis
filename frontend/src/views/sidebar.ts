@@ -9,7 +9,8 @@ import { button, clear, h } from "../dom";
 import { Column, alignColumns, verseParts } from "../helpers";
 import { icon } from "../icons";
 import { WordInfo } from "../markup";
-import { notesPanel } from "../notes";
+import { openInStudy } from "../document/open";
+import { noteName, notesPanel } from "../notes";
 import { TOOLS, ToolId, activeTool, visibleTools } from "../shellwords";
 import { loadPref, navigate, onPassage, onPrefs, prefs, savePref, setPassage, setPrefs, state } from "../state";
 import { relatedPanel, wordPanel } from "./study";
@@ -31,8 +32,8 @@ function makeSidebar() {
   const related = relatedPanel(go);
   const word = wordPanel(go);
   const notes = notesPanel({
-    heading: "Notes on this passage",
     scope: () => (state.parsed ? { ref: state.parsed.osis, display: state.parsed.display } : null),
+    openTab: (n) => openInStudy({ kind: "note", target: n.id, title: noteName(n) }),
   });
   const compare = comparePanel();
   const tools: Record<ToolId, Tool> = {
@@ -135,6 +136,11 @@ function makeSidebar() {
     newNote(text: string) {
       open("notes");
       notes.create(text);
+    },
+    // newNoteOn starts a note on a place in a book.
+    newNoteOn(place: { itemId: string; title: string; locator: Record<string, unknown> }) {
+      open("notes");
+      notes.createOn(place);
     },
   };
 }

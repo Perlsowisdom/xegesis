@@ -17,7 +17,7 @@ import (
 var (
 	headingRe = regexp.MustCompile(`^(#{1,6}) (\S.*)$`)
 	bulletRe  = regexp.MustCompile(`^- \S`)
-	quoteRe   = regexp.MustCompile(`^> \S`)
+	quoteRe   = regexp.MustCompile(`^>( \S|$)`)
 	linkRe    = regexp.MustCompile(`^\[([^\]\n]+)\]\(([^\s()]+)\)`)
 )
 
@@ -57,16 +57,19 @@ func parseBlock(src string) []Block {
 		}
 		return out
 	}
-	kind, cut := Para, 0
+	kind, cut := Para, false
 	if all(lines, func(i int, l string) bool { return quoteRe.MatchString(l) }) {
-		kind, cut = Quote, 2
+		kind, cut = Quote, true
 	}
 	var spans []Span
 	for i, l := range lines {
 		if i > 0 {
 			spans = append(spans, Span{Break: true})
 		}
-		spans = append(spans, parseInline(l[cut:], Span{})...)
+		if cut {
+			l = strings.TrimPrefix(strings.TrimPrefix(l, ">"), " ")
+		}
+		spans = append(spans, parseInline(l, Span{})...)
 	}
 	return []Block{{Kind: kind, Spans: spans}}
 }
@@ -80,7 +83,7 @@ func all(lines []string, ok func(int, string) bool) bool {
 	return true
 }
 
-// parseInline reads **bold**, *italic*, `code` and [text](url), as the editor writes them.
+// parseInline reads **bold**, *italic*, <u>underline</u>, `code` and [text](url), as the editor writes them.
 func parseInline(s string, marks Span) []Span {
 	var out []Span
 	lit := ""
@@ -115,6 +118,12 @@ func parseInline(s string, marks Span) []Span {
 			it := marks
 			it.Italic = true
 			spans, n = emphasisAt(rest, "*", it)
+		case strings.HasPrefix(rest, "<u>") && !marks.Under:
+			if end := strings.Index(rest[3:], "</u>"); end > 0 {
+				u := marks
+				u.Under = true
+				spans, n = parseInline(rest[3:3+end], u), end+7
+			}
 		case rest[0] == '[' && marks.Link == "":
 			if m := linkRe.FindStringSubmatch(rest); m != nil {
 				l := marks
@@ -186,6 +195,9 @@ func writeInline(spans []Span) string {
 		if s.Code {
 			t = wrapMark("`", t)
 		}
+		if s.Under {
+			t = wrapTag("u", t)
+		}
 		if s.Italic {
 			t = wrapMark("*", t)
 		}
@@ -198,6 +210,16 @@ func writeInline(spans []Span) string {
 		b.WriteString(t)
 	}
 	return b.String()
+}
+
+// wrapTag puts <tag> and </tag> round text without its edge spaces, as the editor writes underline.
+func wrapTag(tag, text string) string {
+	body := strings.TrimSpace(text)
+	if body == "" {
+		return text
+	}
+	i := strings.Index(text, body)
+	return text[:i] + "<" + tag + ">" + body + "</" + tag + ">" + text[i+len(body):]
 }
 
 // wrapMark puts marks round text without its edge spaces, which Markdown does not allow inside.

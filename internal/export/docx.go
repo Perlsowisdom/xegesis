@@ -139,7 +139,7 @@ func (l *relList) xml() string {
 }
 
 type runStyle struct {
-	bold, italic, code, sup bool
+	bold, italic, code, sup, under bool
 }
 
 func run(text string, st runStyle) string {
@@ -149,6 +149,9 @@ func run(text string, st runStyle) string {
 	}
 	if st.italic {
 		pr.WriteString(`<w:i/><w:iCs/>`)
+	}
+	if st.under {
+		pr.WriteString(`<w:u w:val="single"/>`)
 	}
 	if st.code {
 		pr.WriteString(`<w:rFonts w:ascii="Consolas" w:hAnsi="Consolas" w:cs="Consolas"/>`)
@@ -173,7 +176,7 @@ func runs(spans []Span, links *relList) string {
 			b.WriteString(`<w:r><w:br/></w:r>`)
 			continue
 		}
-		r := run(s.Text, runStyle{bold: s.Bold, italic: s.Italic, code: s.Code})
+		r := run(s.Text, runStyle{bold: s.Bold, italic: s.Italic, code: s.Code, under: s.Under})
 		if u := safeURL(s.Link); u != "" && links != nil {
 			r = `<w:hyperlink r:id="` + links.add(u) + `">` + strings.Replace(r, `<w:r>`, `<w:r><w:rPr><w:u w:val="single"/></w:rPr>`, 1) + `</w:hyperlink>`
 			r = strings.Replace(r, `</w:rPr><w:rPr>`, ``, 1)

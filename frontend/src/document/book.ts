@@ -10,7 +10,8 @@ import {
   CopyResult, DEFAULT_PREFS, ReadingPrefs, TOCEntry, base64ToBytes, concatBytes, copyMessage, currentEntry,
   pageRects, tidyPrefs, tocOptions,
 } from "../bookhelpers";
-import { button, clear, field, h, select } from "../dom";
+import { button, clear, h, select } from "../dom";
+import { sidebar } from "../views/sidebar";
 import { addToList } from "../listpicker";
 import type { PdfDoc, RenderedPage } from "./pdf";
 import { closePopover, togglePopover } from "../popover";
@@ -517,34 +518,12 @@ export function bookDoc(host: DocHost): DocView {
     }
   }
 
+  // addNote starts a note on the selection, in the sidebar's Notes tool; it is kept with its first words.
   function addNote() {
     const r = selection();
     const a = r && anchorOf(r);
     if (!book || !a) return msg.info("Select some text in the book first.");
-    const t = h("input", { type: "text" });
-    const b = h("div", { class: "editor-host" });
-    let ed: { getMarkdown(): string; destroy(): void } | null = null;
-    import("../editor").then(({ createEditor }) => { ed = createEditor(b, { placeholder: "Write your note…", label: "Text of the note" }); });
-    const form = h("form", { class: "card", "aria-label": "New note on the selection" },
-      h("p", { class: "hint" }, `On: “${(a.text ?? "").slice(0, 160)}”`),
-      field("Title", t), h("div", { class: "field" }, h("label", {}, "Text"), b),
-      h("div", { class: "row" }, h("button", { type: "submit", class: "primary" }, "Create note"), button("Cancel", () => { ed?.destroy(); clear(editor); })));
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const ok = await msg.attempt(() => run<Note>("note.create", { title: t.value, body: ed?.getMarkdown() ?? "", item_id: book!.item_id, locator: a }));
-      if (ok) {
-        ed?.destroy();
-        clear(editor);
-        msg.ok("Note created.");
-        loadMarks();
-      }
-    });
-    form.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && !(e.target as HTMLElement).closest(".rich-link")) { ed?.destroy(); clear(editor); }
-      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) form.requestSubmit();
-    });
-    clear(editor, form);
-    t.focus();
+    sidebar().newNoteOn({ itemId: book.item_id, title: book.title, locator: a as unknown as Record<string, unknown> });
   }
 
   // Selected text goes into a list of excerpts as a copy: the book's licence limits and credit apply.

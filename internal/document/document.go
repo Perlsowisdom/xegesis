@@ -356,7 +356,7 @@ func (s *service) list(ctx context.Context, env *command.Env, p ListParams) ([]D
 		where += ` AND folder_id = ?`
 		args = append(args, p.Folder)
 	}
-	all, err := query(ctx, env, where+` ORDER BY updated_at DESC, id`, args...)
+	all, err := query(ctx, env, where+` ORDER BY updated_at DESC, rowid DESC`, args...)
 	if err != nil {
 		return nil, err
 	}

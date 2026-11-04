@@ -1,12 +1,13 @@
-// Notes: the pieces shared by the notes beside the Bible text (below) and the Notes section
-// (views/notes.ts): the note form with its formatted-text editor and tags, a note's card, and the
-// history drawer that restores earlier versions.
+// Notes: the pieces shared by the notes beside the Bible text (below), the note page (notepage.ts)
+// and the Notes section (views/notes.ts): where a note is attached in words, deleting with Undo,
+// the sidebar's Notes tool and the history drawer that restores earlier versions.
 
-import { printExportButton } from "./printexport";
-import { Change, Message, Note, TagCount, run } from "./api";
-import { button, clear, field, h } from "./dom";
-import { renderMarkdown } from "./editor/render";
+import { Change, Message, Note, run } from "./api";
+import { button, clear, h } from "./dom";
 import { formatTime, summarise } from "./helpers";
+import { icon } from "./icons";
+import { NotePage, notePage } from "./notepage";
+import { firstLine } from "./workwords";
 
 // Where a note is attached, in words.
 export function placeOf(n: Note): string {
@@ -16,167 +17,6 @@ export function placeOf(n: Note): string {
 }
 
 export const noteName = (n: Note) => n.title || "Untitled";
-
-// Tags ----------------------------------------------------------------------------------------------
-
-// tagInput is a row of tags with a box to add more; tags already in use are suggested as you type.
-export function tagInput(initial: string[]) {
-  let tags = [...initial];
-  let known: TagCount[] = [];
-  const chips = h("span", { class: "chips" });
-  const input = h("input", { type: "text", placeholder: "Add a tag, then press Enter", autocomplete: "off", "aria-label": "Add a tag" });
-  const sug = h("div", { class: "suggest", "aria-label": "Suggested tags" });
-  const el = h("div", { class: "tag-input" }, chips, input, sug);
-
-  function render() {
-    clear(chips, tags.map((t) => h("span", { class: "chip" }, t,
-      button("×", () => remove(t), { "aria-label": `Remove tag ${t}`, class: "chip-x" }))));
-    const q = input.value.trim().toLowerCase();
-    const options = known.filter((k) => !tags.includes(k.tag) && k.tag.includes(q)).slice(0, 8);
-    clear(sug, options.map((k) => button(`${k.tag} (${k.count})`, () => add(k.tag), { class: "link", "aria-label": `Add tag ${k.tag}` })));
-  }
-  function add(raw: string) {
-    for (const t of raw.split(",")) {
-      const tag = t.trim().replace(/\s+/g, " ").toLowerCase();
-      if (tag && !tags.includes(tag)) tags.push(tag);
-    }
-    input.value = "";
-    render();
-  }
-  function remove(t: string) {
-    tags = tags.filter((x) => x !== t);
-    render();
-    input.focus();
-  }
-  input.addEventListener("input", () => {
-    if (input.value.includes(",")) add(input.value);
-    else render();
-  });
-  input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && input.value.trim()) {
-      e.preventDefault();
-      e.stopPropagation();
-      add(input.value);
-    } else if (e.key === "Backspace" && !input.value && tags.length) {
-      tags.pop();
-      render();
-    }
-  });
-  run<TagCount[]>("note.tags").then((t) => {
-    known = t;
-    render();
-  }).catch(() => {});
-  render();
-  return {
-    el,
-    // get includes a tag still being typed.
-    get: () => {
-      if (input.value.trim()) add(input.value);
-      return [...tags];
-    },
-  };
-}
-
-// The note form -----------------------------------------------------------------------------------
-
-export interface NoteFormOptions {
-  note: Note | null; // null for a new note
-  ref?: string; // the passage a new note starts on
-  folderId?: string; // the folder a new note goes in
-  tags?: string[]; // the tags a new note starts with
-  onDone(saved: Note | null): void;
-}
-
-export function noteForm(msg: Message, o: NoteFormOptions): HTMLFormElement {
-  const n = o.note;
-  const title = h("input", { type: "text", value: n?.title ?? "" });
-  const original = n ? (n.ref?.display ?? "") : o.ref ?? "";
-  const ref = h("input", { type: "text", value: original, placeholder: "e.g. Rom 8:28" });
-  const attachedToBook = !!n?.item_id;
-  const detach = h("input", { type: "checkbox", id: "detach-" + Math.random().toString(36).slice(2) });
-  const tags = tagInput(n?.tags ?? o.tags ?? []);
-  const host = h("div", { class: "editor-host", "aria-busy": "true" }, h("p", { class: "hint" }, "Loading the editor…"));
-  const save = h("button", { type: "submit", class: "primary", disabled: true }, n ? "Save" : "Create note");
-  let editor: { getMarkdown(): string; focus(): void; destroy(): void } | null = null;
-  let closed = false;
-
-  import("./editor").then(({ createEditor }) => {
-    if (closed) return;
-    clear(host);
-    host.removeAttribute("aria-busy");
-    editor = createEditor(host, { markdown: n?.body ?? "", placeholder: "Write your note…", label: "Text of the note" });
-    save.disabled = false;
-  });
-
-  const where = attachedToBook
-    ? [field("Attached to", ref, `Now attached to a place in ${n!.item_title || "a book"}. Type a Bible reference to move the note to verses, or tick the box below.`),
-      h("label", { class: "check" }, detach, " Not attached to anything")]
-    : [field("Bible reference", ref, n ? "Clear this to leave the note free of any passage." : "Optional. The note shows with these verses.")];
-
-  const form = h("form", { class: "card note-form", "aria-label": n ? "Edit note" : "New note" },
-    field("Title", title),
-    ...where,
-    h("div", { class: "field" }, h("label", {}, "Text"), host),
-    h("div", { class: "field" }, h("label", {}, "Tags"), tags.el),
-    h("div", { class: "row" }, save, button("Cancel", () => finish(null))));
-
-  function finish(saved: Note | null) {
-    closed = true;
-    editor?.destroy();
-    editor = null;
-    o.onDone(saved);
-  }
-
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    if (!editor) return;
-    const body = editor.getMarkdown();
-    const want = ref.value.trim();
-    const saved = await msg.attempt(async () => {
-      if (!n) {
-        return run<Note>("note.create", { title: title.value, body, tags: tags.get(), ...(want ? { ref: want } : {}), ...(o.folderId ? { folder_id: o.folderId } : {}) });
-      }
-      let note = await run<Note>("note.update", { id: n.id, title: title.value, body, tags: tags.get() });
-      const moves = attachedToBook ? detach.checked || !!want : want !== original;
-      if (moves) {
-        const free = !want || (attachedToBook && detach.checked);
-        note = await run<Note>("note.move", free ? { id: n.id, free: true } : { id: n.id, ref: want });
-      }
-      return note;
-    });
-    if (saved) finish(saved);
-  });
-  form.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && !(e.target as HTMLElement).closest(".rich-link")) finish(null);
-    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) form.requestSubmit();
-  });
-  queueMicrotask(() => title.focus());
-  return form;
-}
-
-// A note's card -------------------------------------------------------------------------------------
-
-export interface CardActions {
-  edit(n: Note): void;
-  history(n: Note): void;
-  remove(n: Note): void;
-}
-
-export function noteCard(n: Note, a: CardActions): HTMLElement {
-  const place = placeOf(n);
-  return h("li", { class: "note" },
-    h("div", { class: "row between" },
-      h("strong", {}, noteName(n)),
-      place ? h("span", { class: "badge" }, place) : null),
-    renderMarkdown(n.body),
-    n.tags.length ? h("p", { class: "chips" }, n.tags.map((t) => h("span", { class: "chip" }, t))) : null,
-    h("div", { class: "row small" },
-      h("span", { class: "hint" }, `Changed ${formatTime(n.updated_at)}`),
-      button("Edit", () => a.edit(n), { "aria-label": `Edit ${noteName(n)}` }),
-      button("History", () => a.history(n), { "aria-label": `History of ${noteName(n)}` }),
-      printExportButton(() => ({ title: noteName(n), sources: [{ kind: "note", id: n.id }] }), "Print or save…"),
-      button("Delete", () => a.remove(n), { class: "danger", "aria-label": `Delete ${noteName(n)}` })));
-}
 
 // deleteNote deletes a note and offers Undo in the message; Recently deleted keeps it afterwards.
 export async function deleteNote(msg: Message, n: Note, changed: () => void) {
@@ -195,69 +35,100 @@ export async function deleteNote(msg: Message, n: Note, changed: () => void) {
 }
 
 // The notes beside the Bible text -------------------------------------------------------------------
+// The right sidebar's Notes tool: the notes on the passage as small cards, and the note page in its
+// compact form. Choosing a card opens it there; "Open in a tab" opens the full page in Study.
 
 export interface NotesOptions {
-  heading: string;
   // scope returns the reference to list and attach notes to, or null for every note.
   scope: () => { ref: string; display: string } | null;
-  headingLevel?: "h2" | "h3";
+  openTab(n: Note): void;
 }
 
 export function notesPanel(opts: NotesOptions) {
   const msg = new Message();
-  const list = h("ul", { class: "notes", "aria-live": "polite" });
-  const editor = h("div", { class: "note-editor" });
-  const caption = h("p", { class: "hint" });
-  const drawer = historyDrawer(msg, () => refresh());
-  let notes: Note[] = [];
-
-  const el = h("section", { class: "notes-panel", "aria-label": opts.heading },
-    h("div", { class: "row between" },
-      h(opts.headingLevel ?? "h3", {}, opts.heading),
-      button("New note", () => edit(null), { class: "primary", "aria-keyshortcuts": "Alt+N" })),
-    caption, msg.el, editor, list, drawer.el);
+  const caption = h("p", { class: "side-caption" });
+  const list = h("ul", { class: "side-notes", "aria-live": "polite" });
+  const newBtn = h("button", { type: "button", class: "ghost-btn text side-new", "aria-keyshortcuts": "Alt+N" }, icon("plus"), h("span", {}, "New note"));
+  newBtn.addEventListener("click", () => open());
+  const listView = h("div", { class: "side-list" }, h("div", { class: "side-head" }, caption, newBtn), msg.el, list);
+  const pageView = h("div", { class: "side-page", hidden: true });
+  const el = h("section", { class: "notes-panel", "aria-label": "Notes" }, listView, pageView);
+  let page: NotePage | null = null;
 
   async function refresh() {
+    if (page) return;
     const scope = opts.scope();
-    caption.textContent = scope ? `Notes on verses in ${scope.display}.` : "Every note, most recent first.";
+    caption.textContent = scope ? `On ${scope.display}` : "Every note, newest first";
     const params: Record<string, unknown> = { limit: 200 };
     if (scope) params.ref = scope.ref;
     const got = await msg.attempt(() => run<Note[]>("note.list", params));
     if (!got) return;
-    notes = got;
-    clear(list, notes.length === 0 ? h("li", { class: "empty" }, "No notes yet.") : notes.map((n) => noteCard(n, actions)));
+    clear(list, got.length === 0
+      ? h("li", { class: "side-empty" }, scope ? "No notes on these verses yet." : "No notes yet.")
+      : got.map((n) => card(n)));
   }
 
-  const actions: CardActions = {
-    edit: (n) => edit(n),
-    history: (n) => drawer.open(n),
-    remove: (n) => deleteNote(msg, n, refresh),
-  };
+  function card(n: Note): HTMLElement {
+    const place = placeOf(n);
+    const line = firstLine(n.body.replace(/<\/?u>/g, ""), 140);
+    const b = h("button", { type: "button", class: "side-note" },
+      h("span", { class: "side-note-title" }, n.title || h("span", { class: "untitled" }, "Untitled")),
+      line ? h("span", { class: "side-note-line" }, line) : null,
+      h("span", { class: "side-note-meta" }, [place, ...n.tags.map((t) => `#${t}`), `Changed ${formatTime(n.updated_at)}`].filter(Boolean).join(" · ")));
+    b.addEventListener("click", () => open(n.id));
+    return h("li", {}, b);
+  }
 
-  function edit(n: Note | null, ref?: string) {
+  // open shows a note (or a new one, on ref or a place in a book) in the compact page.
+  function open(id?: string, ref?: string, place?: { itemId: string; title: string; locator: Record<string, unknown> }) {
+    void close(false);
     const scope = opts.scope();
-    clear(editor, noteForm(msg, {
-      note: n,
-      ref: ref ?? scope?.display,
-      onDone: (saved) => {
-        clear(editor);
-        if (saved) {
-          msg.ok(n ? "Note saved." : "Note created.");
-          refresh();
-        }
-      },
-    }));
+    const back = h("button", { type: "button", class: "crumb crumb-back", title: "Back to the notes" }, icon("prev"), h("span", {}, "Notes"));
+    back.addEventListener("click", () => void close(true));
+    page = notePage({
+      id, ref: id ? undefined : ref ?? (place ? undefined : scope?.display), place, variant: "compact", home: back,
+      onDeleted: () => void close(true),
+      more: [["Open in a tab", () => {
+        const n = page?.note();
+        if (!n) return msg.info("Write something first.");
+        void close(true);
+        opts.openTab(n);
+      }]],
+    });
+    clear(pageView, page.el);
+    listView.hidden = true;
+    pageView.hidden = false;
+    if (id) page.focus();
+  }
+
+  async function close(showList: boolean) {
+    const p = page;
+    page = null;
+    if (p) {
+      await p.flush();
+      p.destroy();
+    }
+    if (!showList) return;
+    clear(pageView);
+    pageView.hidden = true;
+    listView.hidden = false;
+    await refresh();
   }
 
   // Alt+N works anywhere while this panel is on screen.
   document.addEventListener("keydown", (e) => {
-    if (e.altKey && !e.ctrlKey && e.key.toLowerCase() === "n" && el.offsetParent !== null) {
+    if (e.altKey && !e.ctrlKey && e.key.toLowerCase() === "n" && el.offsetParent !== null && !document.querySelector(".work-view:not([hidden])")) {
       e.preventDefault();
-      edit(null);
+      open();
     }
   });
 
-  return { el, refresh, create: (ref?: string) => edit(null, ref) };
+  return {
+    el,
+    refresh,
+    create: (ref?: string) => open(undefined, ref),
+    createOn: (place: { itemId: string; title: string; locator: Record<string, unknown> }) => open(undefined, undefined, place),
+  };
 }
 
 // History -------------------------------------------------------------------------------------------
