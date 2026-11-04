@@ -19,6 +19,7 @@ type Note struct {
 	ItemTitle string         `json:"item_title,omitempty" desc:"That book's title"`
 	Locator   map[string]any `json:"locator,omitempty" desc:"Where in the book, as highlight.create's locator"`
 	Tags      []string       `json:"tags" desc:"The note's tags, in lower case"`
+	FolderID  string         `json:"folder_id,omitempty" desc:"The folder the note is filed in (folder.list)"`
 	CreatedAt int64          `json:"created_at"`
 	UpdatedAt int64          `json:"updated_at"`
 	DeletedAt int64          `json:"deleted_at,omitempty" desc:"When the note was deleted; only in note.deleted"`
@@ -29,9 +30,10 @@ type NoteCreateParams struct {
 	Body  string `json:"body" desc:"Markdown text"`
 	Ref   string `json:"ref,omitempty" desc:"Bible reference to attach the note to, e.g. \"John 3:16\""`
 	// A book anchor: the same locator highlight.create takes.
-	ItemID  string         `json:"item_id,omitempty" desc:"Library book to attach the note to; give locator too"`
-	Locator map[string]any `json:"locator,omitempty" desc:"Where in the book: {section, para, offset, end_para, end_offset, text} or {section, page, rects, text}"`
-	Tags    []string       `json:"tags,omitempty" desc:"Free-text tags; note.tags lists the ones already in use"`
+	ItemID   string         `json:"item_id,omitempty" desc:"Library book to attach the note to; give locator too"`
+	Locator  map[string]any `json:"locator,omitempty" desc:"Where in the book: {section, para, offset, end_para, end_offset, text} or {section, page, rects, text}"`
+	Tags     []string       `json:"tags,omitempty" desc:"Free-text tags; note.tags lists the ones already in use"`
+	FolderID string         `json:"folder_id,omitempty" desc:"File the note in this folder (folder.list)"`
 }
 
 // bookAnchor checks a note's book anchor and returns its locator as JSON.
@@ -101,7 +103,12 @@ func noteCreate(ctx context.Context, env *command.Env, p NoteCreateParams) (Note
 			}
 			anchor = aid
 		}
-		if err := tx.Create("notes", store.Row{"id": id, "anchor_id": anchor, "title": nullable(p.Title),
+		if p.FolderID != "" {
+			if err := LiveFolder(tx, p.FolderID); err != nil {
+				return err
+			}
+		}
+		if err := tx.Create("notes", store.Row{"id": id, "anchor_id": anchor, "title": nullable(p.Title), "folder_id": nullable(p.FolderID),
 			"body_md": p.Body, "created_at": t, "updated_at": t}); err != nil {
 			return err
 		}
@@ -247,7 +254,7 @@ func noteDelete(ctx context.Context, env *command.Env, p IDParams) (struct{}, er
 }
 
 const noteSelect = `SELECT n.id, n.title, n.body_md, n.created_at, n.updated_at, a.verse_start, a.verse_end,
-	a.item_id, a.locator_json, COALESCE(n.deleted_at, 0), it.title FROM notes n LEFT JOIN anchors a ON a.id = n.anchor_id
+	a.item_id, a.locator_json, COALESCE(n.deleted_at, 0), it.title, COALESCE(n.folder_id, '') FROM notes n LEFT JOIN anchors a ON a.id = n.anchor_id
 	LEFT JOIN items it ON it.id = a.item_id`
 
 // queryNotes runs a noteSelect query and fills in each note's tags.
@@ -289,7 +296,7 @@ func scanNote(rows *sql.Rows) (Note, error) {
 	var title sql.NullString
 	var start, end sql.NullInt64
 	var item, locator, itemTitle sql.NullString
-	if err := rows.Scan(&n.ID, &title, &n.Body, &n.CreatedAt, &n.UpdatedAt, &start, &end, &item, &locator, &n.DeletedAt, &itemTitle); err != nil {
+	if err := rows.Scan(&n.ID, &title, &n.Body, &n.CreatedAt, &n.UpdatedAt, &start, &end, &item, &locator, &n.DeletedAt, &itemTitle, &n.FolderID); err != nil {
 		return n, err
 	}
 	n.ItemID, n.ItemTitle = item.String, itemTitle.String

@@ -27,7 +27,7 @@ func register(r *command.Registry, s *service) {
 	r.Add(
 		command.Define("list.create", "Make a new empty list of verses, words or excerpts.", true, s.create),
 		command.Define("list.rename", "Rename a list.", true, s.rename),
-		command.Define("list.delete", "Delete a list. It can be restored from its history.", true, s.delete),
+		command.Define("list.delete", "Delete a list. It waits in the bin (bin.list) until restored or deleted for good.", true, s.delete),
 		command.Define("list.list", "List the saved lists with how many entries each has, most recently changed first.", false, s.list),
 		command.Define("list.add", "Add to a list: verses to a verse list, a word (with its Strong's number and lemma) to a word list, or selected book text to an excerpt list.", true, s.add),
 		command.Define("list.remove", "Take one entry out of its list.", true, s.remove),

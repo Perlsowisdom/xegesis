@@ -4,7 +4,9 @@ Source: Phase 1 survey, row "Sermon or lesson builder with verses and outlines" 
 `internal/document`, interface `frontend/src/views/sermons.ts`.
 
 A document has a kind (`sermon`, `lesson` or `study`), a title, a main passage, an outline and its text
-in Markdown. It is stored in the `documents` table from migration 0001; no new migration was needed.
+in Markdown. It is stored in the `documents` table from migration 0001. Migration 0010 adds `preached_on` (an
+ISO date, YYYY-MM-DD, optional), `theme` (a few words, optional) and `folder_id` (the folder it is filed in;
+see [folders.md](folders.md)).
 `outline_json` is `{"passage": "Romans 8:28-39", "points": [{"h": "…", "ref": "Rom 8:28", "level": 1}]}`.
 Rows that hold only an array of points (`[{"h": "One"}]`) are still read.
 
@@ -12,15 +14,16 @@ Rows that hold only an array of points (`[{"h": "One"}]`) are still read.
 
 | Command | What it does |
 | --- | --- |
-| `document.create` | Start a document; every field is optional (the title defaults to "Untitled sermon" and so on) |
+| `document.create` | Start a document; every field is optional (the title defaults to "Untitled sermon" and so on), including `preached_on`, `theme` and `folder_id` |
 | `document.get` | One document with its outline, text and word count |
-| `document.list` | Newest first; filter by `kind`, `query` (words in title, passage, outline or text) or `ref` (main passage or any point overlapping it) |
-| `document.update` | Change any of kind, title, passage, points (the whole outline) or body |
+| `document.list` | Newest first; filter by `kind`, `query` (words in title, passage, outline, text or theme), `ref` (main passage or any point overlapping it) or `folder_id` (`none` for documents in no folder) |
+| `document.update` | Change any of kind, title, passage, points (the whole outline), body, `preached_on` or `theme` (`""` clears either) |
+| `document.move` | File it in a folder (`folder_id`), or take it out of its folder (`folder_id` empty); its last-changed time stays |
 | `document.delete`, `document.restore`, `document.deleted` | Soft delete, as for notes |
 | `document.quote` | Add a Bible passage to the end of the text as a block quote with a link, the Bible's short name and its credit line |
 
 Every write goes through `store.Write` and is in the change history. Documents are exported with
-`export.data` (group `document`) and printed or saved with `export.preview` and `export.make` using the
+`export.data` (group `document`, with `preached_on`, `theme` and a `folder` relation) and printed or saved with `export.preview` and `export.make` using the
 source `{"kind": "document", "id": "…"}`: the outline as a numbered list, then the text.
 
 ## Quoting and licences

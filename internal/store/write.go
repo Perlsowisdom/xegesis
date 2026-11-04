@@ -118,6 +118,29 @@ func (t *Tx) Delete(name string, key Row) error {
 	return t.log(name, tb, key, "delete", "", before, nil)
 }
 
+// Purge removes the row with key for good, even from a table with deleted_at. Earlier changes to
+// the row stay in the history, so other devices still learn of it, but lose their values: what is
+// deleted for good cannot be read back from the history either. The purge is logged as a delete
+// whose field is "purge".
+func (t *Tx) Purge(name string, key Row) error {
+	tb, err := t.table(name, nil)
+	if err != nil {
+		return err
+	}
+	if _, err := t.get(name, tb, key); err != nil {
+		return err
+	}
+	where, args := keyClause(tb, key)
+	if _, err := t.tx.ExecContext(t.ctx, fmt.Sprintf("DELETE FROM %s WHERE %s", name, where), args...); err != nil {
+		return err
+	}
+	if _, err := t.tx.ExecContext(t.ctx, `UPDATE changes SET before_json = NULL, after_json = NULL
+		WHERE object_type = ? AND object_id = ?`, name, objectID(tb, key)); err != nil {
+		return err
+	}
+	return t.log(name, tb, key, "delete", "purge", nil, nil)
+}
+
 // Get reads one row inside the transaction.
 func (t *Tx) Get(name string, key Row) (Row, error) {
 	tb, err := t.table(name, nil)

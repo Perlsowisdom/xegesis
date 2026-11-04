@@ -158,6 +158,7 @@ type NoteSearchParams struct {
 	Book   string `json:"book,omitempty" desc:"Only notes on verses in this book of the Bible, e.g. \"Romans\""`
 	ItemID string `json:"item_id,omitempty" desc:"Only notes on this library book"`
 	On     string `json:"on,omitempty" enum:"verses,books,nothing" desc:"Only notes attached to verses, to library books, or to neither"`
+	Folder string `json:"folder_id,omitempty" desc:"Only notes filed in this folder, or none for notes in no folder"`
 	Limit  int    `json:"limit,omitempty" desc:"Most notes to return (default 100)"`
 	Offset int    `json:"offset,omitempty" desc:"Notes to skip, for the next page"`
 }
@@ -193,6 +194,14 @@ func noteSearch(ctx context.Context, env *command.Env, p NoteSearchParams) ([]No
 		q += ` AND a.item_id = ?`
 		args = append(args, p.ItemID)
 	}
+	switch p.Folder {
+	case "":
+	case "none":
+		q += ` AND n.folder_id IS NULL`
+	default:
+		q += ` AND n.folder_id = ?`
+		args = append(args, p.Folder)
+	}
 	switch p.On {
 	case "verses":
 		q += ` AND a.verse_start IS NOT NULL`
@@ -216,17 +225,22 @@ type NoteMoveParams struct {
 	ItemID  string         `json:"item_id,omitempty" desc:"Attach the note to this library book; give locator too"`
 	Locator map[string]any `json:"locator,omitempty" desc:"Where in the book, as note.create's locator"`
 	Free    bool           `json:"free,omitempty" desc:"Detach the note so it belongs to no passage"`
+	// Filing is separate from where a note is attached: it does not change the passage.
+	FolderID *string `json:"folder_id,omitempty" desc:"File the note in this folder (folder.list); \"\" takes it out of its folder"`
 }
 
 func noteMove(ctx context.Context, env *command.Env, p NoteMoveParams) (Note, error) {
 	given := 0
-	for _, b := range []bool{p.Ref != "", p.ItemID != "" || p.Locator != nil, p.Free} {
+	for _, b := range []bool{p.Ref != "", p.ItemID != "" || p.Locator != nil, p.Free, p.FolderID != nil} {
 		if b {
 			given++
 		}
 	}
 	if given != 1 {
-		return Note{}, command.Errorf("bad_params", "note.move: give one of ref, item_id with locator, or free")
+		return Note{}, command.Errorf("bad_params", "note.move: give one of ref, item_id with locator, free, or folder_id")
+	}
+	if p.FolderID != nil {
+		return noteFile(ctx, env, p.ID, *p.FolderID)
 	}
 	var r *verse.Range
 	var locator string
@@ -264,6 +278,43 @@ func noteMove(ctx context.Context, env *command.Env, p NoteMoveParams) (Note, er
 	return getNote(ctx, env, p.ID)
 }
 
+// noteFile puts a note in a folder, or in none when folder is "". It is not an edit, so the note's
+// updated_at stays.
+func noteFile(ctx context.Context, env *command.Env, id, folder string) (Note, error) {
+	err := env.Store.Write(ctx, "note.move", func(tx *store.Tx) error {
+		if _, err := liveNote(tx, id); err != nil {
+			return err
+		}
+		if folder != "" {
+			if err := LiveFolder(tx, folder); err != nil {
+				return err
+			}
+		}
+		return tx.Update("notes", store.ByID(id), store.Row{"folder_id": nullable(folder)})
+	})
+	if err != nil {
+		return Note{}, err
+	}
+	return getNote(ctx, env, id)
+}
+
+// LiveFolder checks that a folder exists and is not in the bin, before filing something in it.
+func LiveFolder(tx *store.Tx, id string) error {
+	f, err := tx.Get("folders", store.ByID(id))
+	if err != nil || f["deleted_at"] != nil {
+		return command.Errorf("not_found", "no folder %s", id)
+	}
+	return nil
+}
+
+// UnfileIfGone is the fields that take a restored row out of a folder that is in the bin or gone,
+// so it comes back at the top rather than out of sight.
+func UnfileIfGone(tx *store.Tx, cur store.Row, fields store.Row) {
+	if f, ok := cur["folder_id"].(string); ok && LiveFolder(tx, f) != nil {
+		fields["folder_id"] = nil
+	}
+}
+
 // Deleted notes --------------------------------------------------------------------------------
 
 type NoteDeletedParams struct {
@@ -289,7 +340,9 @@ func noteRestore(ctx context.Context, env *command.Env, p IDParams) (Note, error
 		if cur["deleted_at"] == nil {
 			return command.Errorf("bad_params", "note %s is not deleted", p.ID)
 		}
-		return tx.Update("notes", store.ByID(p.ID), store.Row{"deleted_at": nil})
+		fields := store.Row{"deleted_at": nil}
+		UnfileIfGone(tx, cur, fields)
+		return tx.Update("notes", store.ByID(p.ID), fields)
 	})
 	if err != nil {
 		return Note{}, err
