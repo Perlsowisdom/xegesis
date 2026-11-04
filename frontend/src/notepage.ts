@@ -14,6 +14,7 @@ import { deleteNote, historyDrawer, noteName } from "./notes";
 import { openExport } from "./printexport";
 import { folderName, loadFolders, moveMenu, workChanged } from "./work";
 import { editedText } from "./workwords";
+import { editorInserts } from "./insertpop";
 
 const SAVE_AFTER = 900;
 
@@ -263,7 +264,10 @@ export function notePage(o: NotePageOptions): NotePage {
       markdown: note?.body ?? "", placeholder: compact ? "Write your note…" : "Write your note… Type / for headings, lists and verses.",
       label: "Text of the note", variant: compact ? "compact" : "page", onChange: changed, foldKey: note?.id ?? "",
       onVerseRef: verseRefPopover,
-      onVerseQuote: (anchor) => quotePopover(anchor, ref?.display ?? "", (md) => editor?.insertMarkdown(md)),
+      ...editorInserts({
+        say: (w) => msg.info(w), passage: () => ref?.display ?? "", self: () => note?.id,
+        quote: (anchor) => quotePopover(anchor, ref?.display ?? "", (md) => editor?.insertMarkdown(md)),
+      }),
     });
     if (!o.id) tbox.focus();
   }

@@ -50,10 +50,9 @@ export default [
       await t.page.evaluate(() => { location.hash = "#reader"; });
       await t.page.waitForTimeout(400);
       await t.page.evaluate((id) => { location.hash = `#notes/note/${id}`; }, n.id);
-      await t.page.waitForSelector(".note-page .rich-text h1");
-      await t.page.waitForTimeout(200);
+      await t.current(".note-page");
       t.assert.equal(await visible(t, "Alpha text"), false, "the fold is remembered");
-      await t.page.locator(".note-page .rt-fold.closed").first().click();
+      await t.page.locator("[data-e2e=current] .rt-fold.closed").first().click();
       t.assert.equal(await visible(t, "Alpha text"), true);
     },
   },
@@ -71,7 +70,7 @@ export default [
     async run(t) {
       const filler = Array.from({ length: 30 }, (_, i) => `Line ${i + 1} of the opening section.`).join("\n\n");
       await t.openNote(`# Alpha\n\n${filler}\n\n## Beta\n\n${filler}\n\n# Gamma\n\nGamma text`, "Strip");
-      const strip = t.page.locator(".note-page .rt-strip");
+      const strip = t.page.locator("[data-e2e=current] .rt-strip");
       t.assert.equal(await strip.locator(".rt-strip-mark").count(), 3);
       const box = await strip.boundingBox();
       const text = await t.editor().boundingBox();

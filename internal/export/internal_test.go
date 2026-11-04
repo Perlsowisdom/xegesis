@@ -196,3 +196,23 @@ func TestCheckListsAndDividers(t *testing.T) {
 		t.Errorf("html %s", h)
 	}
 }
+
+// Reference chips, note links and highlight quotations are links and quotes in a note's Markdown.
+// Exported, a chip keeps its words (an app address is not a web link) and the Markdown keeps the link.
+func TestChipsAndQuotationsExport(t *testing.T) {
+	md := "See [Romans 8:28](#passage/Rom.8.28) and [My study](#notes/note/01AB).\n\n> Words from a book\n> — [A book, page 3](#book/01CD?page=3)"
+	bs := parseNote(md)
+	d := Doc{Pieces: []Piece{{Blocks: bs}}}
+	if out := string(Markdown(d)); !strings.Contains(out, md) {
+		t.Errorf("markdown %q", out)
+	}
+	h := HTML(d)
+	for _, w := range []string{"See Romans 8:28 and My study.", "— A book, page 3"} {
+		if !strings.Contains(h, w) {
+			t.Errorf("html lacks %q:\n%s", w, h)
+		}
+	}
+	if strings.Contains(h, "#passage") || strings.Contains(h, "#notes") {
+		t.Errorf("app addresses leaked into HTML:\n%s", h)
+	}
+}

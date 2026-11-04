@@ -36,8 +36,8 @@ try {
       try {
         await c.run(t);
         if (!t.shotTaken) await t.shot();
-        results.push({ file: f, row: c.row, ok: true, shot: c.shot });
-        console.log(`PASS  ${c.row}  (${Date.now() - started} ms)`);
+        results.push({ file: f, row: c.row, ok: true, shot: c.shot, note: t.note });
+        console.log(`PASS  ${c.row}  (${Date.now() - started} ms)${t.note ? `\n      note: ${t.note}` : ""}`);
       } catch (e) {
         await app.shot(`FAIL-${c.shot}`).catch(() => {});
         results.push({ file: f, row: c.row, ok: false, shot: `FAIL-${c.shot}`, error: String(e?.message ?? e).split("\n")[0] });
@@ -50,9 +50,10 @@ try {
 }
 
 const failed = results.filter((r) => !r.ok).length;
+const cell = (s) => String(s).replaceAll("|", "\\|");
 writeFileSync(join(shots, "results.md"), [
   "| Check | Result | Screenshot |", "| --- | --- | --- |",
-  ...results.map((r) => `| ${r.row.replace(/\|/g, "\|")} | ${r.ok ? "PASS" : `FAIL: ${r.error.replace(/\|/g, "\|")}`} | ${r.shot} |`),
+  ...results.map((r) => `| ${cell(r.row)} | ${r.ok ? `PASS${r.note ? ` (${cell(r.note)})` : ""}` : `FAIL: ${cell(r.error)}`} | ${r.shot} |`),
 ].join("\n") + "\n");
 console.log(`\n${results.length - failed} passed, ${failed} failed (${results.length} checks). Screenshots in e2e/shots.`);
 process.exit(failed ? 1 : 0);

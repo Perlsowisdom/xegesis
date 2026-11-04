@@ -37,6 +37,8 @@ import {
   KEY_ENTER_COMMAND,
   KEY_ESCAPE_COMMAND,
   KEY_TAB_COMMAND,
+  DRAGOVER_COMMAND,
+  DROP_COMMAND,
   LexicalEditor,
   LexicalNode,
   PASTE_COMMAND,
@@ -63,7 +65,11 @@ import { h } from "../dom";
 import { icon } from "../icons";
 import { closePopover, openPopover } from "../popover";
 import { Block, Span, parseMarkdown, parsePasted, toMarkdown } from "./markdown";
-import { $createDividerNode, $createVerseQuoteNode, $isDividerNode, $isVerseQuoteNode, DividerNode, VerseQuoteNode } from "./nodes";
+import {
+  $createDividerNode, $createRefChipNode, $createVerseQuoteNode, $isDividerNode, $isRefChipNode, $isVerseQuoteNode, DividerNode,
+  RefChipNode, VerseQuoteNode, chipKind,
+} from "./nodes";
+import { refCandidates } from "./refwords";
 import { SLASH_ITEMS, SlashId, filterSlash, slashQuery } from "./slashwords";
 import { structure } from "./structure";
 
@@ -84,6 +90,16 @@ export interface EditorOptions {
   // checked with verse.parse. Each is given where to show its popover.
   onVerseQuote?(anchor: HTMLElement): void;
   onVerseRef?(anchor: HTMLElement, selected: string, insert: (label: string, ref: string) => void): void;
+  // Insert → Highlight: a picker of highlights; insert takes the quotation's Markdown.
+  onHighlight?(anchor: HTMLElement, insert: (md: string) => void): void;
+  // Insert → Note link: a picker of notes and sermons; insert takes the title and its address.
+  onNoteLink?(anchor: HTMLElement, insert: (label: string, href: string) => void): void;
+  // parseRef checks a typed reference (Rom 8:28 then Tab becomes a chip).
+  parseRef?(text: string): Promise<{ display: string; osis: string } | null>;
+  // A verse, a highlight or a Related card dropped on the text: the Markdown to put there.
+  onDrop?(data: Record<string, string>): Promise<string | null>;
+  // A chip or app link was clicked; by default the app goes to its address.
+  onOpenLink?(href: string, label?: string): void;
   onHeadings?(): void; // the headings changed
   // Folded sections are remembered under this key (the note's or sermon's id) on this device.
   foldKey?: string;
@@ -115,7 +131,7 @@ const MOD = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl+";
 export function createEditor(host: HTMLElement, opts: EditorOptions = {}): RichEditor {
   const editor = createLexical({
     namespace: "xegesis-notes",
-    nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, LinkNode, DividerNode, VerseQuoteNode, ...(opts.nodes ?? [])],
+    nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, LinkNode, DividerNode, VerseQuoteNode, RefChipNode, ...(opts.nodes ?? [])],
     theme: {
       text: { underline: "rt-u", bold: "rt-b", italic: "rt-i", code: "rt-code" }, link: "rt-link",
       list: { checklist: "rt-checklist", listitemChecked: "rt-checked", listitemUnchecked: "rt-unchecked" },
@@ -134,11 +150,11 @@ export function createEditor(host: HTMLElement, opts: EditorOptions = {}): RichE
   content.setAttribute("aria-multiline", "true");
   content.setAttribute("aria-label", opts.label ?? "Text");
   if (opts.placeholder) content.dataset.placeholder = opts.placeholder;
-  const bar = toolbar(doc, editor, opts, variant);
+  const bar = toolbar(doc, editor, opts, variant, (id, anchor) => runInsert(id, anchor));
   host.classList.add("rich-editor", `rich-${variant}`);
   host.replaceChildren(bar.el, content);
   editor.setRootElement(content);
-  const slash = slashMenu(doc, editor, content, opts);
+  const slash = slashMenu(doc, editor, content, opts, (id, anchor) => runInsert(id, anchor));
   const struct = structure({
     editor, host, content, strip: variant === "page",
     headings: () => headings(),
@@ -191,13 +207,28 @@ export function createEditor(host: HTMLElement, opts: EditorOptions = {}): RichE
       return false;
     }, COMMAND_PRIORITY_LOW),
     editor.registerCommand(KEY_DOWN_COMMAND, (e: KeyboardEvent) => shortcut(e), COMMAND_PRIORITY_LOW),
+    editor.registerCommand(KEY_TAB_COMMAND, (e) => tabToChip(e), COMMAND_PRIORITY_LOW),
+    editor.registerCommand(DRAGOVER_COMMAND, (e) => {
+      if (!ours(e)) return false;
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+      return true;
+    }, COMMAND_PRIORITY_HIGH),
+    editor.registerCommand(DROP_COMMAND, (e) => dropped(e), COMMAND_PRIORITY_HIGH),
   ];
-  // Ctrl+click follows a link to a passage or a place in the app.
+  // A chip opens what it names when clicked; Ctrl+click follows a link to a place in the app.
+  const open = (href: string, label?: string) => (opts.onOpenLink ? opts.onOpenLink(href, label) : (location.hash = href));
   const onClick = (e: MouseEvent) => {
+    const chip = (e.target as Element).closest?.<HTMLElement>(".ref-chip");
+    if (chip?.dataset.href) {
+      e.preventDefault();
+      open(chip.dataset.href, chip.dataset.label);
+      return;
+    }
     const a = (e.target as Element).closest?.("a[href^='#']");
     if (a && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
-      location.hash = a.getAttribute("href")!;
+      open(a.getAttribute("href")!);
     }
   };
   content.addEventListener("click", onClick);
@@ -225,7 +256,7 @@ export function createEditor(host: HTMLElement, opts: EditorOptions = {}): RichE
       return true;
     };
     if (!e.shiftKey && !e.altKey && k === "k") return run(() => bar.askLink());
-    if (e.shiftKey && !e.altKey && k === "k" && opts.onVerseRef) return run(() => bar.askVerse());
+    if (e.shiftKey && !e.altKey && k === "k" && opts.onVerseRef) return run(() => runInsert("verseref", bar.insertButton()));
     if (!e.shiftKey && !e.altKey && k === "u") return run(() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "underline"));
     // Ctrl+Alt+1, 2 and 3 make a large, medium or small heading; Ctrl+Alt+0 plain text.
     const digit = /^Digit([0-3])$/.exec(e.code);
@@ -242,6 +273,93 @@ export function createEditor(host: HTMLElement, opts: EditorOptions = {}): RichE
       return run(() => shiftHeading(key, e.code === "BracketRight" ? 1 : -1));
     }
     return false;
+  }
+
+  // Insert ----------------------------------------------------------------------------------------
+
+  function runInsert(id: InsertId, anchor: HTMLElement) {
+    switch (id) {
+      case "verseref": {
+        const selected = editor.getEditorState().read(() => {
+          const s = $getSelection();
+          return $isRangeSelection(s) ? s.getTextContent() : "";
+        });
+        opts.onVerseRef?.(anchor, selected.trim(), (label, ref) => insertChip(editor, label, `#passage/${encodeURIComponent(ref)}`));
+        break;
+      }
+      case "versequote":
+        opts.onVerseQuote?.(anchor);
+        break;
+      case "highlight":
+        opts.onHighlight?.(anchor, (md) => insertMarkdown(md));
+        break;
+      case "notelink":
+        opts.onNoteLink?.(anchor, (label, href) => insertChip(editor, label, href));
+        break;
+    }
+  }
+
+  // tabToChip turns a reference typed just before the caret (Rom 8:28) into a chip on Tab.
+  function tabToChip(e: KeyboardEvent): boolean {
+    if (!opts.parseRef || e.shiftKey) return false;
+    const found = editor.getEditorState().read(() => {
+      const s = $getSelection();
+      if (!$isRangeSelection(s) || !s.isCollapsed()) return null;
+      const node = s.anchor.getNode();
+      if (!$isTextNode(node)) return null;
+      const before = node.getTextContent().slice(0, s.anchor.offset);
+      const cands = refCandidates(before);
+      return cands.length ? { key: node.getKey(), end: s.anchor.offset, cands } : null;
+    });
+    if (!found) return false;
+    e.preventDefault();
+    void (async () => {
+      for (const c of found.cands) {
+        const p = await opts.parseRef!(c.text);
+        if (!p) continue;
+        editor.update(() => {
+          const n = $getNodeByKey(found.key);
+          if (!$isTextNode(n) || n.getTextContent().slice(c.start, found.end) !== c.text) return;
+          const r = $createRangeSelection();
+          r.anchor.set(found.key, c.start, "text");
+          r.focus.set(found.key, found.end, "text");
+          $setSelection(r);
+          const chip = $createRefChipNode(p.display, `#passage/${encodeURIComponent(p.osis)}`);
+          const space = $createTextNode(" ");
+          r.insertNodes([chip, space]);
+          space.select(1, 1);
+        });
+        return;
+      }
+    })();
+    return true;
+  }
+
+  function ours(e: DragEvent): boolean {
+    return !!opts.onDrop && !!e.dataTransfer && [...e.dataTransfer.types].some((t) => DROP_TYPES.includes(t));
+  }
+
+  // dropped puts what was dragged in where it was dropped: the host turns it into Markdown.
+  function dropped(e: DragEvent): boolean {
+    if (!ours(e)) return false;
+    e.preventDefault();
+    const data: Record<string, string> = {};
+    for (const t of DROP_TYPES) {
+      const v = e.dataTransfer!.getData(t);
+      if (v) data[t] = v;
+    }
+    const range = doc.caretRangeFromPoint?.(e.clientX, e.clientY);
+    if (range) {
+      editor.update(() => {
+        const r = $createRangeSelection();
+        r.applyDOMRange(range);
+        $setSelection(r);
+      }, { discrete: true });
+    }
+    void opts.onDrop!(data).then((md) => {
+      if (md) insertMarkdown(md);
+    });
+    return true;
   }
 
   function shiftHeading(key: string, by: number) {
@@ -464,10 +582,23 @@ function pasteMarkdown(e: ClipboardEvent | KeyboardEvent | InputEvent): boolean 
 
 // Lexical <-> blocks -----------------------------------------------------------------------------
 
+// plainLink is a link run of one unformatted piece, which shows as a chip when it names a place in
+// the app (verses, a note or a sermon).
+function chipAt(spans: Span[], i: number): boolean {
+  const s = spans[i];
+  if (!s.link || !chipKind(s.link) || s.bold || s.italic || s.underline || s.code || !s.text.trim()) return false;
+  return spans[i - 1]?.link !== s.link && spans[i + 1]?.link !== s.link;
+}
+
 function spanNodes(spans: Span[]): LexicalNode[] {
   const out: LexicalNode[] = [];
   let link: { url: string; node: LinkNode } | null = null;
-  for (const s of spans) {
+  for (const [i, s] of spans.entries()) {
+    if (chipAt(spans, i)) {
+      link = null;
+      out.push($createRefChipNode(s.text, s.link!));
+      continue;
+    }
     if (s.br) {
       link = null;
       out.push($createLineBreakNode());
@@ -526,7 +657,8 @@ function inline(parent: ElementNode, link?: string): Span[] {
       if (c.hasFormat("code")) s.code = true;
       if (link) s.link = link;
       out.push(s);
-    } else if ($isLinkNode(c)) out.push(...inline(c, c.getURL()));
+    } else if ($isRefChipNode(c)) out.push({ text: c.getLabel(), link: c.getHref() });
+    else if ($isLinkNode(c)) out.push(...inline(c, c.getURL()));
     else if ($isElementNode(c)) out.push(...inline(c, link));
     else out.push({ text: c.getTextContent(), ...(link ? { link } : {}) });
   }
@@ -554,7 +686,8 @@ export function toBlocks(nodes: LexicalNode[]): Block[] {
 
 type Tool = { id: string; label: string; keys?: string; glyph?: string; icon?: string; cls?: string; run(): void; active?(): boolean };
 
-function toolbar(doc: Document, editor: LexicalEditor, opts: EditorOptions, variant: "page" | "compact") {
+function toolbar(doc: Document, editor: LexicalEditor, opts: EditorOptions, variant: "page" | "compact",
+  insert: (id: InsertId, anchor: HTMLElement) => void) {
   const el = doc.createElement("div");
   el.className = "rich-toolbar";
   el.setAttribute("role", "toolbar");
@@ -643,9 +776,8 @@ function toolbar(doc: Document, editor: LexicalEditor, opts: EditorOptions, vari
     { id: "numbers", label: "Numbered list", keys: `${MOD}Shift+7`, icon: "numbers", run: () => toggleList("number"), active: isList("number") },
     { id: "quote", label: "Quote", keys: `${MOD}Shift+9`, icon: "quote", run: () => toggleQuote(), active: isQuote },
     "|",
-    { id: "link", label: "Link", keys: `${MOD}K`, icon: "link", run: () => askLink(), active: () => { const u = linkUrl(); return !!u && !u.startsWith("#passage/"); } },
-    ...(opts.onVerseRef ? [{ id: "verse", label: "Verse reference", keys: `${MOD}Shift+K`, glyph: "✦", cls: "t-verse", run: () => askVerse(),
-      active: () => !!linkUrl()?.startsWith("#passage/") } as Tool] : []),
+    { id: "link", label: "Link", keys: `${MOD}K`, icon: "link", run: () => askLink(), active: () => { const u = linkUrl(); return !!u && !u.startsWith("#"); } },
+    ...(insertsOf(opts).length ? [{ id: "insert", label: "Insert a verse, a highlight or a link to a note", icon: "book-plus", cls: "t-insert", run: () => askInsert() } as Tool] : []),
   ];
 
   for (const t of tools) {
@@ -663,12 +795,12 @@ function toolbar(doc: Document, editor: LexicalEditor, opts: EditorOptions, vari
     if (t.icon) b.append(icon(t.icon));
     else b.textContent = t.glyph ?? "";
     if (t.active && t.id !== "heading") b.setAttribute("aria-pressed", "false");
-    if (t.id === "heading") b.setAttribute("aria-haspopup", "menu");
+    if (t.id === "heading" || t.id === "insert") b.setAttribute("aria-haspopup", "menu");
     // Keep the selection in the text while a button is used.
     b.addEventListener("mousedown", (e) => e.preventDefault());
     b.addEventListener("click", () => {
       t.run();
-      if (t.id !== "link" && t.id !== "verse") editor.focus();
+      if (t.id !== "link" && t.id !== "insert" && t.id !== "heading") editor.focus();
     });
     el.append(b);
     buttons.push({ b, active: t.active });
@@ -710,7 +842,27 @@ function toolbar(doc: Document, editor: LexicalEditor, opts: EditorOptions, vari
   });
 
   const linkBtn = () => el.querySelector<HTMLElement>("[data-tool=link]")!;
-  const verseBtn = () => el.querySelector<HTMLElement>("[data-tool=verse]") ?? linkBtn();
+  const insertButton = () => el.querySelector<HTMLElement>("[data-tool=insert]") ?? linkBtn();
+
+  // The Insert control: one menu for verses, highlights and links to notes.
+  function askInsert() {
+    const anchor = insertButton();
+    const list = h("div", { class: "menu-list insert-menu" }, insertsOf(opts).map((it) => {
+      const b = h("button", { type: "button", "data-insert": it.id },
+        h("span", { class: `im-glyph g-${it.id}`, "aria-hidden": "true" }, it.glyph),
+        h("span", { class: "im-text" }, h("span", { class: "im-name" }, it.label), h("span", { class: "im-hint" }, it.hint)),
+        it.keys ? h("kbd", { class: "hm-keys" }, it.keys) : null);
+      b.addEventListener("mousedown", (e) => e.preventDefault());
+      b.addEventListener("click", () => {
+        closePopover();
+        // After the menu has gone, so the next popover takes the keyboard.
+        setTimeout(() => insert(it.id, anchor), 0);
+      });
+      return b;
+    }));
+    openPopover(anchor, list, { label: "Insert", menu: true, side: "below" });
+    list.querySelector<HTMLElement>("button")?.focus();
+  }
 
   // The link address is typed in a small popover under the Link button.
   function askLink() {
@@ -753,30 +905,35 @@ function toolbar(doc: Document, editor: LexicalEditor, opts: EditorOptions, vari
     input.select();
   }
 
-  function askVerse() {
-    if (!opts.onVerseRef) return;
-    const selected = editor.getEditorState().read(() => sel()?.getTextContent() ?? "");
-    opts.onVerseRef(verseBtn(), selected.trim(), (label, ref) => {
-      const url = `#passage/${encodeURIComponent(ref)}`;
-      const collapsed = editor.getEditorState().read(() => sel()?.isCollapsed() ?? true);
-      if (!collapsed) {
-        editor.dispatchCommand(TOGGLE_LINK_COMMAND, url);
-        editor.focus();
-      } else {
-        insertLinkAtCaret(editor, label, url);
-      }
-    });
-  }
-
   function sync() {
     for (const { b, active } of buttons) {
       if (active) b.setAttribute("aria-pressed", String(active()));
     }
   }
-  return { el, sync, askLink, askVerse, setHeading, toggleList, toggleQuote };
+  return { el, sync, askLink, insertButton, setHeading, toggleList, toggleQuote };
 }
 
-function insertLinkAtCaret(editor: LexicalEditor, label: string, url: string) {
+// The things the Insert control and the slash menu put in, each when the host can do it.
+export type InsertId = "verseref" | "versequote" | "highlight" | "notelink";
+
+const INSERTS: { id: InsertId; label: string; hint: string; glyph: string; keys?: string }[] = [
+  { id: "verseref", label: "Verse reference", hint: "A chip that opens the passage", glyph: "✦", keys: `${MOD}Shift+K` },
+  { id: "versequote", label: "Verse text", hint: "The verses, with the Bible's credit line", glyph: "❝" },
+  { id: "highlight", label: "Highlight", hint: "Words you highlighted, with where they are", glyph: "▍" },
+  { id: "notelink", label: "Link to a note or sermon", hint: "A chip that opens it", glyph: "¶" },
+];
+
+function insertsOf(opts: EditorOptions) {
+  const can: Record<InsertId, boolean> = {
+    verseref: !!opts.onVerseRef, versequote: !!opts.onVerseQuote, highlight: !!opts.onHighlight, notelink: !!opts.onNoteLink,
+  };
+  return INSERTS.filter((it) => can[it.id]);
+}
+
+const DROP_TYPES = ["application/x-xegesis-verse", "application/x-xegesis-highlight", "application/x-xegesis-related"];
+
+// insertChip puts a reference chip where the caret is (in place of any selected words).
+function insertChip(editor: LexicalEditor, label: string, href: string) {
   editor.update(() => {
     let s = $getSelection();
     if (!$isRangeSelection(s)) {
@@ -784,10 +941,9 @@ function insertLinkAtCaret(editor: LexicalEditor, label: string, url: string) {
       s = $getSelection();
     }
     if (!$isRangeSelection(s)) return;
-    const link = $createLinkNode(url).append($createTextNode(label));
-    s.insertNodes([link]);
+    const chip = $createRefChipNode(label, href);
     const space = $createTextNode(" ");
-    link.insertAfter(space);
+    s.insertNodes([chip, space]);
     space.select(1, 1);
   });
   editor.focus();
@@ -795,7 +951,8 @@ function insertLinkAtCaret(editor: LexicalEditor, label: string, url: string) {
 
 // Slash menu ---------------------------------------------------------------------------------------
 
-function slashMenu(doc: Document, editor: LexicalEditor, content: HTMLElement, opts: EditorOptions) {
+function slashMenu(doc: Document, editor: LexicalEditor, content: HTMLElement, opts: EditorOptions,
+  insert: (id: InsertId, anchor: HTMLElement) => void) {
   const box = doc.createElement("div");
   box.className = "slash-menu";
   box.setAttribute("role", "listbox");
@@ -810,7 +967,8 @@ function slashMenu(doc: Document, editor: LexicalEditor, content: HTMLElement, o
   // A slash dismissed with Escape stays plain text until the caret leaves it.
   let dismissed: string | null = null;
 
-  const shown = () => items.filter((it) => it.id !== "versequote" || !!opts.onVerseQuote);
+  const can = new Set<string>(insertsOf(opts).map((it) => it.id));
+  const shown = () => items.filter((it) => !INSERTS.some((x) => x.id === it.id) || can.has(it.id));
 
   function check() {
     const found = editor.getEditorState().read(() => {
@@ -966,7 +1124,10 @@ function slashMenu(doc: Document, editor: LexicalEditor, content: HTMLElement, o
           }
         });
         break;
-      case "versequote": {
+      case "verseref":
+      case "versequote":
+      case "highlight":
+      case "notelink": {
         // The popover opens where the caret is, on an anchor that goes when it closes.
         const r = caretRect();
         const anchor = doc.createElement("span");
@@ -982,7 +1143,7 @@ function slashMenu(doc: Document, editor: LexicalEditor, content: HTMLElement, o
         });
         watch.observe(anchor, { attributes: true, attributeFilter: ["aria-expanded"] });
         // After Lexical has put the caret back, so the popover keeps the keyboard.
-        setTimeout(() => opts.onVerseQuote?.(anchor), 30);
+        setTimeout(() => insert(id, anchor), 30);
         return;
       }
     }

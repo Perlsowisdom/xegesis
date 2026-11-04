@@ -19,9 +19,7 @@ export function helpers(app, shotName) {
     async openNote(body = "", title = "E2E note") {
       const n = await app.run("note.create", { title, body });
       await page.evaluate((id) => { location.hash = `#notes/note/${id}`; }, n.id);
-      await page.waitForSelector(`.note-page .rich-text[contenteditable=true]`, { timeout: 15000 });
-      await page.waitForTimeout(150);
-      t.root = ".note-page";
+      await t.current(".note-page");
       t.id = n.id;
       return n;
     },
@@ -29,11 +27,22 @@ export function helpers(app, shotName) {
       const d = await app.run("document.create", { kind: "sermon" });
       if (body || title) await app.run("document.update", { id: d.id, title, kind: "sermon", body });
       await page.evaluate((id) => { location.hash = `#sermons/${id}`; }, d.id);
-      await page.waitForSelector(`.sermon-page .rich-text[contenteditable=true]`, { timeout: 15000 });
-      await page.waitForTimeout(150);
-      t.root = ".sermon-layout";
+      await t.current(".sermon-layout");
       t.id = d.id;
       return d;
+    },
+    // current marks the page now on screen (a Study tab may hold another, hidden, page) as the
+    // one the check works in, and waits for its editor.
+    async current(sel) {
+      await page.waitForFunction((sel) => {
+        const el = [...document.querySelectorAll(sel)].find((e) => e.offsetParent && !e.closest("#rightbar") && e.querySelector(".rich-text[contenteditable=true]"));
+        if (!el) return false;
+        document.querySelectorAll("[data-e2e]").forEach((e) => e.removeAttribute("data-e2e"));
+        el.setAttribute("data-e2e", "current");
+        return true;
+      }, sel, { timeout: 15000 });
+      await page.waitForTimeout(150);
+      t.root = "[data-e2e=current]";
     },
     editor: () => page.locator(`${t.root} .rich-text`).first(),
     // focusEnd puts the caret at the end of the text, by clicking it and pressing Ctrl+End.
@@ -52,7 +61,7 @@ export function helpers(app, shotName) {
     async saved() {
       await page.keyboard.press("Control+s");
       await page.waitForFunction((root) => document.querySelector(`${root} .save-state`)?.getAttribute("data-state") === "saved", t.root, { timeout: 10000 });
-      if (t.root === ".note-page") return (await app.run("note.get", { id: t.id })).body;
+      if (await page.locator(`${t.root}.note-page`).count()) return (await app.run("note.get", { id: t.id })).body;
       return (await app.run("document.get", { id: t.id })).body;
     },
   };

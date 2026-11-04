@@ -21,6 +21,7 @@ import { outlineMarks } from "./editor/structurewords";
 import type { SermonDoc } from "./views/sermons";
 import { folderName, loadFolders, moveMenu, workChanged } from "./work";
 import { deleteSermon } from "./views/notes";
+import { editorInserts } from "./insertpop";
 
 const SAVE_AFTER = 1000;
 
@@ -317,15 +318,14 @@ export function sermonPage(o: SermonPageOptions): SermonPage {
     const { createEditor } = await import("./editor");
     if (!alive) return;
     edHost.removeAttribute("aria-busy");
-    const quoteBtn = h("button", { type: "button", class: "ghost-btn text verse-tool", title: "Quote verses into the text, with their credit line" },
-      h("span", { "aria-hidden": "true" }, "✦"), h("span", {}, "Quote verses"));
-    quoteBtn.addEventListener("mousedown", (e) => e.preventDefault());
-    quoteBtn.addEventListener("click", () => quotePopover(quoteBtn, passage?.display ?? "", (md) => editor?.insertMarkdown(md)));
     editor = createEditor(edHost, {
       markdown: got.body, placeholder: "Write here… Headings become the outline. Type / for more.", label: "Text of the sermon or lesson",
-      onChange: changed, onHeadings: renderOutline, tools: [quoteBtn], foldKey: got.id,
+      onChange: changed, onHeadings: renderOutline, foldKey: got.id,
       onVerseRef: verseRefPopover,
-      onVerseQuote: (anchor) => quotePopover(anchor, passage?.display ?? "", (md) => editor?.insertMarkdown(md)),
+      ...editorInserts({
+        say: (w) => msg.info(w), passage: () => passage?.display ?? "", self: () => d?.id,
+        quote: (anchor) => quotePopover(anchor, passage?.display ?? "", (md) => editor?.insertMarkdown(md)),
+      }),
     });
     if (missing) {
       editor.setMarkdown(body);

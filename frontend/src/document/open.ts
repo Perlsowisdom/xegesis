@@ -52,6 +52,11 @@ export function readBook(r: BookRequest): void {
   openBook(r);
 }
 
+// studyPassage shows the Study grid; its linked panes follow the passage just set.
+export function studyPassage(): void {
+  showReader("study");
+}
+
 function showReader(mode: "read" | "study"): void {
   if (prefs.reading.mode !== mode) setPrefs({ reading: { ...prefs.reading, mode } });
   navigate("reader");

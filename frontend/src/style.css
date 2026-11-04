@@ -1554,3 +1554,39 @@ button.danger-link { color: var(--bad); margin-top: 8px; display: block; }
 .recent-link { border: 0; background: none; padding: 1px 4px; border-radius: 5px; color: var(--muted); font-size: inherit; }
 .recent-link:hover:not(:disabled) { background: var(--ghost-hover); color: var(--fg); border: 0; }
 .recent-link + .recent-link::before { content: "·"; margin: 0 6px 0 -2px; color: var(--faint); }
+
+/* Reference chips in the text: verses, notes and sermons (T34e). */
+.rich-text .ref-chip, .md .ref-chip { display: inline-flex; align-items: baseline; gap: 4px; padding: 0 8px 1px; margin: 0 1px; border-radius: 999px;
+  background: var(--chip-bg); border: 1px solid var(--chip-line); font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-size: .82em;
+  line-height: 1.5; color: var(--fg); cursor: pointer; user-select: none; white-space: nowrap; vertical-align: baseline; }
+.rich-text .ref-chip:hover { border-color: var(--chip-line-hover); background: var(--ghost-hover); }
+.rich-text .ref-chip.chip-verse { color: var(--verse); }
+.ref-chip-mark { font-size: .9em; opacity: .9; }
+.rich-text .ref-chip.chip-note .ref-chip-mark, .rich-text .ref-chip.chip-sermon .ref-chip-mark { color: var(--muted); }
+.rich-btn.t-insert { color: var(--verse); }
+/* The Insert menu and its pickers. */
+.insert-menu { min-width: 300px; }
+.insert-menu button { gap: 10px; }
+.insert-menu .im-glyph { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 7px; border: 1px solid var(--chip-line);
+  color: var(--muted); font-family: var(--reading); }
+.insert-menu .im-glyph.g-verseref, .insert-menu .im-glyph.g-versequote { color: var(--verse); }
+.insert-menu .im-glyph.g-highlight { color: var(--hl-yellow); font-weight: 700; }
+.insert-menu .im-text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.insert-menu .im-name { color: var(--fg); }
+.insert-menu .im-hint { color: var(--muted); font-size: .76rem; }
+.insert-menu .hm-keys { font: inherit; font-size: .72rem; color: var(--faint); }
+.slash-glyph.g-verseref { color: var(--verse); }
+.slash-glyph.g-highlight { color: var(--hl-yellow); font-weight: 700; }
+.pick-pop { width: 360px; display: flex; flex-direction: column; gap: 8px; }
+.pick-pop .ref-note:empty { display: none; }
+.pick-list { list-style: none; margin: 0; padding: 0; max-height: 300px; overflow: auto; }
+.pick-row { display: flex; align-items: flex-start; gap: 9px; padding: 7px 8px; border-radius: 8px; cursor: pointer; }
+.pick-row[aria-selected="true"] { background: var(--ghost-hover); }
+.pick-row .mark-dot { flex: none; width: 12px; height: 12px; margin-top: 4px; }
+.pick-kind { flex: none; width: 16px; color: var(--muted); text-align: center; }
+.pick-main { display: flex; flex-direction: column; min-width: 0; }
+.pick-text { color: var(--fg); font-size: .88rem; line-height: 1.35; overflow-wrap: anywhere; }
+.pick-where { color: var(--muted); font-size: .74rem; }
+.pick-empty { color: var(--muted); font-size: .84rem; padding: 6px 8px; }
+.document .vnum[draggable="true"], .vnum[draggable="true"] { cursor: grab; }
+.hl-row[draggable="true"] { cursor: grab; }

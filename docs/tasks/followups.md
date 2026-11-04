@@ -72,7 +72,7 @@ Design first: mock-up for approval, then build.
 
 ## After T34d (4 November 2026)
 
-- HTML and Word exports still show `---` dividers as text instead of a rule.
+- ~~HTML and Word exports still show `---` dividers as text instead of a rule.~~ Fixed in T34e (rules in HTML, Word, PDF).
 - T34d was checked in a browser preview with stand-in data. The real app was only seen on its start screen.
 
 ## User testing of T34d (4 November 2026): editors still miss the mark
@@ -92,3 +92,9 @@ Design first: mock-up for approval, then build.
   real key events through `playwright-core`. This is the start of T30 (interface tests): new screens
   should add a `*.e2e.mjs` file there. Wails clears the `WEBVIEW2_*` variables, so the test build
   (only) uses a patched copy of its WebView2 loader through a temporary `go.work`; see `e2e/app.mjs`.
+- The scratch library has no commentary, so dragging a Related card was checked with the data a card
+  carries, not by dragging a real card. Recheck with a commentary installed.
+- Folding remembers sections by heading level and words: renaming a folded heading unfolds it.
+- Reference chips open passages and notes in the Study grid; plain links still need Ctrl+click.
+- Highlights are quoted as whole verses until T34f; `highlightText` (src/insertwords.ts) already takes
+  a character range for it.

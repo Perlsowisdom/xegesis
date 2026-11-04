@@ -107,7 +107,15 @@ export function highlightsPanel(o: HighlightsOptions) {
       go.addEventListener("click", () => void jump(r));
       const x = button("", () => void remove(r), { class: "ghost-btn hl-x", "aria-label": `Delete the highlight at ${where(r)}`, title: "Delete highlight" });
       x.append(icon("close"));
-      return h("li", { class: "hl-row" }, h("span", { class: `hl-bar bar-${s.colour}`, "aria-hidden": "true" }), go, x);
+      const li = h("li", { class: "hl-row", draggable: "true", title: "Drag into a note or sermon to quote it" },
+        h("span", { class: `hl-bar bar-${s.colour}`, "aria-hidden": "true" }), go, x);
+      li.addEventListener("dragstart", (e) => {
+        if (!e.dataTransfer) return;
+        e.dataTransfer.setData("application/x-xegesis-highlight", JSON.stringify(r));
+        e.dataTransfer.setData("text/plain", words);
+        e.dataTransfer.effectAllowed = "copy";
+      });
+      return li;
     }));
   }
 
