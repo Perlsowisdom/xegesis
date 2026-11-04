@@ -93,15 +93,19 @@ export default [
     },
   },
   {
-    row: "Sermon outline column lists the headings with their levels (indent)",
-    shot: "st-05-sermon-outline.png",
+    row: "Sermons have no left outline column; the right-edge strip is their outline",
+    shot: "st-05-sermon-strip.png",
     async run(t) {
       await t.openSermon("# Big point\n\nText\n\n## Middle point\n\nText\n\n### Small point\n\nText\n\n# Second big", "Outline levels");
-      const pts = t.page.locator(".outline-point");
-      t.assert.equal(await pts.count(), 4);
-      const pads = await pts.evaluateAll((els) => els.map((e) => parseFloat(getComputedStyle(e).paddingLeft)));
-      t.assert.ok(pads[0] < pads[1] && pads[1] < pads[2] && pads[3] === pads[0], `indents ${pads}`);
-      t.assert.deepEqual(await pts.locator(".outline-num").allTextContents(), ["1", "a", "i", "2"]);
+      t.assert.equal(await t.page.locator(".outline-col, .outline-point").count(), 0, "no left outline column");
+      const strip = t.page.locator("[data-e2e=current] .rt-strip");
+      t.assert.equal(await strip.locator(".rt-strip-mark").count(), 4);
+      const box = await strip.boundingBox();
+      const text = await t.editor().boundingBox();
+      t.assert.ok(box.x >= text.x + text.width, "the strip is at the right edge");
+      const page = await t.page.locator("[data-e2e=current] .sermon-page").boundingBox();
+      const layout = await t.page.locator("[data-e2e=current]").boundingBox();
+      t.assert.ok(page.x - layout.x < 40, "the page starts at the left, with no column beside it");
     },
   },
 ];

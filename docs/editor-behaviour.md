@@ -29,7 +29,8 @@ The others come from the user's requests.
 - Headings can be **folded**: an arrow beside each heading hides its section *(Any)*.
 - A slim **outline strip** at the right edge shows a mark for each heading. Hovering shows the names,
   and clicking jumps to one *(Any)*.
-- In sermons, the left outline column lists the same headings with their levels.
+- The strip is the only outline view, in notes and sermons alike. Sermons have no separate outline
+  column (removed in T34g).
 
 ## Inserting Bible text, references and highlights
 
