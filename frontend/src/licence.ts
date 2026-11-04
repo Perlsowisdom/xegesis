@@ -3,7 +3,8 @@
 // each book or Bible the licence it states, or Personal copy, and this is how the user changes it.
 
 import { Licence } from "./api";
-import { button, field, h, id } from "./dom";
+import { segmented, segmentedValue, setSegmented } from "./controls";
+import { button, field, h } from "./dom";
 import { CHOICES, Choice, choiceOf, licenceParams, originText, plainName } from "./licencewords";
 
 export { originText, plainName } from "./licencewords";
@@ -17,11 +18,10 @@ export interface LicenceChooser {
 
 // licenceChooser builds the four choices. limits adds print and export limits to More options.
 export function licenceChooser(legend: string, limits = true): LicenceChooser {
-  const name = id("licence");
-  const radios = CHOICES.map(([value, label, hint]) => {
-    const r = h("input", { type: "radio", name, value });
-    return { r, el: h("label", { class: "choice" }, r, h("span", {}, h("strong", {}, label), h("small", { class: "hint" }, ` ${hint}`))) };
-  });
+  const hints = h("small", { class: "hint", "aria-live": "polite" });
+  const showHint = (c: string) => { hints.textContent = CHOICES.find((x) => x[0] === c)?.[2] ?? ""; };
+  const pills = segmented<Choice>({ label: legend, options: CHOICES.map(([value, label]) => [value as Choice, label]), value: "personal", onChange: showHint });
+  showHint("personal");
   const text = (placeholder = "", type = "text") => h("input", { type, placeholder, autocomplete: "off", spellcheck: "false" });
   const spdx = text("e.g. CC-BY-SA-4.0");
   const holder = text();
@@ -42,9 +42,9 @@ export function licenceChooser(legend: string, limits = true): LicenceChooser {
     limits ? h("p", { class: "hint" }, "Leave the limits empty to use the usual ones for the licence.") : null);
 
   const el = h("fieldset", { class: "licence" }, h("legend", {}, legend),
-    h("div", { class: "choices" }, radios.map((x) => x.el)), more);
+    pills, hints, more);
 
-  const chosen = (): Choice => (radios.find((x) => x.r.checked)?.r.value as Choice) ?? "personal";
+  const chosen = (): Choice => (segmentedValue(pills) as Choice) || "personal";
   const n = (i: HTMLInputElement) => Number(i.value) || undefined;
 
   return {
@@ -55,7 +55,7 @@ export function licenceChooser(legend: string, limits = true): LicenceChooser {
     }),
     set(l) {
       const c = choiceOf(l);
-      radios.forEach((x) => { x.r.checked = x.r.value === c; });
+      setSegmented(pills, c); showHint(c);
       spdx.value = l?.spdx ?? "";
       holder.value = l?.rights_holder ?? "";
       url.value = l?.url ?? "";

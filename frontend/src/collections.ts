@@ -3,6 +3,7 @@
 // action is a collection.* command; the words here are the ones a reader would use.
 
 import { CollectionNode, CollectionRule, Folder, Message, RulePreview, Vocabulary, run } from "./api";
+import { segmented, segmentedValue } from "./controls";
 import { button, clear, field, h, select } from "./dom";
 import {
   LANGUAGE_CHOICES, LICENCE_CHOICES, countText, find, formFromRule, indent, matchText, mine, ruleFromForm, ruleIsEmpty,
@@ -248,9 +249,12 @@ export function collectionsSidebar(d: SidebarDeps) {
   // startNew opens the form; ids are the books ticked in the list ("From selected books").
   function startNew(ids: string[]) {
     builder?.stop();
-    const radioName = `coll-kind-${Math.random().toString(36).slice(2)}`;
-    const fromSel = h("input", { type: "radio", name: radioName, value: "selected", checked: ids.length > 0, disabled: ids.length === 0 });
-    const byRule = h("input", { type: "radio", name: radioName, value: "rule", checked: ids.length === 0 });
+    const kind = segmented<"selected" | "rule">({
+      label: "New collection", value: ids.length > 0 ? "selected" : "rule", onChange: () => sync(),
+      options: [["selected", ids.length ? `From the ${countText(ids.length)} I ticked` : "From the books I tick (tick some first)"], ["rule", "By rule: books that match what I choose"]],
+    });
+    if (ids.length === 0) kind.querySelector<HTMLInputElement>("input[value=selected]")!.disabled = true;
+    const byRule = { get checked() { return segmentedValue(kind) === "rule"; } };
     const name = h("input", { type: "text", autocomplete: "off", placeholder: "e.g. For Sunday" });
     const inside = select([["", "Nothing (top level)"], ...mine(tree).map((f): [string, string] => [f.node.id, indent(f.depth, f.node.name)])], "");
     const ruleBox = h("div", { hidden: ids.length > 0 });
@@ -259,8 +263,6 @@ export function collectionsSidebar(d: SidebarDeps) {
     builder = b;
     ruleBox.append(b.el);
     const sync = () => { ruleBox.hidden = !byRule.checked; };
-    fromSel.addEventListener("change", sync);
-    byRule.addEventListener("change", sync);
 
     const create = async () => {
       if (!name.value.trim()) return fmsg.info("Give the collection a name.");
@@ -285,8 +287,7 @@ export function collectionsSidebar(d: SidebarDeps) {
 
     clear(form,
       h("fieldset", {}, h("legend", {}, "New collection"),
-        h("label", { class: "choice" }, fromSel, h("span", {}, ids.length ? `From the ${countText(ids.length)} I ticked` : "From the books I tick (tick some first)")),
-        h("label", { class: "choice" }, byRule, h("span", {}, "By rule: books that match what I choose")),
+        kind,
         field("Name", name), ruleBox,
         h("details", { class: "more" }, h("summary", {}, "More options"), field("Put it inside", inside))),
       fmsg.el,

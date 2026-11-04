@@ -4,6 +4,7 @@
 import { printExportButton } from "../printexport";
 import { ItemSummary, Message, run } from "../api";
 import { button, clear, field, h, select } from "../dom";
+import { chip } from "../controls";
 import { todayBlock, openReading } from "../plancard";
 import {
   DayInfo, PlanInfo, TemplateInfo, TodayInfo, WEEKDAYS, finishText, friendlyDate, handDays, isoDate, progressText,
@@ -85,7 +86,7 @@ export function plansView() {
         h("td", {}, String(d.day)), h("td", {}, friendlyDate(d.date)),
         h("td", {}, d.readings.map((r) => button(r.ref, () => void msg.attempt(() => openReading(r)), { class: "link", title: `Open ${readingText(d)}` }))),
         h("td", {}, h("input", {
-          type: "checkbox", checked: d.done, "aria-label": `Day ${d.day}, ${readingText(d)}: read`,
+          type: "checkbox", class: "tick-input", checked: d.done, "aria-label": `Day ${d.day}, ${readingText(d)}: read`,
           onchange: async (e: Event) => {
             const on = (e.target as HTMLInputElement).checked;
             const ok = await msg.attempt(() => on ? run("plan.mark", { plan_id: p.id, days: [d.day] }) : run("plan.unmark", { plan_id: p.id, day: d.day }));
@@ -123,7 +124,7 @@ export function plansView() {
     const name = h("input", { type: "text", placeholder: "Plan name" });
     const days = h("input", { type: "number", min: 1, max: 3660, placeholder: "e.g. 30" });
     const end = h("input", { type: "date" });
-    const weekdays = WEEKDAYS.map(([v, label]) => ({ v, label, box: h("input", { type: "checkbox", value: v, checked: true }) }));
+    const weekdays = WEEKDAYS.map(([v, label]) => ({ v, label, el: chip({ label, value: v, checked: true }) }));
     const byHand = h("textarea", { rows: 4, placeholder: "John 1; Psalm 23\nJohn 2\nRomans 8" });
     const parts: BookPart[] = [];
     const partList = h("ul", { class: "book-parts" });
@@ -174,7 +175,7 @@ export function plansView() {
         field("Number of days", days, mine() ? "Default: one chapter a day." : "Changes the length of the plan."),
         field("Or finish on", end)),
       h("fieldset", { class: "weekdays" }, h("legend", {}, "Days to read"),
-        h("div", { class: "row wrap" }, weekdays.map((w) => h("label", { class: "check" }, w.box, ` ${w.label}`)))),
+        h("div", { class: "row wrap" }, weekdays.map((w) => w.el))),
       byHandField, bookBox);
 
     form.append(field("Plan", choice), about, field("Start date", start), more,
@@ -186,7 +187,7 @@ export function plansView() {
 
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const picked = weekdays.filter((w) => w.box.checked).map((w) => w.v);
+      const picked = weekdays.filter((w) => w.el.querySelector("input")!.checked).map((w) => w.v);
       if (picked.length === 0) {
         msg.error(new Error("bad_params: choose at least one day of the week to read on"));
         return;
