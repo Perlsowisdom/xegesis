@@ -29,6 +29,8 @@ func register(r *command.Registry, s *service) {
 		command.Define("book.set_position", "Remember where the user is reading in a book.", true, s.setPositionCmd),
 		command.Define("book.copy", "Copy text from a book within its licence: the per-copy and per-day export limit applies and the attribution line is added.", true, s.copyCmd),
 		command.Define("book.excerpt", "Read part of a book for printing or exporting: a selection or whole sections, with its licence and length.", false, s.excerptCmd),
+		command.Define("book.bible_map", "Map a Bible-type book to the Bible: which chapters its contents and headings place, and which entries could not be placed.", false, s.bibleMapCmd),
+		command.Define("book.at_reference", "Find where a Bible-type book holds a reference: the section and anchor of that chapter, or of the book when the chapter is not found.", false, s.atRefCmd),
 		command.Define("book.refs", "Find Bible references in pieces of text, such as the lines of a PDF page, so they can become links.", false, s.refsCmd),
 		command.Define("highlight.create", "Highlight a passage in a book, Bible verses, or exact words within verses.", true, s.highlightCreate),
 		command.Define("highlight.list", "List highlights: in a book, on Bible verses, in a book of the Bible or everywhere, by colour or words.", false, s.highlightList),
@@ -41,12 +43,13 @@ type service struct {
 	reg   *command.Registry
 	today func() string // the local date, YYYY-MM-DD; tests replace it
 
-	mu     sync.Mutex
-	length map[string]int // characters of text per file version, for percentage limits
+	mu        sync.Mutex
+	length    map[string]int      // characters of text per file version, for percentage limits
+	bibleMaps map[string]BibleMap // reference map per file version
 }
 
 func newService(r *command.Registry) *service {
-	return &service{reg: r, length: map[string]int{},
+	return &service{reg: r, length: map[string]int{}, bibleMaps: map[string]BibleMap{},
 		today: func() string { return time.Now().Format("2006-01-02") }}
 }
 
