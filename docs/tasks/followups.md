@@ -142,3 +142,4 @@ Design first: mock-up for approval, then build.
 - Detection runs each tool with `--version` every time the Model page opens; cache it for a minute if a slow `claude` start-up shows.
 - The `mcp-assistant` mode starts the whole app executable without a window; check on macOS and Linux builds, where the Wails binary may need a display to start.
 - The Not found state is checked in e2e by hiding the fake `codex`; the install links open through `runtime.BrowserOpenURL`, which e2e does not click.
+- e2e: `structure.e2e.mjs` hover checks ("Headings fold…", "Outline strip…") fail 1–3 times per full run after T36b but pass alone. Make them wait for hover state, and check whether the base commit flakes too.
