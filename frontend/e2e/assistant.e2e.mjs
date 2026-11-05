@@ -315,7 +315,11 @@ export default [
         await page.locator(".settings-section:visible .provider-current", { hasText: "Off" }).waitFor();
       } finally {
         await stopFake();
+        // Later checks expect the right sidebar closed, as the app starts.
+        if (await page.locator("#rightbar").isVisible().catch(() => false)) await page.keyboard.press("Control+Period");
+        await page.locator("#rightbar").waitFor({ state: "hidden", timeout: 5000 }).catch(() => {});
       }
+      t.assert.ok(!(await page.locator("#rightbar").isVisible()), "the right sidebar is closed again");
       t.assert.deepEqual(testKeys(), [], "test keys left in the keychain");
     },
   },
