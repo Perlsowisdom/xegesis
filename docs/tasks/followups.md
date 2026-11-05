@@ -143,3 +143,25 @@ Design first: mock-up for approval, then build.
 - The `mcp-assistant` mode starts the whole app executable without a window; check on macOS and Linux builds, where the Wails binary may need a display to start.
 - The Not found state is checked in e2e by hiding the fake `codex`; the install links open through `runtime.BrowserOpenURL`, which e2e does not click.
 - e2e: `structure.e2e.mjs` hover checks ("Headings fold…", "Outline strip…") fail 1–3 times per full run after T36b but pass alone. Make them wait for hover state, and check whether the base commit flakes too.
+
+## After T38a (5 November 2026)
+
+- **Bible-type books, first stage only.** Done: they are listed with the Bibles in a pane's Bibles
+  chooser and in the sidebar Compare panel, marked as a book, and a reference opens the book at that
+  chapter (`book.at_reference`, from the contents and headings, cached per file version). Not done:
+  - Verse level. The map goes to the chapter only; verse numbers inside the text are not read.
+  - Highlights and notes made in such a book are not yet linked to the reference, so they do not show
+    in passage reports or "Notes on this passage".
+  - PDF books: the map is built from the contents the core can read, and a PDF's outline is read by
+    the interface, so PDFs are not mapped yet.
+  - Contents entries that give only a number or a word ("Chapter Twelve") under no book heading, or
+    other languages' book names, are not placed; `book.bible_map` lists them as unmapped.
+  - Other lists still show only installed Bibles: Insert verse text, a sermon's Bible choice, Search
+    and the Highlights panel.
+  - Reading a book typed Bible in side-by-side columns with the installed Bibles.
+  - Quoting from such a book follows its own licence through `book.copy`; nothing new was added.
+- Fixed on the way: jumping to a place inside a book (contents, links, search hits) briefly showed the
+  target's block hidden, because the book's highlight class clashed with the pop-up message class.
+- A SWORD `.zip` installed with `bible.install` takes its licence from the module's `.conf`: public
+  domain, Creative Commons and freely distributable stay as they say; copyrighted modules, and any
+  that state nothing clear, are a personal copy that keeps the credit line.

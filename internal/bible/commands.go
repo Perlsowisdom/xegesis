@@ -22,7 +22,7 @@ func RegisterLibrary(r *command.Registry, l *Library) {
 	r.Add(
 		command.Define("bible.modules", "List the installed Bibles with their licences; with kind, the installed commentaries, "+
 			"cross-reference sets, dictionaries or lexicons, or all modules.", false, c.modules),
-		command.Define("bible.install", "Import an OSIS, USFM or USX file or folder as a new Bible module. "+
+		command.Define("bible.install", "Import an OSIS, USFM or USX file or folder, or a SWORD module folder or .zip (every module in it), as a new module. "+
 			"Its licence is the one the file states, or Personal copy; give licence_type to set another.", false, c.install),
 		command.Define("bible.set_licence", "Change the licence recorded for an installed Bible.", false, c.setLicence),
 		command.Define("bible.remove", "Delete an installed Bible module.", false, c.remove),
@@ -62,7 +62,7 @@ func (c cmds) modules(_ context.Context, _ *command.Env, p ModulesParams) ([]Met
 }
 
 type InstallParams struct {
-	Path          string `json:"path" required:"true" desc:"An OSIS, USFM or USX file, a folder of them, or a .zip archive of them"`
+	Path          string `json:"path" required:"true" desc:"An OSIS, USFM or USX file, a folder of them, or a .zip archive of them; or a SWORD module folder or .zip (holding mods.d/*.conf)"`
 	Format        string `json:"format,omitempty" enum:"osis,usfm,usx" desc:"Source format; detected from the file when omitted"`
 	ID            string `json:"id,omitempty" desc:"Module ID (lowercase letters, digits, - and _); made from the abbreviation when omitted"`
 	Name          string `json:"name,omitempty" desc:"Full name; taken from the source when omitted"`
@@ -83,6 +83,7 @@ type InstallParams struct {
 
 type InstallResult struct {
 	Module   Meta     `json:"module"`
+	Modules  []Meta   `json:"modules,omitempty" desc:"Every module installed, when an archive holds several"`
 	Warnings []string `json:"warnings" desc:"Markup that was skipped or could not be placed"`
 }
 
@@ -102,6 +103,17 @@ func (c cmds) install(ctx context.Context, _ *command.Env, p InstallParams) (Ins
 		}
 		defer os.RemoveAll(dir)
 		p.Path = contentDir(dir)
+	}
+	if root := SWORDRoot(p.Path); root != "" {
+		var user *licence.Licence
+		if p.LicenceType != "" {
+			user = &lic
+		}
+		res, err := c.installSWORDFolder(ctx, root, p, user)
+		if err != nil {
+			return InstallResult{}, command.Errorf("failed", "%v", err)
+		}
+		return res, nil
 	}
 	if p.LicenceType == "" {
 		lic = DetectLicence(p.Path)

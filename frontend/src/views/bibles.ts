@@ -287,13 +287,13 @@ function installForm(installed: () => void) {
   const replace = switchInput(false, () => {});
 
   const browse = async (kind: "file" | "folder") => {
-    const p = await msg.attempt(() => pick(kind, kind === "file" ? "Choose a Bible file or .zip archive" : "Choose a folder of Bible files"));
+    const p = await msg.attempt(() => pick(kind, kind === "file" ? "Choose a Bible file or .zip archive (OSIS, USFM, USX or SWORD)" : "Choose a folder of Bible files or a SWORD module folder"));
     if (p) path.value = p;
   };
 
   const form = h("form", { class: "card", "aria-labelledby": "install-h" },
     h("h2", { id: "install-h" }, "Install a Bible from a file"),
-    h("p", { class: "hint" }, "An OSIS, USFM or USX file, a folder of USFM or USX books, or a .zip archive of them. " +
+    h("p", { class: "hint" }, "An OSIS, USFM or USX file, a folder of USFM or USX books, a SWORD module (a .zip or folder with a mods.d folder; every module in it is installed), or a .zip archive of any of these. " +
       "Its licence is read from the file; if the file names none, it is a personal copy. You can change it afterwards."),
     h("div", { class: "field" },
       h("label", { for: "install-path" }, "File or folder"),
@@ -321,9 +321,11 @@ function installForm(installed: () => void) {
     if (replace.checked) params.replace = true;
     msg.info("Installing… large files can take a minute.");
     clear(result);
-    const r = await msg.attempt(() => run<{ module: Module; warnings: string[] }>("bible.install", params));
+    const r = await msg.attempt(() => run<{ module: Module; modules?: Module[]; warnings: string[] }>("bible.install", params));
     if (!r) return;
-    msg.ok(`Installed ${r.module.name || r.module.id} (${r.module.verse_count.toLocaleString()} verses).`);
+    msg.ok(r.modules && r.modules.length > 1
+      ? `Installed ${r.modules.length} modules: ${r.modules.map((m) => m.name || m.id).join(", ")}.`
+      : `Installed ${r.module.name || r.module.id} (${r.module.verse_count.toLocaleString()} verses).`);
     const showResult = (m: Module) => clear(result,
       h("p", {}, licenceLine(m.licence, "Bible", () => clear(result, bibleLicenceEditor(m, (fresh) => showResult(fresh ?? m))))),
       r.warnings?.length ? h("details", {}, h("summary", {}, `${r.warnings.length} warnings`), h("ul", {}, r.warnings.map((w) => h("li", {}, w)))) : null);

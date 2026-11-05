@@ -3,6 +3,7 @@
 // opens and closes with the Reader's sidebar button and Ctrl+., so it has no close button of its own. Tools follow the
 // passage in the Reader and load only while they are visible. At phone width it is a sheet.
 
+import { bibleBooks as bibleTypedBooks, bookRows, openAt } from "../biblebooks";
 import { installedBibles } from "../bibles";
 import { chip } from "../controls";
 import { Message, Module, Ref, run } from "../api";
@@ -271,7 +272,8 @@ function comparePanel() {
   const msg = new Message();
   const picker = h("div", { class: "module-picker", role: "group", "aria-label": "Bibles to compare" });
   const body = h("div", { class: "compare", "aria-live": "polite" });
-  const el = h("div", {}, picker, msg.el, body);
+  const bookBox = h("div");
+  const el = h("div", {}, picker, bookBox, msg.el, body);
   let modules: Module[] = [];
   let seq = 0;
 
@@ -313,6 +315,7 @@ function comparePanel() {
   async function refresh() {
     modules = await installedBibles();
     renderPicker();
+    void bibleTypedBooks().then((bs) => clear(bookBox, bs.length ? bookRows(bs, (b) => void openAt(b, state.parsed?.display ?? "", msg, true)) : null));
     await draw();
   }
 
