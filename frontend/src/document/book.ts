@@ -10,9 +10,8 @@ import {
   CopyResult, DEFAULT_PREFS, ReadingPrefs, TOCEntry, base64ToBytes, concatBytes, copyMessage, currentEntry,
   pageAtOffset, pageRects, renderPlan, tidyPrefs, tocOptions,
 } from "../bookhelpers";
-import { LAYOUT_EVENT, currentLayout, setLayout } from "../booklayout";
-import { segmented } from "../controls";
-import { button, clear, h, select } from "../dom";
+import { LAYOUT_EVENT, ZOOM_EVENT, bookZoom, currentLayout } from "../booklayout";
+import { button, clear, h } from "../dom";
 import { sidebar } from "../views/sidebar";
 import { addToList } from "../listpicker";
 import type { PdfDoc, RenderedPage } from "./pdf";
@@ -23,7 +22,7 @@ import { attachContextMenu } from "./contextmenu";
 import { contentsPopover } from "./contentspop";
 import { lookUpCard } from "../lookup";
 import { attachMarking } from "../marking";
-import { hlClasses, parseStyle, styleOf } from "../markingwords";
+import { hlClasses, styleOf } from "../markingwords";
 import { DocHost, DocView } from "./view";
 
 interface BookInfo {
@@ -84,14 +83,6 @@ function loadPrefs(): ReadingPrefs {
   }
 }
 
-function savePrefs(p: ReadingPrefs) {
-  try {
-    localStorage.setItem(PREFS_KEY, JSON.stringify(p));
-  } catch {
-    /* preferences are a convenience */
-  }
-}
-
 interface OpenRequest {
   itemId: string;
   fileId?: string;
@@ -129,17 +120,16 @@ export function bookDoc(host: DocHost): DocView {
   let alive = true;
 
   const byline = h("p", { class: "hint book-byline" });
-  const contents = select([], "", { "aria-label": "Contents", class: "book-toc" });
+  let tocAt = -1; // the contents entry the reader is in
   const prev = button("‹", () => go(section - 1), { "aria-label": "Previous section", title: "Previous section (Alt+Page Up)", "aria-keyshortcuts": "Alt+PageUp" });
   const next = button("›", () => go(section + 1), { "aria-label": "Next section", title: "Next section (Alt+Page Down)", "aria-keyshortcuts": "Alt+PageDown" });
   const where = h("span", { class: "hint book-where", "aria-live": "polite" });
-  const placeBox = h("div", { class: "book-nav", role: "group", "aria-label": "Place in the book", hidden: true }, contents, prev, where, next);
+  const placeBox = h("div", { class: "book-nav", role: "group", "aria-label": "Place in the book", hidden: true }, prev, where, next);
   const text = h("article", { class: "book-text doc-text", lang: "" });
   const pdfBox = h("div", { class: "pdf-box doc-text" });
   const body = h("div", { class: "book-body", tabindex: "0", role: "document", "aria-label": "Book text" }, text, pdfBox);
   const attribution = h("footer", { class: "attribution" });
   const editor = h("div", {});
-  const marks = h("ul", { class: "book-marks" });
   const picker = h("div", { class: "card book-picker", hidden: true });
 
   function print() {
@@ -151,16 +141,8 @@ export function bookDoc(host: DocHost): DocView {
       : { title: `${book.title}, ${where}`, sources: [{ kind: "book", item_id: book.item_id, file_id: book.file_id, from: section, to: section }] });
   }
 
-  const settings = textSettings();
-  const reader = h("div", { class: "book-reader", hidden: true },
-    byline, settings.el, editor, copyMsg.el, body, attribution,
-    h("details", { class: "book-marks-box" }, h("summary", {}, "Highlights and notes in this section"), marks));
+  const reader = h("div", { class: "book-reader", hidden: true }, byline, editor, copyMsg.el, body, attribution);
   const el = h("div", { class: "doc doc-book" }, picker, msg.el, reader);
-
-  contents.addEventListener("change", () => {
-    const t = toc[Number(contents.value)];
-    if (t) jump(t.section, { anchor: t.anchor, flash: !!t.anchor });
-  });
 
   // Choosing a book ---------------------------------------------------------------------------------
 
@@ -211,12 +193,10 @@ export function bookDoc(host: DocHost): DocView {
     attribution.hidden = !b.attribution;
     text.hidden = !b.reflowable;
     pdfBox.hidden = b.reflowable;
-    settings.update();
     toc = b.toc;
     if (b.format === "pdf") {
       if (!(await loadPdf(b))) return;
     }
-    renderTOC();
     let target: Target = {};
     let start = r.section ?? b.position?.section ?? 1;
     if (r.locator) {
@@ -260,12 +240,6 @@ export function bookDoc(host: DocHost): DocView {
     return !!ok;
   }
 
-  function renderTOC() {
-    clear(contents, h("option", { value: "" }, toc.length ? "Contents" : "No contents"),
-      tocOptions(toc).map(([v, label]) => h("option", { value: v }, label)));
-    contents.disabled = toc.length === 0;
-  }
-
   function go(n: number, target: Target = {}) {
     if (!book || n < 1 || n > book.sections) return;
     show(n, target);
@@ -287,8 +261,8 @@ export function bookDoc(host: DocHost): DocView {
     if (host.tab().section !== n) host.update({ section: n });
     prev.disabled = n <= 1;
     next.disabled = n >= book.sections;
-    const ci = currentEntry(toc, n);
-    contents.value = ci >= 0 ? String(ci) : "";
+    tocAt = currentEntry(toc, n);
+    document.dispatchEvent(new Event("xegesis:book-section"));
   }
 
   async function fetchSection(b: BookInfo, n: number): Promise<HTMLElement | null> {
@@ -308,6 +282,7 @@ export function bookDoc(host: DocHost): DocView {
     store.clear();
     stopPdfScroll();
     pdfBox.classList.toggle("pdf-scroll", !b.reflowable && scrolling());
+    if (!b.reflowable) lastWidth = body.clientWidth; // drawn at this width: no redraw for it
     if (b.reflowable) {
       const sec = await fetchSection(b, n);
       if (!sec || seq !== loadSeq || !alive) return;
@@ -341,10 +316,10 @@ export function bookDoc(host: DocHost): DocView {
       if (!sec || seq !== loadSeq || !alive) return;
       if (dir > 0) text.append(sec);
       else {
-        const top = body.scrollTop;
-        const height = body.scrollHeight;
+        // Keep what is being read exactly where it was, whatever margins the new section brings.
+        const was = edge.getBoundingClientRect().top;
         text.prepend(sec);
-        body.scrollTop = top + (body.scrollHeight - height);
+        body.scrollTop += edge.getBoundingClientRect().top - was;
       }
       await loadMarksFor(n);
     } finally {
@@ -365,7 +340,6 @@ export function bookDoc(host: DocHost): DocView {
       }
       if (cur && cur !== section) {
         header(cur);
-        listMarks();
       }
       const room = body.clientHeight * 1.5;
       if (body.scrollHeight - body.scrollTop - body.clientHeight < room) void grow(1);
@@ -375,7 +349,6 @@ export function bookDoc(host: DocHost): DocView {
       const n = pageAtOffset([...slots.values()].map((sl) => sl.offsetTop), y);
       if (n && n !== section) {
         header(n);
-        listMarks();
       }
     }
   }
@@ -569,7 +542,6 @@ export function bookDoc(host: DocHost): DocView {
     const l = currentLayout();
     if (!alive || l === layout) return;
     layout = l;
-    settings.update();
     if (book) void show(section, { para: book.reflowable ? visiblePara() : 0 });
   };
   document.addEventListener(LAYOUT_EVENT, onLayout);
@@ -582,6 +554,7 @@ export function bookDoc(host: DocHost): DocView {
     clearTimeout(saveTimer);
     resizer.disconnect();
     document.removeEventListener(LAYOUT_EVENT, onLayout);
+    document.removeEventListener(ZOOM_EVENT, onZoom);
     cancelAnimationFrame(syncFrame);
     stopPdfScroll();
     book = null;
@@ -606,7 +579,6 @@ export function bookDoc(host: DocHost): DocView {
     if (!book || !alive) return;
     store.set(n, { hs: hs ?? [], ns: ns ?? [] });
     paintMarks(n);
-    if (n === section) listMarks();
   }
 
   async function loadMarks() {
@@ -637,28 +609,6 @@ export function bookDoc(host: DocHost): DocView {
   function rectsEl(a: Anchor | undefined, cls: string) {
     return (a?.rects ?? []).map(([x, y, w, hh]) => h("div", { class: cls,
       style: `left:${x * 100}%;top:${y * 100}%;width:${w * 100}%;height:${hh * 100}%` }));
-  }
-
-  function listMarks() {
-    const { hs: highlights, ns: notes } = store.get(section) ?? { hs: [], ns: [] };
-    const items = [
-      ...highlights.map((hl) => ({ kind: "Highlight", id: hl.id, a: hl.locator, label: hl.locator?.text ?? "", style: hl.style })),
-      ...notes.map((n) => ({ kind: "Note", id: n.id, a: n.locator, label: `${n.title || "Untitled"}: ${n.body}`, style: "note" })),
-    ];
-    clear(marks, items.length === 0 ? h("li", { class: "empty" }, "None yet. Select text to highlight it or add a note.") : items.map((m) =>
-      h("li", { class: "row small" },
-        h("span", { class: `swatch ${m.style === "note" ? "hl-note" : `dot-${parseStyle(m.style).colour}`}`, "aria-hidden": "true" }),
-        h("span", { class: "grow" }, h("strong", {}, `${m.kind}: `), m.label.length > 120 ? m.label.slice(0, 120) + "…" : m.label),
-        book?.reflowable && m.a?.para ? button("Show", () => scrollTo({ para: m.a?.para, flash: true }), { "aria-label": `Show ${m.kind.toLowerCase()}` }) : null,
-        button("Delete", () => removeMark(m.kind, m.id), { class: "danger", "aria-label": `Delete ${m.kind.toLowerCase()}` }))));
-  }
-
-  async function removeMark(kind: string, id: string) {
-    const ok = await msg.attempt(() => run(kind === "Note" ? "note.delete" : "highlight.delete", { id }));
-    if (ok !== undefined) {
-      msg.ok(`${kind} deleted. It can be restored from its history.`);
-      loadMarks();
-    }
   }
 
   function markText(root: HTMLElement, a: Anchor, cls: string, id: string) {
@@ -826,41 +776,21 @@ export function bookDoc(host: DocHost): DocView {
   let lastWidth = 0;
   const resizer = new ResizeObserver(() => {
     const w = body.clientWidth;
-    if (!book || book.reflowable || Math.abs(w - lastWidth) < 24) return;
+    if (!book || book.reflowable || !pdf || Math.abs(w - lastWidth) < 24) return;
     lastWidth = w;
     clearTimeout(resizeTimer);
     resizeTimer = window.setTimeout(() => alive && show(section, {}), 300);
   });
   resizer.observe(body);
 
-  // Text settings -----------------------------------------------------------------------------------
-
-  // Text settings: the zoom for PDF pages. Typeface, size, spacing and the page colour are the
-  // reading settings every pane shares (Aa in Read mode, and Settings → Appearance).
-  function textSettings() {
-    const zoom = h("output", {}, `${Math.round(prefs.zoom * 100)}%`);
-    const fixed = h("div", { class: "row" }, h("span", {}, "Zoom"),
-      button("−", () => set(Math.round((prefs.zoom - 0.1) * 10) / 10), { "aria-label": "Zoom out" }), zoom,
-      button("+", () => set(Math.round((prefs.zoom + 0.1) * 10) / 10), { "aria-label": "Zoom in" }));
-    function set(z: number) {
-      const zoomed = z !== prefs.zoom;
-      prefs = tidyPrefs({ ...prefs, zoom: z });
-      savePrefs(prefs);
-      zoom.textContent = `${Math.round(prefs.zoom * 100)}%`;
-      if (zoomed && book && !book.reflowable) void show(section, {});
-    }
-    const turn = h("div", { class: "row" }, h("span", {}, "Turning"), segmented({ label: "Turning pages", small: true, value: layout,
-      options: [["pages", "Pages"], ["scroll", "Scroll"]], onChange: (v) => setLayout(v) }));
-    const el = h("details", { class: "book-settings", hidden: true }, h("summary", {}, "View"), turn, fixed);
-    return {
-      el,
-      update() {
-        el.hidden = !book;
-        fixed.hidden = !!book?.reflowable;
-        for (const r of turn.querySelectorAll<HTMLInputElement>("input")) r.checked = r.value === layout;
-      },
-    };
-  }
+  // The PDF zoom is changed in the Aa popover.
+  const onZoom = () => {
+    const z = bookZoom();
+    if (!alive || z === prefs.zoom) return;
+    prefs = tidyPrefs({ ...prefs, zoom: z });
+    if (book && !book.reflowable) void show(section, {});
+  };
+  document.addEventListener(ZOOM_EVENT, onZoom);
 
   attachContextMenu(body, {
     highlight: (style) => addHighlight(style),
@@ -923,7 +853,7 @@ export function bookDoc(host: DocHost): DocView {
               closePopover(true);
               const t = toc[Number(v)];
               if (t) jump(t.section, { anchor: t.anchor, flash: !!t.anchor });
-            }, { class: Number(v) === Number(contents.value) ? "on" : "" })));
+            }, { class: Number(v) === tocAt ? "on" : "" })));
         },
         recent: [...back].reverse().map((p, i) => ({ label: `${unit} ${p.section}`, go: () => {
           back.splice(back.length - 1 - i);
@@ -967,7 +897,7 @@ export function bookDoc(host: DocHost): DocView {
 
   return {
     el, placeBox, menu, focus: () => body.focus(),
-    markScope: () => (book ? { kind: "item", itemId: book.item_id, title: book.title || "this book" } : null),
+    markScope: () => (book ? { kind: "item", itemId: book.item_id, title: book.title || "this book", section, unit: book.reflowable ? "section" : "page" } : null),
     destroy() {
       marking.close();
       document.removeEventListener("xegesis:marks-changed", onMarks);

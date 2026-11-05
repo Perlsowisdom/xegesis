@@ -371,7 +371,7 @@ td.actions button { margin: 0 2px 2px 0; }
   .grid-tools { display: none; }
 }
 @container pane (max-width: 300px) {
-  .grid-place .passage-box > .icon-btn, .grid-place .book-nav > :not(.book-toc) { display: none; }
+  .grid-place .passage-box > .icon-btn, .grid-place .book-nav > :not(.book-where) { display: none; }
   .grid-place { flex-basis: 8rem; min-width: 4.5rem; }
   .grid-tab { max-width: 8rem; }
 }
@@ -383,7 +383,6 @@ td.actions button { margin: 0 2px 2px 0; }
 .doc-book .book-body { flex: 1; min-height: 120px; max-height: none; }
 .book-nav { display: flex; align-items: center; gap: 2px; min-width: 0; }
 .book-nav[hidden] { display: none; }
-.book-nav .book-toc { flex: 1 1 6rem; min-width: 0; padding: 2px; }
 .book-byline { margin: 0 0 4px; }
 .grid-gutter { flex: 0 0 8px; position: relative; touch-action: none; }
 .grid-gutter.col { cursor: col-resize; }
@@ -475,12 +474,7 @@ dl.info dd { margin: 0; }
 
 /* Book pane */
 .book-nav { margin: 4px 0; }
-.book-nav .book-toc { max-width: 100%; flex: 1 1 10rem; min-width: 0; }
 .book-where { margin: 0; white-space: nowrap; }
-.book-settings { margin: 4px 0; font-size: .9rem; }
-.book-settings summary { cursor: pointer; color: var(--muted); }
-.book-settings .row { margin-top: 6px; align-items: flex-end; }
-.book-settings .label { font-size: .85rem; font-weight: 600; }
 .book-actions { margin: 4px 0; font-size: .9rem; }
 .book-actions .hint { margin: 0; }
 .doc-book select { width: auto; max-width: 100%; }
@@ -527,9 +521,6 @@ mark.hl { color: inherit; border-radius: 2px; }
 .hl.hl-faint { background: color-mix(in srgb, var(--hl) 14%, transparent); }
 .hl.hl-faint.hl-u { background: none; text-decoration-style: dotted; }
 .swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; border: 1px solid var(--line); flex: none; }
-.book-marks { list-style: none; padding: 0; margin: 6px 0; }
-.book-marks li { border-top: 1px solid var(--line); padding: 4px 0; }
-.book-marks-box summary { cursor: pointer; font-size: .9rem; margin-top: 8px; }
 .pdf-box { display: flex; justify-content: center; }
 .book-body { overflow-anchor: none; }
 .book-sec + .book-sec { margin-top: 2.5rem; padding-top: 2rem; border-top: 1px solid var(--line); }
@@ -1499,6 +1490,8 @@ button.danger-link { color: var(--bad); margin-top: 8px; display: block; }
 .hl-row:hover, .hl-row:focus-within { background: var(--ghost-hover); }
 .hl-bar { flex: none; width: 4px; margin: 7px 0; border-radius: 2px; background: var(--bar); }
 .bar-yellow { --bar: var(--hl-yellow); } .bar-green { --bar: var(--hl-green); } .bar-blue { --bar: var(--hl-blue); }
+.bar-note { --bar: var(--accent); }
+.side-scope { align-self: flex-start; font-size: .82rem; }
 .bar-pink { --bar: var(--hl-pink); } .bar-purple { --bar: var(--hl-purple); }
 .hl-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; text-align: left; white-space: normal; border: 0; background: none;
   padding: 6px 0; cursor: pointer; }

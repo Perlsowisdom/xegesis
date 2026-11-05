@@ -12,7 +12,7 @@ import { openGridPresets, setGridPresets } from "../gridhook";
 import { icon } from "../icons";
 import { todayCard } from "../plancard";
 import { togglePopover } from "../popover";
-import { currentLayout, setLayout } from "../booklayout";
+import { bookZoom, currentLayout, setBookZoom, setLayout } from "../booklayout";
 import { ReaderMode, ReadingPrefs, SPACINGS, TEXT_SIZES, gridButtonPlace, stepSize } from "../shellwords";
 import { navigate, onPrefs, prefs, setPrefs, state } from "../state";
 import { openReport } from "./report";
@@ -98,7 +98,7 @@ export function readerView() {
     const r = prefs.reading;
     el.dataset.mode = r.mode;
     modeBtns.forEach((b, i) => b.setAttribute("aria-pressed", String(modes[i] === r.mode)));
-    aaBtn.hidden = r.mode !== "read";
+    aaBtn.hidden = r.mode !== "read" && !showsBook();
     gridBtn.hidden = gridButtonPlace(r.mode, prefs.rail) !== "toolbar";
     el.style.setProperty("--text-size", `${r.size / 100}`);
     el.dataset.font = r.font;
@@ -112,6 +112,9 @@ export function readerView() {
       grid.render();
     }
   }
+  // In Study mode the Aa button is there while the selected pane shows a book (Pages / Scroll, PDF zoom).
+  const showsBook = () => grid.selectedView()?.markScope?.()?.kind === "item";
+  document.addEventListener("xegesis:pane-changed", () => { aaBtn.hidden = prefs.reading.mode !== "read" && !showsBook(); });
   onPrefs(applyPrefs);
   applyPrefs();
 
@@ -135,6 +138,10 @@ export function readingControls(): HTMLElement {
     button("A−", () => set({ size: stepSize(prefs.reading.size, -1) }), { "aria-label": "Smaller text", title: `Smaller (down to ${TEXT_SIZES[0]}%)` }),
     size,
     button("A+", () => set({ size: stepSize(prefs.reading.size, 1) }), { "aria-label": "Larger text", title: `Larger (up to ${TEXT_SIZES[TEXT_SIZES.length - 1]}%)` }));
+  const zoomOut = h("output", { "aria-live": "polite", class: "size-out" }, `${Math.round(bookZoom() * 100)}%`);
+  const stepZoom = (d: number) => { zoomOut.textContent = `${Math.round(setBookZoom(Math.round((bookZoom() + d) * 10) / 10) * 100)}%`; };
+  const zoom = h("div", { class: "stepper", role: "group", "aria-label": "PDF zoom" },
+    button("−", () => stepZoom(-0.1), { "aria-label": "Zoom out" }), zoomOut, button("+", () => stepZoom(0.1), { "aria-label": "Zoom in" }));
   return h("div", { class: "pop-body reading-controls" },
     h("h2", { class: "pop-title" }, "Reading"),
     settingRow("Text size", undefined, stepper),
@@ -143,5 +150,6 @@ export function readingControls(): HTMLElement {
     choice("spacing", "Line spacing", undefined, [["tight", "Tight"], ["normal", "Normal"], ["loose", "Loose"]]),
     choice("theme", "Page", "Read mode's own page colour.", [["auto", "App"], ["light", "Light"], ["sepia", "Sepia"], ["dark", "Dark"]]),
     settingRow("Books", "Scroll runs a book's pages or chapters together. Kept on this device.", segmented({ label: "Books", value: currentLayout(), small: true,
-      options: [["pages", "Pages"], ["scroll", "Scroll"]], onChange: (v) => setLayout(v) })));
+      options: [["pages", "Pages"], ["scroll", "Scroll"]], onChange: (v) => setLayout(v) })),
+    settingRow("PDF zoom", "How large a PDF's pages are drawn. Kept on this device.", zoom));
 }

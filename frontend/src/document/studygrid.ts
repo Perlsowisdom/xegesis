@@ -181,7 +181,7 @@ export function studyGrid(o: StudyGridOptions) {
       if (ci > 0) colNodes.push(gutter("col", ci - 1, 0));
       colNodes.push(cel);
     });
-    for (const id of [...colEls.keys()]) if (!g.columns.some((c) => c.id === id)) colEls.delete(id);
+    for (const id of [...colEls.keys()]) if (!cols.some((c) => c.id === id)) colEls.delete(id); // Read mode's column is not in the grid: keep it, or every redraw would re-attach the pane and reset its scroll
     setChildren(el, colNodes);
     for (const m of mounted.values()) {
       const p = findPane(g, m.paneId)?.pane;

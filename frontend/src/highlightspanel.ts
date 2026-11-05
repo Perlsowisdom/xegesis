@@ -30,8 +30,20 @@ export interface HighlightRow {
   parts?: QuotePart[];
 }
 
+interface BookNoteRow {
+  id: string;
+  title?: string;
+  body?: string;
+  item_id?: string;
+  locator?: HighlightRow["locator"];
+}
+
+// scopeUnit names a book section or page for a caption.
+let unit = "section";
+const scopeUnit = (n: number) => `${unit} ${n}`;
+
 // The place the sidebar lists: a library book, or a book of the Bible.
-export type MarkScope = { kind: "item"; itemId: string; title: string } | { kind: "bible"; book: string };
+export type MarkScope = { kind: "item"; itemId: string; title: string; section?: number; unit?: string } | { kind: "bible"; book: string };
 
 export interface HighlightsOptions {
   page?: boolean; // My work's page: a search, every highlight
@@ -43,14 +55,17 @@ export function highlightsPanel(o: HighlightsOptions) {
   const msg = new Message();
   let colour: Colour | "" = "";
   let rows: HighlightRow[] = [];
+  let notes: BookNoteRow[] = [];
+  let whole = false; // a book: every section, not just the one being read
   let seq = 0;
   let timer = 0;
   const caption = h("p", { class: "side-caption" });
+  const scopeBtn = button("", () => { whole = !whole; void refresh(); }, { class: "link side-scope", hidden: true });
   const query = o.page ? h("input", { type: "search", class: "work-search", placeholder: "Search the highlighted words and places", "aria-label": "Search highlights" }) : null;
   const chips = h("div", { class: "hl-filters", role: "group", "aria-label": "Colour" });
   const list = h("ul", { class: "hl-list", "aria-live": "polite" });
   const el = h("div", { class: `hl-panel${o.page ? " page" : ""}` },
-    o.page ? null : caption,
+    o.page ? null : caption, o.page ? null : scopeBtn,
     h("div", { class: "hl-tools" }, query, chips), msg.el, list, o.footer ?? null);
 
   function drawChips() {
@@ -76,16 +91,26 @@ export function highlightsPanel(o: HighlightsOptions) {
       clear(list, h("li", { class: "side-empty" }, "Open a Bible or a book to see its highlights."));
       return;
     }
-    caption.textContent = scope ? (scope.kind === "bible" ? `In ${scope.book}` : `In ${scope.title}`) : "";
+    unit = scope?.kind === "item" && scope.unit ? scope.unit : "section";
+    const inSection = scope?.kind === "item" && scope.section !== undefined && !whole;
+    caption.textContent = scope ? (scope.kind === "bible" ? `In ${scope.book}` : `In ${scope.title}${inSection ? `, ${scopeUnit(scope.section ?? 0)}` : ""}`) : "";
+    scopeBtn.hidden = !(scope?.kind === "item" && scope.section !== undefined);
+    scopeBtn.textContent = whole ? "Show this section only" : "Show the whole book";
     const params: Record<string, unknown> = { module: await module() };
     if (scope?.kind === "bible") params.book = scope.book;
     if (scope?.kind === "item") params.item_id = scope.itemId;
+    if (inSection) params.section = scope.section;
     if (colour) params.colour = colour;
     if (query?.value.trim()) params.query = query.value.trim();
     if (o.page) params.newest = true;
-    const got = await msg.attempt(() => run<HighlightRow[]>("highlight.list", params));
+    const noteParams = { item_id: scope?.kind === "item" ? scope.itemId : "", ...(inSection ? { section: scope.section } : {}), limit: 200 };
+    const [got, ns] = await Promise.all([
+      msg.attempt(() => run<HighlightRow[]>("highlight.list", params)),
+      scope?.kind === "item" && !colour && !query?.value.trim() ? msg.attempt(() => run<BookNoteRow[]>("note.list", noteParams)) : Promise.resolve([]),
+    ]);
     if (n !== seq || !got) return;
     rows = got;
+    notes = ns ?? [];
     draw();
   }
 
@@ -96,14 +121,31 @@ export function highlightsPanel(o: HighlightsOptions) {
     return [r.item_title || "A book", place].filter(Boolean).join(" · ");
   }
 
+  function drawNote(nt: BookNoteRow) {
+    const words = `${nt.title || "Untitled"}${nt.body ? `: ${nt.body}` : ""}`;
+    const go = h("button", { type: "button", class: "hl-row-main", title: "Go there" },
+      h("span", { class: "hl-text" }, words.length > 220 ? `${words.slice(0, 220)}…` : words),
+      h("span", { class: "hl-where" }, "Note", nt.locator?.section ? ` · ${scopeUnit(nt.locator.section)}` : ""));
+    go.addEventListener("click", () => void jump({ id: nt.id, style: "", item_id: nt.item_id, locator: nt.locator, created_at: 0 }));
+    const x = button("", async () => {
+      if (await msg.attempt(() => run("note.delete", { id: nt.id })) === undefined) return;
+      notes = notes.filter((y) => y.id !== nt.id);
+      draw();
+      msg.ok("Note deleted. It can be restored from its history.");
+      document.dispatchEvent(new Event("xegesis:marks-changed"));
+    }, { class: "ghost-btn hl-x", "aria-label": `Delete the note ${nt.title || "Untitled"}`, title: "Delete note" });
+    x.append(icon("close"));
+    return h("li", { class: "hl-row" }, h("span", { class: "hl-bar bar-note", "aria-hidden": "true" }), go, x);
+  }
+
   function draw() {
-    if (rows.length === 0) {
+    if (rows.length === 0 && notes.length === 0) {
       const filtered = !!colour || !!query?.value.trim();
       clear(list, h("li", { class: "side-empty" }, filtered ? "No highlights match."
         : "No highlights here yet. Select words in the text and pick a colour."));
       return;
     }
-    clear(list, rows.map((r) => {
+    clear(list, [...notes.map(drawNote), ...rows.map((r) => {
       const s = parseStyle(r.style);
       const words = (r.text ?? "").trim();
       const go = h("button", { type: "button", class: "hl-row-main", title: "Go there" },
@@ -121,7 +163,7 @@ export function highlightsPanel(o: HighlightsOptions) {
         e.dataTransfer.effectAllowed = "copy";
       });
       return li;
-    }));
+    })]);
   }
 
   async function jump(r: HighlightRow) {
