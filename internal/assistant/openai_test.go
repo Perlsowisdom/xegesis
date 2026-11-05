@@ -5,12 +5,19 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"os"
 	"testing"
 
 	"go.uber.org/goleak"
 )
 
-func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
+func TestMain(m *testing.M) {
+	if os.Getenv("XEGESIS_FAKE_CLI") != "" {
+		fakeCLI() // this test program is also the fake claude or codex command
+		return
+	}
+	goleak.VerifyTestMain(m)
+}
 
 func adapter(f *fakeServer, key string) *OpenAI {
 	return &OpenAI{BaseURL: f.URL + "/v1", Key: key, Client: f.Client()}

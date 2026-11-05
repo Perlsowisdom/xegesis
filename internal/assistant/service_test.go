@@ -65,7 +65,7 @@ func fakeLibrary(t *testing.T, r *command.Registry) {
 	)
 }
 
-func newRig(t *testing.T, reply func(map[string]any) step) *rig {
+func newRig(t *testing.T, reply func(map[string]any) step, opts ...Option) *rig {
 	st, err := store.Open(filepath.Join(t.TempDir(), "library.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -74,9 +74,9 @@ func newRig(t *testing.T, reply func(map[string]any) step) *rig {
 	g := &rig{t: t, reg: command.NewRegistry(), env: &command.Env{Store: st}, keys: secrets.NewMemory(), fake: newFake(t, reply)}
 	core.Register(g.reg)
 	fakeLibrary(t, g.reg)
-	Register(g.reg, g.keys, WithProvider(func(addr, key string, p Preset) Provider {
+	Register(g.reg, g.keys, append([]Option{WithProvider(func(addr, key string, p Preset) Provider {
 		return &OpenAI{BaseURL: addr, Key: key, Client: g.fake.Client()}
-	}))
+	})}, opts...)...)
 	g.ctx = WithEmitter(context.Background(), func(name string, data any) {
 		g.mu.Lock()
 		defer g.mu.Unlock()

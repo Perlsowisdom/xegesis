@@ -49,6 +49,23 @@ details.
 | You press Test connection (`assistant.test`) | `GET <address>/models`; when the server has no model list, one `POST <address>/chat/completions` with the message "Reply with the word OK." and nothing of yours |
 | You send a question (`assistant.chat`) | `POST <address>/chat/completions`, streamed, once per step of the reply. It holds the model name, Xegesis's instructions to the model, the conversation so far (your questions with the passage and the note or sermon open when you asked: their reference, title and ID), the list of read-only tools, and each tool's result |
 
+### Claude Code and Codex (T36b)
+
+Choosing **Claude Code** or **Codex** uses the command-line tool already on this computer (`claude`,
+`codex`). **These tools do their own sign-in and their own network calls**: Xegesis holds no key for
+them, does not see which service or model they use, and cannot limit where they send what they are
+given. Your question, the chat so far and what the tools read from your library go to their provider
+under its terms, so Xegesis treats them as online: personal copies of books are never given to them, and
+quoting limits apply.
+
+| When | What happens |
+| --- | --- |
+| The Model page opens, or you ask `assistant.cli.detect` | Looks for `claude` and `codex` on PATH and runs each with `--version`. No network from Xegesis |
+| You press Test connection | Nothing is run or sent; it reports the version found |
+| You send a question | Runs the tool with no window, in an empty temporary folder, with the question, Xegesis's instructions and the chat so far on its standard input, and a config naming Xegesis's own `mcp-assistant` mode. That mode offers only the read-only tools, each result passing the licence gate; the tool's own file, shell and web tools are switched off. Pressing Stop ends the tool and everything it started |
+
+The privacy panel shows the exact command and what is sent to it before your first message to each tool.
+
 Tool results are the text the assistant read for you: Bible passages, search snippets and book sections,
 your notes, sermons and highlights, and reports. Text from works with a licence goes through the same
 rules as quoting into a note: open texts in full, limited texts only up to their quoting limit, and

@@ -43,6 +43,16 @@ With Claude Code: `claude mcp add xegesis -- xegesis -library /path/to/library.d
   -32700 parse error, -32600 invalid request, -32601 method not found, -32602 invalid params
   (including an unknown tool).
 
+## Assistant mode
+
+`xegesis mcp-assistant` (also the desktop app's executable: `Xegesis.exe -library <path> mcp-assistant`)
+serves a different, fixed list: only the AI assistant's read-only tools (`search_library`,
+`read_passage`, `list_bibles`, `read_book`, `list_notes`, `read_note`, `list_sermons`, `read_sermon`,
+`list_highlights`, `passage_report`, `word_report`, `look_up_word`). None writes, no other command is
+reachable, and every text it returns passes the licence gate as for an online model: quoting limits
+apply and personal copies of books are withheld. Xegesis starts it for Claude Code and Codex when you
+choose them as the assistant; set `XEGESIS_ASSISTANT_BIBLE` to name the Bible used when a call names none.
+
 ## Try it by hand
 
 ```

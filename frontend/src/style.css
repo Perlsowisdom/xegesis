@@ -849,6 +849,8 @@ details.more summary { cursor: pointer; color: var(--accent); }
 .provider-chip[aria-pressed="true"] { background: var(--fill-soft); border-color: var(--fill); color: var(--fill-soft-fg); }
 .privacy-list dd { margin-bottom: 8px; }
 .chip-later { font-size: .78rem; }
+.tool-choice { display: inline-flex; align-items: center; gap: 8px; }
+.install-link { font-size: .85rem; color: var(--link, var(--fill)); }
 .provider-chip:disabled { opacity: .7; cursor: default; }
 .assistant-details h3 { margin: 14px 0 6px; }
 .assistant-details input[type=url], .assistant-details input[type=text], .key-form input { min-width: 16rem; flex: 1 1 16rem; }

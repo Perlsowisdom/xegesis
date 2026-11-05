@@ -42,6 +42,7 @@ describe("words", () => {
     expect(providerLine(cfg({ provider: "off", label: undefined }))).toBe("Off");
     expect(providerLine(cfg({ provider: "local", label: "Local model", local: true }))).toBe("Local model, on this computer");
     expect(providerLine(cfg({ provider: "custom", label: "Custom", local: false }))).toBe("Custom address");
+    expect(providerLine(cfg({ provider: "codex", label: "Codex" }))).toBe("Codex, signed in on this computer");
   });
   it("says what a running tool does", () => {
     expect(runningLabel("read_passage")).toBe("Reading the passage…");

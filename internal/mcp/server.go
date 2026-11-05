@@ -33,8 +33,22 @@ type Server struct {
 	Name    string
 	Version string
 
+	// Only, when set, offers just these tools instead of the registry's commands (the assistant
+	// mode: a fixed, read-only list). Reg and Env may then be nil.
+	Only []Custom
+
 	tools  []tool
 	byTool map[string]string // tool name to command ID
+	custom map[string]Custom
+}
+
+// Custom is a tool the server offers on its own, not a registered command.
+type Custom struct {
+	Name        string
+	Description string
+	InputSchema map[string]any
+	// Call runs the tool; isError marks a failure the model should read and may retry.
+	Call func(ctx context.Context, args json.RawMessage) (text string, isError bool)
 }
 
 type tool struct {
@@ -62,7 +76,15 @@ func ToolName(id string) string {
 }
 
 func (s *Server) build() {
-	s.tools, s.byTool = nil, map[string]string{}
+	s.tools, s.byTool, s.custom = nil, map[string]string{}, map[string]Custom{}
+	if s.Only != nil {
+		for _, c := range s.Only {
+			s.custom[c.Name] = c
+			s.tools = append(s.tools, tool{Name: c.Name, Description: c.Description, InputSchema: c.InputSchema,
+				Annotations: annotations{Title: c.Name, ReadOnlyHint: true}})
+		}
+		return
+	}
 	for _, d := range s.Reg.List() {
 		name := ToolName(d.ID)
 		if _, dup := s.byTool[name]; dup {
@@ -241,6 +263,13 @@ func (s *Server) call(ctx context.Context, raw json.RawMessage) (any, *rpcError)
 	}
 	if err := json.Unmarshal(raw, &p); err != nil || p.Name == "" {
 		return nil, &rpcError{codeInvalidParams, "tools/call needs a tool name"}
+	}
+	if c, ok := s.custom[p.Name]; ok {
+		if len(p.Arguments) == 0 {
+			p.Arguments = json.RawMessage("{}")
+		}
+		text, isErr := c.Call(ctx, p.Arguments)
+		return toolResult(text, nil, isErr), nil
 	}
 	id, ok := s.byTool[p.Name]
 	if !ok {

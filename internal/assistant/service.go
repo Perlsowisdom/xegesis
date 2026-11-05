@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"os"
 	"slices"
 	"strings"
 	"sync"
@@ -27,18 +28,25 @@ type Preset struct {
 	BaseURL  string `json:"base_url"`
 	Local    bool   `json:"local" desc:"Runs on this computer (when its address is this computer)"`
 	NeedsKey bool   `json:"needs_key"`
+	CLI      bool   `json:"cli" desc:"A command-line tool on this computer (Claude Code, Codex) that signs in and connects to its provider itself"`
 }
 
-// Presets are the providers the OpenAI-compatible adapter serves. Claude Code and Codex (T36b)
-// are not among them.
+// Presets are the providers: the OpenAI-compatible adapter serves all but the two command-line
+// tools, which are online as far as the licence gate is concerned (they send to their provider).
 var Presets = []Preset{
-	{"claude", "Claude", "https://api.anthropic.com/v1", false, true},
-	{"openai", "OpenAI", "https://api.openai.com/v1", false, true},
-	{"gemini", "Gemini", "https://generativelanguage.googleapis.com/v1beta/openai", false, true},
-	{"openrouter", "OpenRouter", "https://openrouter.ai/api/v1", false, true},
-	{"local", "Local model", "http://localhost:11434/v1", true, false},
-	{"custom", "Custom", "", false, false},
+	{"claude", "Claude", "https://api.anthropic.com/v1", false, true, false},
+	{"openai", "OpenAI", "https://api.openai.com/v1", false, true, false},
+	{"gemini", "Gemini", "https://generativelanguage.googleapis.com/v1beta/openai", false, true, false},
+	{"openrouter", "OpenRouter", "https://openrouter.ai/api/v1", false, true, false},
+	{"claude-code", "Claude Code", "", false, false, true},
+	{"codex", "Codex", "", false, false, true},
+	{"local", "Local model", "http://localhost:11434/v1", true, false, false},
+	{"custom", "Custom", "", false, false, false},
 }
+
+// cliAddr stands for a command-line tool where a provider has an address: it keys the privacy
+// confirmation.
+func cliAddr(p Preset) string { return "cli:" + p.ID }
 
 func preset(id string) (Preset, bool) {
 	for _, p := range Presets {
@@ -77,6 +85,11 @@ type Config struct {
 // Option changes a service, for tests.
 type Option func(*service)
 
+// WithDetect finds the command-line tools with fn instead of searching PATH, for tests.
+func WithDetect(fn func(ctx context.Context, p Preset) CLIInfo) Option {
+	return func(s *service) { s.detect = fn }
+}
+
 // WithProvider makes providers with fn instead of the OpenAI-compatible adapter over the network.
 func WithProvider(fn func(baseURL, key string, p Preset) Provider) Option {
 	return func(s *service) { s.newProvider = fn }
@@ -86,13 +99,14 @@ type service struct {
 	reg         *command.Registry
 	keys        secrets.Store
 	newProvider func(baseURL, key string, p Preset) Provider
+	detect      func(ctx context.Context, p Preset) CLIInfo
 	mu          sync.Mutex
 	convs       map[string]*conversation
 }
 
 // Register adds the assistant commands to r. Tools run other commands through r.
 func Register(r *command.Registry, keys secrets.Store, opts ...Option) {
-	s := &service{reg: r, keys: keys, convs: map[string]*conversation{}, newProvider: openAIProvider}
+	s := &service{reg: r, keys: keys, convs: map[string]*conversation{}, newProvider: openAIProvider, detect: Detect}
 	for _, o := range opts {
 		o(s)
 	}
@@ -100,6 +114,8 @@ func Register(r *command.Registry, keys secrets.Store, opts ...Option) {
 		command.Define("assistant.config.get", "Show the AI assistant's provider, address and model, and whether a key is saved. Uses no network.", false, s.configGet),
 		command.Define("assistant.config.set", "Choose the AI assistant's provider, address or model, save its key in the system keychain, "+
 			"or confirm what is sent to it. Uses no network.", true, s.configSet),
+		command.Define("assistant.cli.detect", "Look for the Claude Code and Codex command-line tools on this computer and give their versions. "+
+			"Runs each with --version; uses no network.", false, s.cliDetect),
 		command.Define("assistant.models", "List the models the chosen provider offers.", false, s.models),
 		command.Define("assistant.test", "Check that the chosen provider answers and accepts the key.", false, s.test),
 		command.Define("assistant.preview", "Show exactly what the first message of a chat would send, and where, without sending it.", false, s.preview),
@@ -163,6 +179,9 @@ func saveConfig(ctx context.Context, env *command.Env, c config) error {
 }
 
 func (c config) baseURL(p Preset) string {
+	if p.CLI {
+		return cliAddr(p)
+	}
 	if u := c.BaseURLs[p.ID]; u != "" {
 		return u
 	}
@@ -303,6 +322,9 @@ func (s *service) current(ctx context.Context, env *command.Env) (current, error
 		return current{}, command.Errorf("unavailable", "The assistant is off. Choose a provider in Settings → Assistant → Model.")
 	}
 	v := s.view(c)
+	if pr.CLI {
+		return s.currentCLI(ctx, env, pr, v)
+	}
 	if v.BaseURL == "" {
 		return current{}, command.Errorf("unavailable", "Give the address of the %s provider in Settings → Assistant → Model.", pr.Label)
 	}
@@ -314,6 +336,40 @@ func (s *service) current(ctx context.Context, env *command.Env) (current, error
 		return current{}, command.Errorf("unavailable", "Save your %s key in Settings → Assistant → Model first.", pr.Label)
 	}
 	return current{preset: pr, addr: v.BaseURL, model: v.Model, local: v.Local, conf: v, p: s.newProvider(v.BaseURL, key, pr)}, nil
+}
+
+func (s *service) currentCLI(ctx context.Context, env *command.Env, pr Preset, v Config) (current, error) {
+	info := s.detect(ctx, pr)
+	if !info.Found {
+		return current{}, command.Errorf("unavailable", "%s was not found on this computer. Install it (%s), sign in once in a terminal, then choose it again in Settings → Assistant → Model.", pr.Label, info.InstallURL)
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return current{}, err
+	}
+	lib, err := libraryFile(ctx, env)
+	if err != nil {
+		return current{}, err
+	}
+	return current{preset: pr, addr: v.BaseURL, model: v.Model, conf: v, p: &CLIAgent{Info: info, Exe: exe, Library: lib}}, nil
+}
+
+// libraryFile is the path of the open library.db.
+func libraryFile(ctx context.Context, env *command.Env) (string, error) {
+	var seq int
+	var name, file string
+	err := env.Store.QueryRow(ctx, `SELECT seq, name, file FROM pragma_database_list WHERE name = 'main'`).Scan(&seq, &name, &file)
+	return file, err
+}
+
+func (s *service) cliDetect(ctx context.Context, _ *command.Env, _ struct{}) ([]CLIInfo, error) {
+	var out []CLIInfo
+	for _, p := range Presets {
+		if p.CLI {
+			out = append(out, s.detect(ctx, p))
+		}
+	}
+	return out, nil
 }
 
 func plainErr(err error) error {
@@ -349,6 +405,9 @@ func (s *service) test(ctx context.Context, env *command.Env, _ struct{}) (TestR
 			return TestResult{Message: ce.Message}, nil
 		}
 		return TestResult{}, err
+	}
+	if a, ok := cur.p.(*CLIAgent); ok {
+		return TestResult{OK: true, Message: strings.TrimSpace(fmt.Sprintf("%s %s is on this computer. It signs in on its own; nothing is sent until you ask a question.", a.Info.Label, a.Info.Version))}, nil
 	}
 	ctx, stop := context.WithTimeout(ctx, 30*time.Second)
 	defer stop()
