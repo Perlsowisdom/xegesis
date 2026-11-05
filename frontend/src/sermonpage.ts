@@ -42,6 +42,8 @@ export interface SermonPage {
   doc(): SermonDoc | null;
 }
 
+const FOLD_KEY = "xegesis.sermon.props.folded";
+
 export function sermonPage(o: SermonPageOptions): SermonPage {
   const msg = new Message();
   const status = saveIndicator();
@@ -49,11 +51,14 @@ export function sermonPage(o: SermonPageOptions): SermonPage {
   const printBtn = button("Print or save…", () => { if (d) openExport({ title: d.title || untitled(d.kind), sources: [{ kind: "document", id: d.id }] }); },
     { class: "ghost-btn text", title: "Print, or save as PDF, Word, a web page or Markdown" });
   const titleHost = h("div", {});
-  const props = h("dl", { class: "page-props" });
+  const props = h("dl", { class: "page-props", id: `props-${Math.random().toString(36).slice(2, 8)}` });
+  const fold = h("button", { type: "button", class: "props-fold", "aria-controls": props.id, "aria-expanded": "true" });
+  const propsHost = h("div", { class: "props-host" }, fold, props);
+  let folded = false;
   const edHost = h("div", { class: "page-text", "aria-busy": "true" });
   const page = h("article", { class: "doc-page sermon-page", "aria-label": "Sermon" },
     pageHead({ crumbs: [crumbs], status: status.el, extra: [printBtn], menu: (b) => menu(b), menuLabel: "Sermon actions" }),
-    msg.el, titleHost, props, edHost);
+    msg.el, titleHost, propsHost, edHost);
   const el = h("div", { class: "sermon-layout" }, page);
 
   let d: SermonDoc | null = null;
@@ -114,8 +119,28 @@ export function sermonPage(o: SermonPageOptions): SermonPage {
       onClick: (b) => openPopover(b, h("div", { class: "menu-list kind-menu" }, (["sermon", "lesson", "study"] as DocKind[]).map((k) =>
         button(KIND_NAME[k], () => { if (k !== doc.kind) setFact({ kind: k }); }, { class: k === doc.kind ? "on" : "", "aria-checked": String(k === doc.kind) }))),
       { label: "Kind", menu: true }) });
+    drawFold(doc);
     clear(props, row("Passage", passageChip), row("Preached", preached), row("Theme", theme), row("Kind", kind));
   }
+
+  // The fold button: unfolded it says "Details"; folded it is one line of chips, such as
+  // "Psalms 84 · Sun 15 Nov 2026 · Sermon". The choice is remembered on this device.
+  function drawFold(doc: SermonDoc) {
+    props.hidden = folded;
+    fold.setAttribute("aria-expanded", String(!folded));
+    fold.title = folded ? "Show the details" : "Fold the details into one line";
+    const parts = folded
+      ? [passage?.display, doc.preached_on ? preachedChip(doc.preached_on) : "", doc.theme, KIND_NAME[doc.kind] ?? "Sermon"].filter((x): x is string => !!x)
+      : [];
+    clear(fold, h("span", { class: "props-arrow", "aria-hidden": "true" }, icon("chevron")),
+      folded ? parts.map((x) => h("span", { class: "props-chip" }, x)) : h("span", { class: "props-label" }, "Details"));
+  }
+
+  fold.addEventListener("click", () => {
+    folded = !folded;
+    try { localStorage.setItem(FOLD_KEY, folded ? "1" : "0"); } catch { /* not remembered */ }
+    if (d) drawFold(d);
+  });
 
   function editPassage(b: HTMLElement) {
     refPopover(b, {
@@ -206,6 +231,7 @@ export function sermonPage(o: SermonPageOptions): SermonPage {
     const got = await msg.attempt(() => run<SermonDoc>("document.get", { id: o.id }));
     if (!got || !alive) return;
     d = got;
+    try { folded = !o.fresh && localStorage.getItem(FOLD_KEY) === "1"; } catch { folded = false; }
     title = got.title === untitled(got.kind) && o.fresh ? "" : got.title;
     passage = got.passage ? { display: got.passage.display, osis: got.passage.osis, start: got.passage.start, end: got.passage.end } : null;
     tbox.el.textContent = title;

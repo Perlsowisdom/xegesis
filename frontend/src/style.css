@@ -1259,6 +1259,12 @@ input.tag-box[type=text] { height: 28px; width: 9rem; border-radius: 999px; padd
 
 /* Properties: a two-column list of label and chip, under a sermon's title. */
 .page-props { display: grid; grid-template-columns: 110px minmax(0, 1fr); row-gap: 6px; align-items: center; margin: 0 0 20px; font-size: .88rem; }
+.props-fold { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; border: 0; background: none; padding: 2px 4px 2px 0; margin: 0 0 4px; color: var(--muted); font-size: .85rem; cursor: pointer; max-width: 100%; }
+.props-fold:hover { color: var(--fg); }
+.props-arrow .icon { width: 16px; height: 16px; transition: transform .12s; }
+.props-fold[aria-expanded="false"] .props-arrow .icon { transform: rotate(-90deg); }
+.props-chip { background: var(--well); border-radius: 999px; padding: 1px 9px; color: var(--fg); }
+.props-host .page-props[hidden] { display: none; }
 .page-props > dt { color: var(--muted); }
 .page-props > dd { margin: 0; display: flex; align-items: center; gap: 6px; min-width: 0; }
 .doc-page.compact .page-props { grid-template-columns: 84px minmax(0, 1fr); }

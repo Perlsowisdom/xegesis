@@ -52,4 +52,33 @@ export default [
       for (const id of ids) await t.app.run("note.delete", { id }).catch(() => {});
     },
   },
+  {
+    row: "T38b 8: a sermon's properties fold into one line of chips and unfold, remembered on the device",
+    shot: "t38b-08-props.png",
+    async run(t) {
+      const { page } = t;
+      await page.evaluate(() => localStorage.removeItem("xegesis.sermon.props.folded"));
+      const d = await t.app.run("document.create", { kind: "sermon" });
+      await t.app.run("document.update", { id: d.id, title: "Props sermon", kind: "sermon", passage: "Psalm 84", preached_on: "2026-11-15", theme: "", body: "Body" });
+      await page.evaluate((id) => { location.hash = `#sermons/${id}`; }, d.id);
+      await t.current(".sermon-layout");
+      const root = t.root;
+      t.assert.ok(await page.locator(`${root} .page-props`).isVisible(), "new documents open unfolded");
+      await t.shot("t38b-08-props-open.png");
+      await page.locator(`${root} .props-fold`).click();
+      t.assert.ok(!(await page.locator(`${root} .page-props`).isVisible()), "the rows fold away");
+      const line = (await page.locator(`${root} .props-chip`).allTextContents()).join(" | ");
+      t.assert.match(line, /Psalms? 84.*Sun 15 Nov 2026.*Sermon/);
+      await page.waitForTimeout(150);
+      await t.shot();
+      // remembered: reopen
+      await page.evaluate((id) => { location.hash = "#notes"; setTimeout(() => { location.hash = `#sermons/${id}`; }, 50); }, d.id);
+      await t.current(".sermon-layout");
+      t.assert.ok(!(await page.locator(`${t.root} .page-props`).isVisible()), "folded choice is remembered");
+      await page.locator(`${t.root} .props-fold`).click();
+      t.assert.ok(await page.locator(`${t.root} .page-props`).isVisible(), "unfolds again");
+      t.assert.equal(await page.evaluate(() => localStorage.getItem("xegesis.sermon.props.folded")), "0");
+      await t.app.run("document.delete", { id: d.id }).catch(() => {});
+    },
+  },
 ];
