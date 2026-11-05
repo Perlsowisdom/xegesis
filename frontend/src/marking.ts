@@ -13,6 +13,7 @@ export interface MarkTarget {
   id: string;
   style: string;
   el: Element; // where it is drawn, to place the toolbar
+  text?: string; // its words, when el shows only part of them
 }
 
 export interface MarkActions {
@@ -94,14 +95,14 @@ export function attachMarking(root: HTMLElement, a: MarkActions): Marking {
     if (noteFn) kids.push(tool("Add a note", h("span", { class: "mark-label" }, icon("pen"), "Note"), () => {
       const m = mode;
       const r = m?.kind === "selection" ? m.range : null;
-      const t = text || (m?.kind === "mark" ? (m.target.el.textContent ?? "") : "");
+      const t = text || (m?.kind === "mark" ? (m.target.text ?? m.target.el.textContent ?? "") : "");
       close();
       if (m?.kind === "custom") m.run.note?.(t, null);
       else a.note?.(t, r);
     }));
     if (a.lookUp && mode?.kind !== "custom") kids.push(tool("Look up (Alt+click a word)", h("span", { class: "mark-label" }, icon("search"), "Look up"), () => {
       const r = mode?.kind === "selection" ? mode.range : null;
-      const t = text || (mode?.kind === "mark" ? (mode.target.el.textContent ?? "") : "");
+      const t = text || (mode?.kind === "mark" ? (mode.target.text ?? mode.target.el.textContent ?? "") : "");
       const at = r ? r.getBoundingClientRect() : box;
       const word = r ? (r.startContainer.parentElement?.closest(".w") ?? null) : null;
       close();

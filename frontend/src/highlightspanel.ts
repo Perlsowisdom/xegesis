@@ -11,6 +11,7 @@ import { openInGrid } from "./document/open";
 import { icon } from "./icons";
 import { COLOURS, Colour, parseStyle } from "./markingwords";
 import { navigate, setPassage, state } from "./state";
+import type { QuotePart, VerseRange } from "./verserange";
 
 export interface HighlightRow {
   id: string;
@@ -23,6 +24,10 @@ export interface HighlightRow {
   locator?: { section?: number; page?: number; para?: number; text?: string } & Record<string, unknown>;
   text?: string;
   created_at: number;
+  // A Bible highlight on exact words (T34f): text is then those words.
+  range?: VerseRange;
+  module?: string;
+  parts?: QuotePart[];
 }
 
 // The place the sidebar lists: a library book, or a book of the Bible.
@@ -138,7 +143,8 @@ export function highlightsPanel(o: HighlightsOptions) {
     rows = rows.filter((x) => x.id !== r.id);
     draw();
     clear(msg.el, "Highlight deleted. ", button("Undo", async () => {
-      const again = r.ref ? { verse_start: r.verse_start, verse_end: r.verse_end, style: r.style }
+      const again = r.range ? { range: r.range, module: r.module, ...(r.parts?.length ? { parts: r.parts } : { quote: r.text }), style: r.style }
+        : r.ref ? { verse_start: r.verse_start, verse_end: r.verse_end, style: r.style }
         : { item_id: r.item_id, locator: r.locator, style: r.style };
       if (await msg.attempt(() => run("highlight.create", again)) !== undefined) {
         msg.clear();

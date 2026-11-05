@@ -3,6 +3,7 @@
 
 import { CommandError, Schema, errorText, parseError } from "./helpers";
 import { h } from "./dom";
+import type { QuotePart, VerseRange } from "./verserange";
 
 export interface CommandInfo {
   id: string;
@@ -205,6 +206,13 @@ export interface Highlight {
   ref?: string;
   verse_start?: number;
   verse_end?: number;
+  created_at?: number;
+  // A highlight on exact words: where they start and end, the Bible they were chosen in, and
+  // the words themselves.
+  range?: VerseRange;
+  module?: string;
+  text?: string;
+  parts?: QuotePart[];
 }
 
 export interface SavedList {

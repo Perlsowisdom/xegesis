@@ -268,3 +268,23 @@ func TestOldOutlineArray(t *testing.T) {
 		t.Fatalf("old = %+v", d)
 	}
 }
+
+func TestQuoteOnlySomeWords(t *testing.T) {
+	e := setup(t)
+	var q QuoteResult
+	// A highlight's exact words keep the place and the credit line; the licence's limit counts only them.
+	e.must("document.quote", map[string]any{"preview": true, "ref": "John 3:16-17", "module": "mine", "words": "long  long"}, &q)
+	if !q.Allowed || !strings.HasPrefix(q.Quote, "> long long\n> — [John 3:16-17](#passage/John.3.16-John.3.17) (MINE). © A Publisher") || strings.Contains(q.Quote, "**16**") {
+		t.Fatalf("words quote = %+v", q)
+	}
+	// Words that are not in the passage are not quoted as if they were.
+	e.must("document.quote", map[string]any{"preview": true, "ref": "John 3:16", "module": "kjv", "words": "God so loved"}, &q)
+	if q.Allowed || !strings.Contains(q.Reason, "not in") {
+		t.Fatalf("missing words = %+v", q)
+	}
+	// The licence still decides.
+	e.must("document.quote", map[string]any{"preview": true, "ref": "John 3:16", "module": "live", "words": "Verse text"}, &q)
+	if q.Allowed {
+		t.Fatalf("live words = %+v", q)
+	}
+}
