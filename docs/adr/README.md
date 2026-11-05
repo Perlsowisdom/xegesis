@@ -14,3 +14,4 @@ Each decision is final until a later record replaces it.
 | [0008](0008-mobile.md) | Mobile apps reuse the Go core and the web interface | Accepted |
 | [0009](0009-privacy.md) | Privacy: no telemetry except consented bug and crash reports | Accepted |
 | [0010](0010-delete-for-good.md) | Deleting for good erases values from the history | Proposed |
+| [0011](0011-ai-assistant.md) | AI assistant: providers, read-only tools, licence gate, what is sent | Proposed |

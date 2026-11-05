@@ -26,3 +26,35 @@ The open datasets in Get Bibles (T27) send nothing until you install one, and th
 for its files: STEPBible's from `https://raw.githubusercontent.com/STEPBible/STEPBible-Data/master/…`
 (GitHub), OpenBible.info's `https://a.openbible.info/data/cross-references.zip`. Their entries appear
 only while the catalogues are on.
+
+## AI assistant (T36a)
+
+Off until you choose a provider in Settings → Assistant → Model (`assistant.config.set`). Choosing one
+sends nothing. Your key is kept in the system keychain and sent only to the provider's address, in an
+`Authorization: Bearer` header (for Claude also `x-api-key`, with `anthropic-version`). ADR 0011 has the
+details.
+
+| Provider | Address (you can change it under More options) |
+| --- | --- |
+| Claude | `https://api.anthropic.com/v1` (Anthropic's OpenAI-compatible endpoint) |
+| OpenAI | `https://api.openai.com/v1` |
+| Gemini | `https://generativelanguage.googleapis.com/v1beta/openai` |
+| OpenRouter | `https://openrouter.ai/api/v1` |
+| Local model | `http://localhost:11434/v1` (Ollama; LM Studio uses `http://localhost:1234/v1`): stays on this computer |
+| Custom | the address you give; on this computer only when it is `localhost`, `127.x.x.x` or `::1` |
+
+| When | Requests |
+| --- | --- |
+| The Model page lists models, after a key is saved (`assistant.models`) | `GET <address>/models` |
+| You press Test connection (`assistant.test`) | `GET <address>/models`; when the server has no model list, one `POST <address>/chat/completions` with the message "Reply with the word OK." and nothing of yours |
+| You send a question (`assistant.chat`) | `POST <address>/chat/completions`, streamed, once per step of the reply. It holds the model name, Xegesis's instructions to the model, the conversation so far (your questions with the passage and the note or sermon open when you asked: their reference, title and ID), the list of read-only tools, and each tool's result |
+
+Tool results are the text the assistant read for you: Bible passages, search snippets and book sections,
+your notes, sermons and highlights, and reports. Text from works with a licence goes through the same
+rules as quoting into a note: open texts in full, limited texts only up to their quoting limit, and
+personal copies of books **never to an online provider**, only to a model on this computer. Each tool
+call shows in the chat as a line you can open to see exactly what was sent.
+
+Before your first message to a provider (and again if its address changes), the chat shows what is sent
+and where, and sends nothing until you press Send. What the provider does with it is governed by its own
+terms. Chats are kept in memory only, until you quit, unless you press "Save as note".
