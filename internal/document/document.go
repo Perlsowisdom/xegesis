@@ -36,6 +36,8 @@ func Register(r *command.Registry) {
 		command.Define("document.get", "Show one sermon, lesson or study with its outline and text.", false, s.get),
 		command.Define("document.list", "List sermons, lessons and studies, most recently changed first.", false, s.list),
 		command.Define("document.update", "Change a document's title, kind, main passage, outline, text, date preached or theme.", true, s.update),
+		command.Define("note.turn_into", "Turn a note into a sermon, Bible study or lesson in one step. The text, verses, tags, folder and links come "+
+			"with it; the note waits in the bin, with its earlier versions, until restored.", true, s.turnInto),
 		command.Define("document.delete", "Delete a document. It stays in document.deleted until restored.", true, s.delete),
 		command.Define("document.restore", "Bring back a deleted document.", true, s.restore),
 		command.Define("document.deleted", "List deleted documents, most recently deleted first.", false, s.deleted),
@@ -63,6 +65,8 @@ type outline struct {
 	Passage  string   `json:"passage,omitempty"`  // the first passage, kept for older readers
 	Passages []string `json:"passages,omitempty"` // every passage, in order
 	Points   []Point  `json:"points"`
+	Tags     []string `json:"tags,omitempty"`      // kept from the note this was turned from
+	FromNote string   `json:"from_note,omitempty"` // that note's id; it waits in the bin
 }
 
 // all lists the outline's passages; a row from before several passages holds just Passage.
@@ -99,6 +103,8 @@ type Document struct {
 	Title      string           `json:"title"`
 	Passage    *core.RefResult  `json:"passage,omitempty" desc:"The main passage (the first of passages)"`
 	Passages   []core.RefResult `json:"passages,omitempty" desc:"All the sermon's passages, in order"`
+	Tags       []string         `json:"tags,omitempty" desc:"Tags kept from the note this was turned from"`
+	FromNote   string           `json:"from_note,omitempty" desc:"The note this was turned from; it waits in the bin"`
 	Points     []Point          `json:"points" desc:"The outline, in order"`
 	Body       string           `json:"body" desc:"The full text, in Markdown"`
 	Words      int              `json:"words" desc:"Words in the text"`
@@ -146,8 +152,8 @@ func cleanKind(k string) (string, error) {
 }
 
 // cleanOutline checks the main passage and points and returns outline_json.
-func cleanOutline(passages []string, points []Point) (string, error) {
-	o := outline{Points: []Point{}}
+func cleanOutline(passages []string, points []Point, keep outline) (string, error) {
+	o := outline{Points: []Point{}, Tags: keep.Tags, FromNote: keep.FromNote}
 	if len(passages) > maxPassages {
 		return "", command.Errorf("bad_params", "a document can have up to %d passages", maxPassages)
 	}
@@ -212,6 +218,7 @@ func scan(rows *sql.Rows) (Document, error) {
 	if len(d.Passages) > 0 {
 		d.Passage = &d.Passages[0]
 	}
+	d.Tags, d.FromNote = o.Tags, o.FromNote
 	d.Words = words(d.Body)
 	return d, nil
 }
@@ -314,7 +321,7 @@ func (s *service) create(ctx context.Context, env *command.Env, p CreateParams) 
 	if passages == nil {
 		passages = []string{p.Passage}
 	}
-	ol, err := cleanOutline(passages, p.Points)
+	ol, err := cleanOutline(passages, p.Points, outline{})
 	if err != nil {
 		return Document{}, err
 	}
@@ -531,7 +538,7 @@ func (s *service) update(ctx context.Context, env *command.Env, p UpdateParams) 
 			if p.Points != nil {
 				points = *p.Points
 			}
-			ol, err := cleanOutline(passages, points)
+			ol, err := cleanOutline(passages, points, old)
 			if err != nil {
 				return err
 			}

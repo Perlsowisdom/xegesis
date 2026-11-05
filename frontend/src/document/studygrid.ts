@@ -122,6 +122,11 @@ export function studyGrid(o: StudyGridOptions) {
         if (f) setGrid(setRef(g, f.pane.id, ref));
       },
       update: (patch) => setGrid(updateTab(g, tabId, patch)),
+      replace: (spec) => {
+        const m = mounted.get(tabId);
+        if (m) { mounted.delete(tabId); queueMicrotask(() => m.view.destroy()); }
+        setGrid(updateTab(g, tabId, { modules: undefined, itemId: undefined, fileId: undefined, section: undefined, para: undefined, ...spec }));
+      },
       open: (spec) => {
         const f = findTab(g, tabId);
         setGrid(openTab(g, spec, f?.pane.id));

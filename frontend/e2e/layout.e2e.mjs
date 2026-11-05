@@ -167,4 +167,45 @@ export default [
       await app.run("document.delete", { id: d.id }).catch(() => {});
     },
   },
+  {
+    row: "T38b 4: a note's menu has Turn into (Sermon, Bible study, Lesson); one command keeps text, verse, tags, folder; opens in the same pane; undoable",
+    shot: "t38b-04-turn-into.png",
+    async run(t) {
+      const { page, app } = t;
+      const title = "Turn me into a study";
+      const n = await app.run("note.create", { title, body: "Grace is **free** and [John 3:16](#passage/John.3.16).", ref: "Rom 5:1-5", tags: ["grace", "romans"] });
+      await openNoteInStudy(t, n.id, title);
+      const pane = page.locator(".grid-pane:visible", { has: page.locator(".note-page") }).first();
+      const panes = await page.locator(".grid-pane:visible").count();
+      await pane.locator(".note-page .rich-text").waitFor({ timeout: 10000 });
+      await pane.locator('.note-page [aria-label="Note actions"]').click();
+      await page.locator(".popover .menu-list button", { hasText: "Turn into" }).click();
+      await page.locator(".popover .turn-menu").waitFor({ timeout: 5000 });
+      await t.shot("t38b-04-turn-menu.png");
+      const before = (await app.run("history.list", { object_type: "notes", object_id: n.id }).catch(() => null));
+      await page.locator(".popover .turn-menu button", { hasText: "Bible study" }).click();
+      const sermon = page.locator(".grid-pane:visible .sermon-layout").first();
+      await sermon.waitFor({ timeout: 10000 });
+      t.assert.equal(await page.locator(".grid-pane:visible").count(), panes, "same pane");
+      t.assert.equal(await page.locator(".grid-pane:visible .note-page").count(), 0, "the note page is gone from the pane");
+      t.assert.match(await sermon.locator(".passage-chips").textContent(), /Romans 5:1-5/);
+      t.assert.match(await sermon.locator(".kind-menu, .doc-chip", { hasText: "Bible study" }).first().textContent(), /Bible study/);
+      t.assert.match(await sermon.locator(".rich-text").first().textContent(), /Grace is free and .*John 3:16/);
+      await page.waitForTimeout(300);
+      await t.shot();
+      const docs = await app.run("document.list", { kind: "study" });
+      const d = (docs.documents ?? docs).find((x) => x.title === title);
+      t.assert.ok(d, "the study exists");
+      t.assert.deepEqual((await app.run("document.get", { id: d.id })).tags, ["grace", "romans"]);
+      t.assert.equal(d.from_note ?? (await app.run("document.get", { id: d.id })).from_note, n.id);
+      const left = await app.run("note.list", {});
+      t.assert.ok(!(left.notes ?? left).some((x) => x.id === n.id), "the note left My work");
+      // undo: the note comes back from the bin
+      await app.run("note.restore", { id: n.id });
+      await app.run("document.delete", { id: d.id });
+      const back = await app.run("note.list", {});
+      t.assert.ok((back.notes ?? back).some((x) => x.id === n.id), "the note is back");
+      await app.run("note.delete", { id: n.id });
+    },
+  },
 ];

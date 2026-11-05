@@ -10,6 +10,7 @@ import (
 
 	"github.com/Perlsowisdom/xegesis/internal/bible"
 	"github.com/Perlsowisdom/xegesis/internal/command"
+	"github.com/Perlsowisdom/xegesis/internal/command/core"
 	"github.com/Perlsowisdom/xegesis/internal/licence"
 	"github.com/Perlsowisdom/xegesis/internal/store"
 	"github.com/Perlsowisdom/xegesis/internal/verse"
@@ -61,6 +62,7 @@ func setup(t *testing.T) *env {
 		return out, nil
 	}))
 	Register(r)
+	core.Register(r)
 	return &env{t: t, r: r, env: &command.Env{Store: st}, st: st}
 }
 
@@ -313,5 +315,49 @@ func TestSeveralPassages(t *testing.T) {
 	e.must("document.update", map[string]any{"id": d.ID, "passages": []string{}}, &none)
 	if len(none.Passages) != 0 || none.Passage != nil {
 		t.Fatalf("cleared: %+v", none.Passages)
+	}
+}
+
+func TestTurnNoteInto(t *testing.T) {
+	e := setup(t)
+	var f struct{ ID string }
+	f.ID = store.NewID()
+	if err := e.st.Write(context.Background(), "folder.create", func(tx *store.Tx) error {
+		return tx.Create("folders", store.Row{"id": f.ID, "name": "Sunday", "sort": 0, "created_at": int64(1), "updated_at": int64(1)})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var n core.Note
+	e.must("note.create", map[string]any{"title": "Grace", "body": "Grace is **free**. [John 3:16](#passage/John.3.16)",
+		"ref": "Rom 5:1-5", "tags": []string{"grace", "romans"}, "folder_id": f.ID}, &n)
+	var d Document
+	e.must("note.turn_into", map[string]any{"id": n.ID, "kind": "study"}, &d)
+	if d.Kind != "study" || d.Title != "Grace" || d.Body != n.Body || d.FolderID != f.ID || d.FromNote != n.ID ||
+		len(d.Passages) != 1 || d.Passages[0].Display != "Romans 5:1-5" || len(d.Tags) != 2 {
+		t.Fatalf("document = %+v", d)
+	}
+	var live []core.Note
+	e.must("note.list", map[string]any{}, &live)
+	if len(live) != 0 {
+		t.Fatalf("the note should be in the bin: %d left", len(live))
+	}
+	// Undo: bring the note back and the document goes away.
+	var back core.Note
+	e.must("note.restore", map[string]any{"id": n.ID}, &back)
+	e.must("document.delete", map[string]any{"id": d.ID}, nil)
+	if back.Body != n.Body || back.Title != "Grace" {
+		t.Fatalf("restored note = %+v", back)
+	}
+	if err := e.run("note.turn_into", map[string]any{"id": "nope", "kind": "sermon"}, nil); code(err) != "not_found" {
+		t.Fatalf("missing note: %v", err)
+	}
+	// An edit keeps the tags.
+	var n2 core.Note
+	e.must("note.create", map[string]any{"title": "T", "body": "x", "tags": []string{"a"}}, &n2)
+	var d2, d3 Document
+	e.must("note.turn_into", map[string]any{"id": n2.ID, "kind": "sermon"}, &d2)
+	e.must("document.update", map[string]any{"id": d2.ID, "title": "Renamed", "passages": []string{"Ps 1"}}, &d3)
+	if len(d3.Tags) != 1 || d3.FromNote != n2.ID {
+		t.Fatalf("tags lost on edit: %+v", d3)
 	}
 }

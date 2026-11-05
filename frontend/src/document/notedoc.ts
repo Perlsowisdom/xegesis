@@ -14,6 +14,7 @@ export function noteDoc(host: DocHost): DocView {
     id: id || undefined,
     ref: id ? undefined : host.ref(),
     onSaved: (n) => host.update({ target: n.id, title: noteName(n) }),
+    onTurned: (d) => host.replace({ kind: "sermon", target: d.id, title: d.title }),
     onDeleted: () => el.replaceChildren(h("p", { class: "empty doc-gone" }, "This note went to the bin. Close the tab, or ",
       button("open the bin", () => navigate("bin"), { class: "link" }), ".")),
     more: [["Show in My work", () => navigate(page.note() ? `notes/note/${page.note()!.id}` : "notes")]],
