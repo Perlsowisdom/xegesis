@@ -76,7 +76,13 @@ async function highlightWords(t, from, to, colour = "green") {
   if (to) await words(t.page, ...to);
   const a = await words(t.page, ...from);
   const b = to ? await words(t.page, ...to) : a;
-  await drag(t.page, a.from, b.to);
+  // The first drag after the app starts can be lost while the window takes focus; drag again then.
+  for (let i = 0; ; i++) {
+    await drag(t.page, a.from, b.to);
+    if (await t.page.locator(".mark-bar").waitFor({ timeout: 3000 }).then(() => true, () => false)) break;
+    if (i === 2) throw new Error("no toolbar after selecting words");
+    await t.page.mouse.click(5, 300);
+  }
   await toolbar(t.page, `Highlight ${colour}`);
   await t.page.waitForFunction(([verse, s]) => [...document.querySelectorAll(`.doc-bible .vt[data-tb="${verse}"] mark[data-hl]`)].some((m) => m.classList.contains(`hl-${s}`)),
     [from[0], colour], { timeout: 8000 });
@@ -199,6 +205,7 @@ export default [
       t.assert.equal(h.style, "blue-underline");
       t.assert.deepEqual(h.range, { start: { verse: v(4), offset: a.start }, end: { verse: v(5), offset: b.end } }, "the range is unchanged");
       await page.mouse.move(5, 5);
+      await t.shot();
     },
   },
   {
@@ -214,6 +221,7 @@ export default [
       await toolbar(page, "Remove the highlight");
       await page.waitForFunction((n) => !document.querySelector(`.doc-bible .vt[data-tb="${n}"] mark[data-hl]`), v(6), { timeout: 8000 });
       t.assert.equal((await t.app.run("highlight.list", { ref: "Rom 12:6" })).length, 0);
+      await t.shot();
     },
   },
   {
@@ -362,6 +370,7 @@ export default [
       const list = await t.app.run("highlight.list", { ref: "Rom 12:12" });
       const kept = list.find((h) => h.id === whole.id);
       t.assert.ok(kept && !kept.range && kept.verse_start === v(12) && kept.style === "green", "the old highlight is unchanged");
+      await t.shot();
     },
   },
 ];
