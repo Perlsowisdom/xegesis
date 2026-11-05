@@ -6,6 +6,7 @@
 
 import { Highlight, Message, Module, Ref, run } from "../api";
 import { onBibles } from "../bibles";
+import { bibleBooks as bibleTypedBooks, bookRows, openAt } from "../biblebooks";
 import { chip } from "../controls";
 import { button, clear, h } from "../dom";
 import {
@@ -50,12 +51,17 @@ export function bibleDoc(host: DocHost): DocView {
   });
   const text = h("article", { class: "bible-text doc-text", tabindex: "-1", "aria-label": "Bible text" });
   const picker = h("div", { class: "module-picker", role: "group", "aria-label": "Bibles to show" });
+  const bookBox = h("div");
   const biblesBtn = h("button", { type: "button", class: "bibles-btn", "aria-haspopup": "dialog", "aria-expanded": "false", title: "Choose the Bibles to show" }, "Bibles");
   const openBibles = (anchor: HTMLElement) => togglePopover(anchor, () => h("div", { class: "pop-body" },
     h("h2", { class: "pop-title" }, "Bibles to show"),
     h("p", { class: "hint" }, "Choose two or more to read them side by side."),
-    picker), { label: "Bibles to show", side: "below" });
-  biblesBtn.addEventListener("click", () => openBibles(biblesBtn));
+    picker, bookBox), { label: "Bibles to show", side: "below" });
+  const loadBooks = async () => {
+    const bs = await bibleTypedBooks();
+    clear(bookBox, bs.length ? bookRows(bs, (b) => { closePopover(); void openAt(b, host.ref(), msg); }) : null);
+  };
+  biblesBtn.addEventListener("click", () => { void loadBooks(); openBibles(biblesBtn); });
   const el = h("div", { class: "doc doc-bible" }, msg.el, text);
 
   const words = { onRef: (osis: string) => void go(osis) };

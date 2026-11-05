@@ -536,7 +536,7 @@ dl.info dd { margin: 0; }
 .book-text pre { white-space: pre-wrap; }
 .book-text table { border-collapse: collapse; max-width: 100%; }
 .book-text td, .book-text th { border: 1px solid var(--line); padding: 2px 6px; vertical-align: top; }
-.book-text .flash { background: var(--mark); transition: background 1s; }
+.book-text .jump-flash { background: var(--mark); transition: background 1s; }
 mark.hl { color: inherit; border-radius: 2px; }
 .hl-yellow { background: var(--hl-yellow-bg); --hl: var(--hl-yellow); }
 .hl-green { background: var(--hl-green-bg); --hl: var(--hl-green); }
@@ -1646,3 +1646,8 @@ button.danger-link { color: var(--bad); margin-top: 8px; display: block; }
 .md-table { border-collapse: collapse; margin: 6px 0 12px; }
 .md-table th, .md-table td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; }
 .md-table th { background: var(--panel); }
+.bible-books { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; }
+.bible-book { display: flex; align-items: center; justify-content: space-between; gap: 8px; text-align: left; padding: 5px 10px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--fg); cursor: pointer; }
+.bible-book:hover { border-color: var(--fill); }
+.bible-book:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.book-tag { padding: 0 6px; border: 1px solid var(--line); border-radius: 6px; color: var(--muted, var(--fg)); font-size: .75rem; }

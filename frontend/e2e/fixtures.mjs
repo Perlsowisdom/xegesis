@@ -133,3 +133,40 @@ export function pdf(lines = ["Page one: grace and peace.", "Page two: faith, hop
     `trailer\n<< /Size ${offsets.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`);
   return Buffer.from(parts.join(""), "latin1");
 }
+
+// bibleEpub is a Bible text as a book: Genesis, then the Psalms with each psalm under its own
+// heading in one chapter file, and contents entries for books and chapters.
+export function bibleEpub(title = "E2E Hebrew Bible") {
+  const page = (body) => `<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml"><head><title>t</title></head><body>${body}</body></html>`;
+  const filler = (n) => Array.from({ length: n }, (_, i) => `<p>Verse line ${i + 1}: a long line of translated text that fills the page.</p>`).join("\n");
+  const psalm = (n, first) => `<h3 id="ps${n}">Psalm ${n}</h3><p>${first}</p>${filler(30)}`;
+  return zip([
+    ["mimetype", "application/epub+zip"],
+    ["META-INF/container.xml", `<?xml version="1.0"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles>
+</container>`],
+    ["OEBPS/content.opf", `<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:identifier id="uid">urn:uuid:e2e-hebrew-bible</dc:identifier><dc:title>${title}</dc:title>
+    <dc:creator>The Test Harness</dc:creator><dc:rights>Public domain</dc:rights>
+  </metadata>
+  <manifest>
+    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+    <item id="g" href="gen.xhtml" media-type="application/xhtml+xml"/>
+    <item id="p" href="psa.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine><itemref idref="g"/><itemref idref="p"/></spine>
+</package>`],
+    ["OEBPS/nav.xhtml", `<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><body>
+<nav epub:type="toc"><ol>
+<li><a href="gen.xhtml">The Book of Genesis</a><ol><li><a href="gen.xhtml#g1">Chapter 1</a></li></ol></li>
+<li><a href="psa.xhtml">The Book of Psalms</a><ol><li><a href="psa.xhtml#ps83">83</a></li><li><a href="psa.xhtml#ps84">84</a></li><li><a href="psa.xhtml#ps85">85</a></li></ol></li>
+</ol></nav></body></html>`],
+    ["OEBPS/gen.xhtml", page(`<h2>The Book of Genesis</h2><h3 id="g1">Genesis 1</h3><p>When God began to create heaven and earth.</p>${filler(10)}`)],
+    ["OEBPS/psa.xhtml", page(`<h2>The Book of Psalms</h2>${psalm(83, "O God, do not keep silence.")}${psalm(84, "How lovely are Your dwellings, LORD of armies.")}${psalm(85, "You favored Your land, LORD.")}`)],
+  ]);
+}

@@ -89,6 +89,7 @@ interface OpenRequest {
   locator?: Locator;
   section?: number;
   para?: number;
+  anchor?: string;
 }
 
 export function bookDoc(host: DocHost): DocView {
@@ -206,6 +207,8 @@ export function bookDoc(host: DocHost): DocView {
         start = loc.section;
         target = { anchor: loc.anchor, para: loc.para, flash: true };
       }
+    } else if (r.anchor) {
+      target = { anchor: r.anchor, flash: true };
     } else if (r.para || b.position?.para) {
       target = { para: r.para ?? b.position?.para };
     }
@@ -492,8 +495,8 @@ export function bookDoc(host: DocHost): DocView {
     body.scrollTop += node.getBoundingClientRect().top - body.getBoundingClientRect().top - 8;
     if (t.flash) {
       const block = node.closest("p,li,div,blockquote,td,h1,h2,h3,h4,h5,h6") ?? node.parentElement;
-      block?.classList.add("flash");
-      setTimeout(() => block?.classList.remove("flash"), 2500);
+      block?.classList.add("jump-flash");
+      setTimeout(() => block?.classList.remove("jump-flash"), 2500);
     }
   }
 
@@ -891,9 +894,9 @@ export function bookDoc(host: DocHost): DocView {
   };
 
   const t = host.tab();
-  if (t.itemId) void open({ itemId: t.itemId, fileId: t.fileId, locator: t.locator as Locator | undefined, section: t.locator ? undefined : t.section });
+  if (t.itemId) void open({ itemId: t.itemId, fileId: t.fileId, locator: t.locator as Locator | undefined, section: t.locator ? undefined : t.section, anchor: t.anchor });
   else choose();
-  if (t.locator) queueMicrotask(() => host.update({ locator: undefined }));
+  if (t.locator || t.anchor) queueMicrotask(() => host.update({ locator: undefined, anchor: undefined }));
 
   return {
     el, placeBox, menu, focus: () => body.focus(),
