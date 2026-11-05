@@ -241,7 +241,7 @@ func docxBlocks(b *strings.Builder, bs []Block, opt Options, links *relList) {
 	for i := 0; i < len(bs); i++ {
 		bl := bs[i]
 		rtl := isRTL(spansText(bl.Spans))
-		if bl.Kind != Numbered {
+		if bl.Kind != Numbered && bl.Kind != Bullet { // numbering goes on over sub-point bullets
 			n = 0
 		}
 		switch bl.Kind {

@@ -45,20 +45,34 @@ func Body(d Doc) string {
 }
 
 func htmlBlocks(b *strings.Builder, bs []Block, opt Options) {
+	n := 0 // numbered items so far, counted on over bullets (an outline's sub-points)
 	for i := 0; i < len(bs); i++ {
 		bl := bs[i]
+		if bl.Kind != Numbered && bl.Kind != Bullet {
+			n = 0
+		}
 		switch bl.Kind {
 		case Bullet, Numbered:
-			tag := "ul"
-			if bl.Kind == Numbered {
-				tag = "ol"
+			switch {
+			case bl.Kind == Bullet:
+				b.WriteString("<ul>")
+			case n > 0:
+				fmt.Fprintf(b, `<ol start="%d">`, n+1)
+			default:
+				b.WriteString("<ol>")
 			}
-			fmt.Fprintf(b, "<%s>", tag)
 			for ; i < len(bs) && bs[i].Kind == bl.Kind; i++ {
+				if bl.Kind == Numbered {
+					n++
+				}
 				fmt.Fprintf(b, `<li dir="auto">%s%s</li>`, checkMark(bs[i].Check, "☐ ", "☑ "), inlineHTML(bs[i].Spans))
 			}
 			i--
-			fmt.Fprintf(b, "</%s>", tag)
+			if bl.Kind == Numbered {
+				b.WriteString("</ol>")
+			} else {
+				b.WriteString("</ul>")
+			}
 		case Verse:
 			b.WriteString(`<p class="xd-verses" dir="auto">`)
 			for ; i < len(bs) && bs[i].Kind == Verse; i++ {

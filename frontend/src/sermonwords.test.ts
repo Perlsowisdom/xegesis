@@ -1,11 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { cleanPoints, docSummary, outlineMarkdown, untitled } from "./sermonwords";
+import { cleanPoints, docSummary, outlineMarkdown, sermonAddress, untitled } from "./sermonwords";
 
 describe("sermon words", () => {
   it("summarises a document", () => {
     expect(docSummary({ kind: "sermon", passage: { display: "Romans 8:28-39" }, points: [{ h: "a" }, { h: "b" }], words: 1240 }))
       .toBe("Sermon · Romans 8:28-39 · 2 points · 1,240 words");
     expect(docSummary({ kind: "study", points: [{ h: "a" }], words: 1 })).toBe("Bible study · 1 point · 1 word");
+  });
+  it("reads the address of one document, and whether it was just made", () => {
+    expect(sermonAddress("#sermons/01ABC")).toEqual({ id: "01ABC", fresh: false });
+    expect(sermonAddress("#sermons/01ABC?new")).toEqual({ id: "01ABC", fresh: true });
+    expect(sermonAddress("#sermons")).toBeNull();
+    expect(sermonAddress("#notes/01ABC")).toBeNull();
   });
   it("names untitled documents by kind", () => {
     expect(untitled("lesson")).toBe("Untitled lesson");

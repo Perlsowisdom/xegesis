@@ -45,4 +45,4 @@ or Enter opens one in the Study grid, where its tab also edits the date preached
 text" opens the builder: its title, kind, main passage, date preached and theme, the outline (Enter adds a point, Tab makes a sub-point,
 each point can hold verses and quote them), a Quote verses box, and the text editor. Changes save on
 their own after a short pause, or with Ctrl+S. "Add the outline to the text" puts each point in the
-text as a heading to write under. The address `#sermons/<id>` opens one document.
+text as a heading to write under. The address `#sermons/<id>` opens one document; `#sermons/<id>?new` opens one just made, its title empty and ready to type.

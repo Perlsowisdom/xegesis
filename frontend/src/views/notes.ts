@@ -264,7 +264,7 @@ export function notesSectionView() {
     const d = await msg.attempt(() => run<SermonDoc>("document.create", { kind: "sermon", ...(folder ? { folder_id: folder } : {}) }));
     if (!d) return;
     workChanged();
-    navigate(`sermons/${d.id}`);
+    navigate(`sermons/${d.id}?new`);
   }
 
   newBtn.addEventListener("click", () => {

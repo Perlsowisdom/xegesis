@@ -10,7 +10,7 @@ import { button, clear, h } from "../dom";
 import { icon } from "../icons";
 import { openPopover } from "../popover";
 import { loadPref, navigate, savePref } from "../state";
-import { DocKind, KIND_NAME, Point, untitled } from "../sermonwords";
+import { DocKind, KIND_NAME, Point, sermonAddress, untitled } from "../sermonwords";
 import { SermonPage, sermonPage } from "../sermonpage";
 import { WorkItem, actionMenu, draggableItem, emptyState, folderName, loadFolders, moreButton, moveMenu, onWorkChanged, workChanged } from "../work";
 import { SermonKey, nextSort, preachedText, sortSermons } from "../workwords";
@@ -209,10 +209,10 @@ export function sermonsView() {
     focus: () => (page ? page.focus() : query.focus()),
     show: async () => {
       // #sermons/<id> opens one document's builder, so links and scripts can point at it.
-      const asked = /^#sermons\/(.+)$/.exec(location.hash)?.[1];
+      const asked = sermonAddress(location.hash);
       if (asked) {
         history.replaceState(null, "", "#sermons");
-        await openBuilder(decodeURIComponent(asked));
+        await openBuilder(asked.id, asked.fresh);
         return;
       }
       if (!openId) await refresh();

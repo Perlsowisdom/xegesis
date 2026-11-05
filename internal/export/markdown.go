@@ -288,9 +288,13 @@ func mdBlocks(bs []Block, opt Options) []string {
 			list = nil
 		}
 	}
+	n := 0 // numbered items so far, counted on over bullets (an outline's sub-points)
 	for i, b := range bs {
 		if b.Kind != Bullet && b.Kind != Numbered || i > 0 && bs[i-1].Kind != b.Kind {
 			flush()
+		}
+		if b.Kind != Bullet && b.Kind != Numbered {
+			n = 0
 		}
 		switch b.Kind {
 		case Para:
@@ -308,7 +312,8 @@ func mdBlocks(bs []Block, opt Options) []string {
 		case Bullet:
 			list = append(list, "- "+checkMark(b.Check, "[ ] ", "[x] ")+oneLine(writeInline(b.Spans)))
 		case Numbered:
-			list = append(list, fmt.Sprintf("%d. %s", len(list)+1, oneLine(writeInline(b.Spans))))
+			n++
+			list = append(list, fmt.Sprintf("%d. %s", n, oneLine(writeInline(b.Spans))))
 		case Verse:
 			t := oneLine(writeInline(b.Spans))
 			if opt.verseNumbers() && b.Num != "" {
