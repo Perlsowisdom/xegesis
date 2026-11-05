@@ -73,6 +73,7 @@ function chapter(n, title, count) {
 <html xmlns="http://www.w3.org/1999/xhtml"><head><title>${title}</title></head><body>
 <h2 id="c${n}">${title}</h2>
 <p id="first${n}">The first words of chapter ${n}: all things work together for good.</p>
+${n === 1 ? `<p id="more">Read on in <a id="tochap2" href="ch2.xhtml#c2">Chapter Two</a>.</p>` : ""}
 ${Array.from({ length: count }, (_, i) => para(i + 1)).join("\n")}
 </body></html>`;
 }

@@ -104,8 +104,8 @@ Design first: mock-up for approval, then build.
 
 ## After scroll mode (4 November 2026)
 
-- Book view clutter: a "View" fold-out above the text, a "Highlights and notes in this section" bar at the bottom, and a plain dropdown for chapters. Fold these into the Aa popover, the sidebar Highlights tool and the Contents popover.
-- Not tested yet: Go to page in PDF scroll, in-book links in scroll, and scroll mode in Study panes. EPUB chapters loaded while scrolling are never unloaded.
+- EPUB chapters loaded while scrolling are never unloaded.
+- Highlights in the sidebar for a book: notes are listed beside highlights but have no colour filter or search.
 
 ## After T34f (4 November 2026)
 
@@ -115,6 +115,3 @@ Design first: mock-up for approval, then build.
 - Ranged highlights moved by `highlight.update` have no interface yet (the command takes a range; the toolbar only recolours, underlines and removes).
 - Offsets count code points of the text as drawn from the Bible's markup. If a Bible module is reinstalled with different text, ranges in it may drift; they are not re-found by their words yet.
 
-## After the editor polish pass (4 November 2026)
-
-- A plain click on a link now follows it, but external `http`, `https` and `mailto` links were not tested in the real app. The code calls Wails `BrowserOpenURL`.

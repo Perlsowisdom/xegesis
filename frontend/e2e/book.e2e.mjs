@@ -241,6 +241,9 @@ const checks = [
       t.assert.equal(await book.locator(".pdf-slot").count(), 40, "a slot for every page");
       t.assert.ok(/Page 1 of 40/.test(await place(t).innerText()), "starts on page 1");
       const body = book.locator(".book-body");
+      // Let the pages near the start finish drawing, so a late one cannot move the view after the jump.
+      await book.locator(".pdf-slot[data-page='1'] canvas").waitFor({ timeout: 10000 });
+      await page.waitForTimeout(500);
       const drawnCount = () => book.locator(".pdf-slot canvas").count();
       t.assert.ok((await drawnCount()) < 10, `only near pages are drawn (${await drawnCount()})`);
       await body.evaluate((e) => { e.scrollTop = e.querySelector(".pdf-slot[data-page='20']").offsetTop; });
@@ -255,6 +258,128 @@ const checks = [
       await book.locator(".pdf-box .pdf-page").first().waitFor({ timeout: 10000 });
       t.assert.equal(await book.locator(".pdf-slot").count(), 0, "no stack of pages in Pages mode");
       t.assert.equal(await book.locator(".pdf-page").count(), 1, "one page at a time");
+    },
+  },
+  {
+    row: "Scroll mode: Go to page in the Contents popover lands on that page of a PDF",
+    shot: "bk-07-pdf-scroll-goto.png",
+    async run(t) {
+      const { page } = t;
+      await addBooks(t);
+      await chooseLayout(t, "Scroll");
+      await openFromLibrary(t, "e2e-scroll-pages", "Read");
+      const book = visibleBook(t);
+      await book.locator(".pdf-slot .textLayer span", { hasText: "Scroll page 1" }).first().waitFor({ timeout: 20000 });
+      await page.locator(".grid-contents:visible").first().click();
+      const input = page.locator(".contents-pop input:visible").first();
+      await input.fill("25");
+      await input.press("Enter");
+      await book.locator(".pdf-slot[data-page='25'] canvas").waitFor({ timeout: 10000 });
+      await page.waitForTimeout(800);
+      const txt = await place(t).innerText();
+      t.assert.ok(/Page 25 of 40/.test(txt), `the place says ${txt}`);
+      const top = await book.locator(".book-body").evaluate((e) => {
+        const s = e.querySelector(".pdf-slot[data-page='25']");
+        return s.getBoundingClientRect().top - e.getBoundingClientRect().top;
+      });
+      t.assert.ok(Math.abs(top) < 150, `page 25 is at the top of the view (${Math.round(top)}px)`);
+      t.assert.equal(await book.locator(".pdf-slot[data-page='1'] canvas").count(), 0, "page 1 stays freed");
+      await t.shot();
+      // And back to a page above.
+      await page.locator(".grid-contents:visible").first().click();
+      const again = page.locator(".contents-pop input:visible").first();
+      await again.fill("3");
+      await again.press("Enter");
+      await book.locator(".pdf-slot[data-page='3'] canvas").waitFor({ timeout: 10000 });
+      await page.waitForTimeout(800);
+      t.assert.ok(/Page 3 of 40/.test(await place(t).innerText()), "went back to page 3");
+    },
+  },
+  {
+    row: "Scroll mode: a link inside an EPUB to another chapter goes there",
+    shot: "bk-08-epub-scroll-link.png",
+    async run(t) {
+      const { page } = t;
+      await addBooks(t);
+      await chooseLayout(t, "Scroll");
+      await openFromLibrary(t, EPUB_TITLE, "Read");
+      const book = visibleBook(t);
+      const link = book.locator(".book-sec[data-sec='1'] a[data-section='2']").first();
+      await link.waitFor({ timeout: 15000 });
+      await link.click();
+      await page.waitForTimeout(1200);
+      t.assert.ok(/Section 2 of/.test(await place(t).innerText()), `the place says ${await place(t).innerText()}`);
+      const head = book.locator(".book-sec[data-sec='2'] h2").first();
+      await head.waitFor({ timeout: 10000 });
+      const info = await book.locator(".book-body").evaluate((e) => {
+        const s = e.querySelector(".book-sec[data-sec='2']");
+        return { top: Math.round(s.getBoundingClientRect().top - e.getBoundingClientRect().top), scrollTop: Math.round(e.scrollTop), height: e.clientHeight,
+          secs: [...e.querySelectorAll(".book-sec")].map((x) => x.dataset.sec) };
+      });
+      t.assert.ok(info.top > -20 && info.top < 300, `the Chapter Two heading is at the top of the view: ${JSON.stringify(info)}`);
+      await t.shot();
+    },
+  },
+  {
+    row: "Scroll mode: a book in a Study pane flows into the next chapter and follows the place",
+    shot: "bk-09-study-scroll.png",
+    async run(t) {
+      const { page } = t;
+      await addBooks(t);
+      await chooseLayout(t, "Scroll");
+      await openFromLibrary(t, EPUB_TITLE, "Open in Study");
+      const pane = page.locator(".grid-pane:visible", { has: page.locator(".doc-book") }).first();
+      await pane.locator(".book-sec[data-sec='1'] p", { hasText: "The first words of chapter 1" }).waitFor({ timeout: 15000 });
+      const body = pane.locator(".book-body");
+      await body.hover();
+      for (let i = 0; i < 12 && !(await pane.locator(".book-sec[data-sec='2']").count()); i++) {
+        await page.mouse.wheel(0, 1200);
+        await page.waitForTimeout(350);
+      }
+      t.assert.equal(await pane.locator(".book-sec[data-sec='2']").count(), 1, "chapter 2 loaded below chapter 1");
+      await body.evaluate((e) => { const s = e.querySelector(".book-sec[data-sec='2']"); e.scrollTop += s.getBoundingClientRect().top - e.getBoundingClientRect().top + 60; });
+      await page.waitForTimeout(600);
+      t.assert.ok(/Section 2 of/.test(await pane.locator(".book-where").innerText().catch(() => "")) || /Section 2 of/.test(await place(t).innerText()), "the place follows");
+      await t.shot();
+    },
+  },
+  {
+    row: "Book view is uncluttered: Aa holds Pages/Scroll and PDF zoom, Highlights lists this section, Contents lists chapters",
+    shot: "bk-10-book-clutter.png",
+    async run(t) {
+      const { page } = t;
+      const { epub: it } = await addBooks(t);
+      await t.app.run("book.set_position", { item_id: it.id, section: 1, para: 0 });
+      await chooseLayout(t, "Pages");
+      await openFromLibrary(t, EPUB_TITLE, "Read");
+      const book = visibleBook(t);
+      await book.locator(".book-text p", { hasText: "The first words of chapter 1" }).waitFor({ timeout: 15000 });
+      t.assert.equal(await page.locator(".book-settings, .book-marks-box, select.book-toc").count(), 0, "no View fold-out, marks bar or chapter dropdown");
+      // The Aa popover has what the View fold-out had.
+      await page.locator(".aa-btn:visible").first().click();
+      await page.getByRole("radiogroup", { name: "Books" }).waitFor();
+      await page.getByRole("group", { name: "PDF zoom" }).waitFor();
+      await page.keyboard.press("Escape");
+      // Contents popover lists the chapters.
+      await page.locator(".grid-contents:visible").first().click();
+      await page.locator(".contents-pop button", { hasText: "Chapter Two" }).first().waitFor();
+      await page.keyboard.press("Escape");
+      // Highlights and a note by section show in the sidebar tool.
+      const loc = (section, para) => ({ section, para, offset: 0, end_para: para, end_offset: 12, text: `Paragraph ${para}` });
+      await t.app.run("highlight.create", { item_id: it.id, locator: loc(1, 3), style: "yellow" });
+      await t.app.run("highlight.create", { item_id: it.id, locator: loc(2, 4), style: "green" });
+      await t.app.run("note.create", { title: "Section one note", body: "about grace", item_id: it.id, locator: loc(1, 5) });
+      const openedSidebar = !(await page.locator("#rightbar").isVisible().catch(() => false));
+      if (openedSidebar) await page.locator("button[aria-label='Right sidebar']").click();
+      await page.locator("#rightbar [role=tab]", { hasText: "Highlights" }).click();
+      const rows = page.locator("#rightbar .hl-row");
+      await page.locator("#rightbar .hl-row", { hasText: "Paragraph 3" }).first().waitFor({ timeout: 8000 });
+      t.assert.equal(await rows.filter({ hasText: "Paragraph 4" }).count(), 0, "section 2's highlight is not listed in section 1");
+      t.assert.ok(await rows.filter({ hasText: "Section one note" }).count() >= 1, "the section's note is listed");
+      await t.shot();
+      await page.locator("#rightbar .side-scope").click();
+      await page.locator("#rightbar .hl-row", { hasText: "Paragraph 4" }).first().waitFor({ timeout: 8000 });
+      if (openedSidebar) await page.locator("button[aria-label='Right sidebar']").click();
     },
   },
 ];

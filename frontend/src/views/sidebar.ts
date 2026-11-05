@@ -223,6 +223,7 @@ function makeSidebar() {
     if (prefs.sidebar.open && activeTool(prefs.sidebar.tools, prefs.sidebar.tool) === "highlights") load("highlights");
   };
   document.addEventListener("xegesis:pane-changed", marksStale);
+  document.addEventListener("xegesis:book-section", marksStale);
   document.addEventListener("xegesis:marks-changed", marksStale);
 
   onPassage(() => {
