@@ -1,6 +1,6 @@
 # 0011: AI assistant
 
-Status: Proposed (T36a, 5 November 2026). Builds on 0007 (clean room) and 0009 (privacy).
+Status: Accepted (approved by the user, 5 November 2026; T36a). Builds on 0007 (clean room) and 0009 (privacy). The user confirmed that personal-copy Bibles go to online models shortened to their quoting limit, and personal-copy library books go only to local models.
 
 ## Context
 
