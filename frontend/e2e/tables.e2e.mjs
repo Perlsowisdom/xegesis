@@ -4,6 +4,14 @@ const table = (t) => t.editor().locator("table").first();
 const shape = (t) => table(t).evaluate((tb) => [...tb.rows].map((r) => r.cells.length));
 const cellText = (t) => table(t).evaluate((tb) => [...tb.rows].map((r) => [...r.cells].map((c) => c.textContent)));
 
+// tableButton presses the toolbar's Table button, through ⋯ More when it is in there.
+async function tableButton(t) {
+  const b = t.page.locator(`${t.root} .rich-toolbar [data-tool=table]`);
+  if (await b.isVisible()) return b.click();
+  await t.page.click(`${t.root} .rich-toolbar [data-tool=more]`);
+  await t.page.locator(".popover .more-menu button[data-tool=table]").click();
+}
+
 async function slash(t, cmd) {
   await t.type(cmd);
   await t.page.waitForSelector(".slash-menu:not([hidden])");
@@ -18,7 +26,7 @@ export default [
     async run(t) {
       await t.openNote("", "Table picker");
       await t.focusEnd();
-      await t.page.click(`${t.root} [data-tool=table]`);
+      await tableButton(t);
       const picker = t.page.locator(".popover .table-picker");
       await picker.waitFor();
       t.assert.equal(await picker.locator(".tp-cell").count(), 100);
@@ -128,7 +136,7 @@ export default [
       t.assert.equal(await table(t).locator("th").count(), 3, "header row on");
       // The toolbar's Table button offers the same menu inside a table.
       await table(t).locator("td").first().click();
-      await t.page.click(`${t.root} [data-tool=table]`);
+      await tableButton(t);
       await t.page.locator(".popover .table-menu").waitFor();
       await t.press("Escape");
       await act("B", "del-table");

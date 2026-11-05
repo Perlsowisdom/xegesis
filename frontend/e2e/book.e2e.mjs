@@ -42,9 +42,38 @@ async function openFromLibrary(t, title, button) {
   await page.locator(`button:visible`, { hasText: button }).first().click();
 }
 
+// closeBooks closes the test books' tabs and goes back to Study mode, so later checks start clean.
+async function closeBooks(t) {
+  const { page } = t;
+  await page.evaluate(() => { location.hash = "#reader"; });
+  await page.waitForTimeout(200);
+  for (let i = 0; i < 12; i++) {
+    const tab = page.locator(".grid-tab-btn").filter({ hasText: /E2E Test Book|e2e-test-pages/ }).first();
+    if (!(await tab.count())) break;
+    await tab.dispatchEvent("auxclick", { button: 1 });
+    await page.waitForTimeout(100);
+  }
+  const study = page.locator("button", { hasText: /^Study$/ }).first();
+  if (await study.count()) await study.click().catch(() => {});
+  await page.waitForTimeout(200);
+}
+
 const visibleBook = (t) => t.page.locator(".doc-book:visible").first();
 
 async function selectWords(t, el) {
+  // A drag sent over the DevTools connection is sometimes lost by WebView2 right after a scroll;
+  // a reader would simply drag again, and so does the test (once).
+  const first = await dragOver(t, el);
+  if (first.trim().length > 10) return first;
+  const again = await dragOver(t, el);
+  if (again.trim().length > 10) return again;
+  // Last, a triple-click, which selects the paragraph with the mouse too.
+  await el.click({ clickCount: 3 });
+  await t.page.waitForTimeout(150);
+  return t.page.evaluate(() => getSelection().toString());
+}
+
+async function dragOver(t, el) {
   // Drag along the paragraph's first line with the mouse, at a reader's pace.
   await el.scrollIntoViewIfNeeded();
   await t.page.waitForTimeout(200);
@@ -53,16 +82,17 @@ async function selectWords(t, el) {
   await mouse.move(box.x + 30, box.y + 10);
   await t.page.waitForTimeout(100);
   await mouse.down();
-  for (let i = 1; i <= 10; i++) {
-    await mouse.move(box.x + 30 + i * 27, box.y + 10);
-    await t.page.waitForTimeout(30);
+  await t.page.waitForTimeout(150);
+  for (let i = 1; i <= 20; i++) {
+    await mouse.move(box.x + 30 + i * 14, box.y + 10);
+    await t.page.waitForTimeout(40);
   }
   await mouse.up();
   await t.page.waitForTimeout(100);
   return t.page.evaluate(() => getSelection().toString());
 }
 
-export default [
+const checks = [
   {
     row: "EPUB opens in Read mode, scrolls, and its text can be selected",
     shot: "bk-01-epub-read.png",
@@ -146,3 +176,11 @@ export default [
     },
   },
 ];
+
+export default checks.map((c) => ({ ...c, async run(t) {
+  try {
+    await c.run(t);
+  } finally {
+    await closeBooks(t);
+  }
+} }));
