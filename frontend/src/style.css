@@ -504,7 +504,9 @@ dl.info dd { margin: 0; }
 
 /* Book pane */
 .book-nav { margin: 4px 0; }
-.book-where { margin: 0; white-space: nowrap; }
+.book-where { margin: 0; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
+.book-where-input { width: 4.2em; min-width: 0; padding: 2px 6px; height: 26px; text-align: center; font-size: .85rem; }
+.book-where-input:focus { width: 9em; text-align: left; }
 .book-actions { margin: 4px 0; font-size: .9rem; }
 .book-actions .hint { margin: 0; }
 .doc-book select { width: auto; max-width: 100%; }

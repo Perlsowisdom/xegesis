@@ -165,4 +165,4 @@ Design first: mock-up for approval, then build.
 - A SWORD `.zip` installed with `bible.install` takes its licence from the module's `.conf`: public
   domain, Creative Commons and freely distributable stay as they say; copyrighted modules, and any
   that state nothing clear, are a personal copy that keeps the credit line.
-- T38b progress: items 6, 8 done; items 7, 5, 4, 2 not done (next: 7).
+- T38b progress: items 6, 8, 7 done; items 5, 4, 2 not done (next: 5).

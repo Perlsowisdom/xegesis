@@ -124,7 +124,12 @@ export function bookDoc(host: DocHost): DocView {
   let tocAt = -1; // the contents entry the reader is in
   const prev = button("‹", () => go(section - 1), { "aria-label": "Previous section", title: "Previous section (Alt+Page Up)", "aria-keyshortcuts": "Alt+PageUp" });
   const next = button("›", () => go(section + 1), { "aria-label": "Next section", title: "Next section (Alt+Page Down)", "aria-keyshortcuts": "Alt+PageDown" });
-  const where = h("span", { class: "hint book-where", "aria-live": "polite" });
+  // The place is a field: type a number and press Enter, or words to find a heading in the contents.
+  const unitText = h("span", { class: "book-unit" }, "Section");
+  const whereInput = h("input", { type: "text", class: "book-where-input", autocomplete: "off", spellcheck: "false",
+    "aria-label": "Go to a section number, or words from a heading", title: "Type a number, or words from a heading, then press Enter" });
+  const ofText = h("span", { class: "book-of" });
+  const where = h("span", { class: "hint book-where" }, unitText, whereInput, ofText);
   const placeBox = h("div", { class: "book-nav", role: "group", "aria-label": "Place in the book", hidden: true }, prev, where, next);
   const text = h("article", { class: "book-text doc-text", lang: "" });
   const pdfBox = h("div", { class: "pdf-box doc-text" });
@@ -256,11 +261,45 @@ export function bookDoc(host: DocHost): DocView {
   }
 
 
+  // typedPlace handles Enter in the place field: a number goes there, words list the matching headings.
+  function typedPlace() {
+    const t = whereInput.value.trim();
+    typing = false;
+    if (!book || !t) return;
+    const n = Number(t);
+    if (/^\d+$/.test(t)) {
+      if (n >= 1 && n <= book.sections) { jump(n, {}); whereInput.blur(); }
+      else { whereInput.value = String(section); whereInput.title = `Choose a number from 1 to ${book.sections}`; whereInput.select(); }
+      return;
+    }
+    const found = tocOptions(toc).filter(([, label]) => label.toLowerCase().includes(t.toLowerCase()));
+    closePopover();
+    togglePopover(whereInput, () => h("div", { class: "pop-body" }, found.length === 0
+      ? h("p", { class: "hint", role: "status" }, "No heading has those words.")
+      : h("div", { class: "menu-list toc-list" }, found.map(([v, label]) => button(label, () => {
+        closePopover(true);
+        const e = toc[Number(v)];
+        if (e) jump(e.section, { anchor: e.anchor, flash: !!e.anchor });
+      })))), { label: "Matching headings", side: "below", menu: false });
+  }
+  let typing = false; // the reader is typing in the field: a place change must not overwrite it
+  whereInput.addEventListener("input", () => { typing = true; });
+  whereInput.addEventListener("focus", () => whereInput.select());
+  whereInput.addEventListener("keydown", (e) => {
+    e.stopPropagation();
+    if (e.key === "Enter") { e.preventDefault(); typedPlace(); }
+    else if (e.key === "Escape") { typing = false; whereInput.value = String(section); whereInput.blur(); }
+  });
+  whereInput.addEventListener("blur", () => { typing = false; whereInput.value = String(section); });
+
   // header shows where the reader is: the place label, the contents entry and the pane's saved place.
   function header(n: number) {
     if (!book) return;
     section = n;
-    where.textContent = `${book.format === "pdf" ? "Page" : "Section"} ${n} of ${book.sections}`;
+    unitText.textContent = book.format === "pdf" ? "Page" : "Section";
+    ofText.textContent = `of ${book.sections}`;
+    whereInput.setAttribute("aria-label", book.format === "pdf" ? "Go to a page number" : "Go to a section number, or words from a heading");
+    if (!typing) whereInput.value = String(n);
     if (host.tab().section !== n) host.update({ section: n });
     prev.disabled = n <= 1;
     next.disabled = n >= book.sections;

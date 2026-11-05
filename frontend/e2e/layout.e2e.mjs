@@ -1,3 +1,4 @@
+import { addBooks, closeBooks, openFromLibrary } from "./book.e2e.mjs";
 // T38b: tab bar, collapsible properties, section field, several sermon passages, Turn into, split tree.
 
 const LONG = "A very long title that goes on and on about the whole counsel of God";
@@ -79,6 +80,50 @@ export default [
       t.assert.ok(await page.locator(`${t.root} .page-props`).isVisible(), "unfolds again");
       t.assert.equal(await page.evaluate(() => localStorage.getItem("xegesis.sermon.props.folded")), "0");
       await t.app.run("document.delete", { id: d.id }).catch(() => {});
+    },
+  },
+  {
+    row: "T38b 7: the place in a book is a field: a number goes there, words list matching headings; a PDF takes a page",
+    shot: "t38b-07-section-field.png",
+    async run(t) {
+      const { page } = t;
+      await addBooks(t);
+      await openFromLibrary(t, "E2E Test Book", "Open in Study");
+      const pane = page.locator(".grid-pane:visible", { has: page.locator(".doc-book") }).first();
+      await pane.locator(".book-text p").first().waitFor({ timeout: 15000 });
+      const field = pane.locator(".book-where-input");
+      t.assert.equal(await field.inputValue(), "1");
+      t.assert.equal(await pane.locator(".book-of").textContent(), "of 2");
+      await field.click();
+      await t.type("2");
+      await t.press("Enter");
+      await page.waitForFunction(() => document.querySelector(".grid-pane .book-where-input:not([hidden])")?.value === "2", null, { timeout: 8000 });
+      await pane.locator(".book-text p").first().waitFor();
+      t.assert.equal(await field.inputValue(), "2");
+      await field.click();
+      await t.type("chapter one");
+      await t.press("Enter");
+      const hit = page.locator(".popover .toc-list button", { hasText: "Chapter One" });
+      await hit.waitFor({ timeout: 5000 });
+      await t.shot();
+      await hit.click();
+      await page.waitForFunction(() => [...document.querySelectorAll(".book-where-input")].some((i) => i.offsetParent && i.value === "1"), null, { timeout: 8000 });
+      // a number out of range is refused
+      await field.click();
+      await t.type("99");
+      await t.press("Enter");
+      t.assert.equal(await field.inputValue(), "1");
+      await closeBooks(t);
+      await openFromLibrary(t, "e2e-test-pages", "Open in Study");
+      const pp = page.locator(".grid-pane:visible", { has: page.locator(".doc-book") }).first();
+      const pf = pp.locator(".book-where-input");
+      await pf.waitFor({ timeout: 15000 });
+      await page.waitForFunction(() => /Page/.test(document.querySelector(".grid-pane .book-unit")?.textContent ?? ""), null, { timeout: 15000 });
+      await pf.click();
+      await t.type("2");
+      await t.press("Enter");
+      await page.waitForFunction(() => [...document.querySelectorAll(".book-where-input")].some((i) => i.offsetParent && i.value === "2"), null, { timeout: 8000 });
+      await closeBooks(t);
     },
   },
 ];
