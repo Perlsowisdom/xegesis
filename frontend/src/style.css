@@ -1602,7 +1602,7 @@ button.danger-link { color: var(--bad); margin-top: 8px; display: block; }
 .rich-text .rt-table-wrap { overflow-x: auto; margin: 6px 0 14px; }
 .rich-text table.rt-table { border-collapse: collapse; table-layout: fixed; margin: 6px 0 14px; font-size: .98em; }
 .rich-text .rt-table-wrap > table.rt-table { margin: 0; }
-.rich-text .rt-cell, .rich-text .rt-cell-head { border: 1px solid var(--line); padding: 5px 9px; vertical-align: top; min-width: 48px; text-align: left; }
+.rich-text .rt-cell, .rich-text .rt-cell-head { border: 1px solid var(--line); padding: 5px 9px; vertical-align: top; min-width: 60px; text-align: left; word-break: normal; overflow-wrap: normal; hyphens: manual; }
 .rich-text .rt-cell-head { background: var(--panel); font-weight: 600; color: var(--fg); }
 .rich-text .rt-cell p, .rich-text .rt-cell-head p { margin: 0; }
 .rich-text.rt-col-resize, .rich-text.rt-col-resize * { cursor: col-resize; }

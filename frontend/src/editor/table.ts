@@ -17,7 +17,7 @@ import { h } from "../dom";
 import { closePopover, openPopover } from "../popover";
 import { MAX_TABLE, clampTable } from "./slashwords";
 
-export const MIN_COL = 48; // px
+export const MIN_COL = 60; // px
 
 // tablePicker is a 10 × 10 grid: pointing at a square chooses rows by columns ("3 × 2"); a click
 // or Enter inserts. The arrow keys move the choice.

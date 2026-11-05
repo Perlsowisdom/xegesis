@@ -47,6 +47,7 @@ import {
   type Klass,
 } from "lexical";
 import { createEmptyHistoryState, registerHistory } from "@lexical/history";
+import { followsLink } from "./linkclick";
 import { $createLinkNode, $isLinkNode, LinkNode, TOGGLE_LINK_COMMAND, $toggleLink } from "@lexical/link";
 import {
   $createListItemNode, $createListNode, $isListItemNode, $isListNode, INSERT_CHECK_LIST_COMMAND, INSERT_ORDERED_LIST_COMMAND, INSERT_UNORDERED_LIST_COMMAND,
@@ -228,7 +229,7 @@ export function createEditor(host: HTMLElement, opts: EditorOptions = {}): RichE
     }, COMMAND_PRIORITY_HIGH),
     editor.registerCommand(DROP_COMMAND, (e) => dropped(e), COMMAND_PRIORITY_HIGH),
   ];
-  // A chip opens what it names when clicked; Ctrl+click follows a link to a place in the app.
+  // A chip or link opens what it names when clicked; with text selected, or Shift/Alt held, a click places the caret.
   const open = (href: string, label?: string) => (opts.onOpenLink ? opts.onOpenLink(href, label) : (location.hash = href));
   const onClick = (e: MouseEvent) => {
     const chip = (e.target as Element).closest?.<HTMLElement>(".ref-chip");
@@ -237,12 +238,25 @@ export function createEditor(host: HTMLElement, opts: EditorOptions = {}): RichE
       open(chip.dataset.href, chip.dataset.label);
       return;
     }
-    const a = (e.target as Element).closest?.("a[href^='#']");
-    if (a && (e.ctrlKey || e.metaKey)) {
-      e.preventDefault();
-      open(a.getAttribute("href")!);
+    const a = (e.target as Element).closest?.("a[href]");
+    const href = a?.getAttribute("href");
+    if (!a || !href) return;
+    const sel = window.getSelection();
+    const plain = followsLink({ button: e.button, shift: e.shiftKey, alt: e.altKey, hadSelection, hasSelection: !!sel && !sel.isCollapsed });
+    if (!plain && !(e.ctrlKey || e.metaKey)) return;
+    e.preventDefault();
+    if (href.startsWith("#")) open(href);
+    else if (/^(https?:|mailto:)/i.test(href)) {
+      const rt = (window as unknown as { runtime?: { BrowserOpenURL?: (u: string) => void } }).runtime;
+      if (rt?.BrowserOpenURL) rt.BrowserOpenURL(href);
+      else window.open(href, "_blank", "noopener");
     }
   };
+  let hadSelection = false;
+  content.addEventListener("mousedown", () => {
+    const s = window.getSelection();
+    hadSelection = !!s && !s.isCollapsed;
+  }, true);
   content.addEventListener("click", onClick);
   const extra = opts.setup?.(editor);
   syncEmpty();

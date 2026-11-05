@@ -278,4 +278,25 @@ export default [
       await t.page.waitForFunction(() => !!document.querySelector("[data-e2e=current] .rich-text .verse-quote, [data-e2e=current] .rich-text .ref-chip"), null, { timeout: 8000 });
     },
   },
+  {
+    row: "A plain click on a link opens it; clicking while text is selected places the caret instead",
+    shot: "in-06-link-click.png",
+    async run(t) {
+      await t.openNote("Go to the [reader page](#reader) now", "Link click");
+      const link = t.editor().locator("a.rt-link").first();
+      await link.waitFor();
+      // With text selected, a click on the link only places the caret.
+      await t.editor().click({ position: { x: 4, y: 8 } });
+      await t.press("Control+a");
+      const here = await t.page.evaluate(() => location.hash);
+      await t.editor().locator("a.rt-link").first().click();
+      await t.page.waitForTimeout(400);
+      t.assert.equal(await t.page.evaluate(() => location.hash), here, "stayed on the note");
+      t.assert.ok(await t.page.evaluate(() => getSelection().isCollapsed), "the caret was placed");
+      await t.shot();
+      // A plain click follows it.
+      await t.editor().locator("a.rt-link").first().click();
+      await t.page.waitForFunction(() => location.hash.startsWith("#reader"), null, { timeout: 5000 });
+    },
+  },
 ];
