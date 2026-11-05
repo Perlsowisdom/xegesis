@@ -1,7 +1,7 @@
 // Starts the real desktop app (Wails on WebView2) for the interface tests and connects to it over
 // the Chrome DevTools Protocol. The app runs on a temporary copy of the scratch library, with its
-// own WebView2 profile, so the user's library and settings are never touched. stop() closes the
-// app and every process it started.
+// own WebView2 profile, so the user's library and settings are never touched. restart() quits the
+// app and opens it again on the same copy; stop() closes the app and every process it started.
 //
 //   const app = await startApp({ build: true });
 //   await app.page.keyboard.type("## Hello");
@@ -186,65 +186,91 @@ export async function startApp({ build: doBuild = true, port } = {}) {
   const profile = join(run, "webview");
   mkdirSync(profile, { recursive: true });
 
-  const child = spawn(EXE, [], {
-    cwd: run,
-    env: {
-      ...process.env,
-      XEGESIS_LIBRARY: join(lib, "library.db"),
-      WEBVIEW2_USER_DATA_FOLDER: profile,
-      WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port} --remote-allow-origins=*`,
-    },
-    stdio: ["ignore", "pipe", "pipe"],
-    windowsHide: false,
-  });
+  // launch starts the app on the run folder's library and connects to it. Each launch uses the same
+  // library and WebView2 profile, so a restart shows what a person who quits and reopens sees.
   let log = "";
-  child.stdout.on("data", (d) => (log += d));
-  child.stderr.on("data", (d) => (log += d));
-  let exited = false;
-  child.on("exit", () => (exited = true));
-
-  let browser;
-  // Close everything this run started, then remove its folder.
-  const cleanUp = async () => {
-    await within(browser?.close(), 5000, "closing the connection").catch(() => {});
-    killTree(child.pid);
-    for (const [pid] of ps(run)) killTree(pid);
-    await pause(500);
-    await removeRun(run);
-  };
-  const started = Date.now();
-  const left = () => Math.max(1000, START_MS - (Date.now() - started));
-  try {
+  const launch = async (port) => {
+    const child = spawn(EXE, [], {
+      cwd: run,
+      env: {
+        ...process.env,
+        XEGESIS_LIBRARY: join(lib, "library.db"),
+        WEBVIEW2_USER_DATA_FOLDER: profile,
+        WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port} --remote-allow-origins=*`,
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: false,
+    });
+    const s = { child, exited: false, browser: null, page: null };
+    child.stdout.on("data", (d) => (log += d));
+    child.stderr.on("data", (d) => (log += d));
+    child.on("exit", () => (s.exited = true));
+    cur = s;
+    const started = Date.now();
+    const left = () => Math.max(1000, START_MS - (Date.now() - started));
     await waitFor(async () => {
-      if (exited) throw Object.assign(new Error("the app quit"), { fatal: true });
+      if (s.exited) throw Object.assign(new Error("the app quit"), { fatal: true });
       const r = await fetch(`http://127.0.0.1:${port}/json/version`, { signal: AbortSignal.timeout(2000) });
       return r.ok;
     }, left(), `the debugging port ${port}`);
-    browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`, { timeout: left() });
-    const page = await waitFor(() => browser.contexts().flatMap((c) => c.pages()).find((p) => p.url().startsWith("http")), left(), "the app page");
-    page.setDefaultTimeout(30000);
-    await page.waitForFunction(() => !!(window.go && window.go.main && window.go.main.App), null, { timeout: left() });
-    await page.waitForSelector("#app, body", { timeout: left() });
-    return {
-      page,
-      browser,
-      library: lib,
-      log: () => log,
-      // run calls a command the way the interface does.
-      run: (id, params = {}) => within(page.evaluate(async ([id, p]) => JSON.parse((await window.go.main.App.Run(id, JSON.stringify(p))) || "null"), [id, params]), 30000, `the command ${id}`),
-      shot: (name) => page.screenshot({ path: join(shots, name), timeout: 15000 }),
-      async stop() {
-        try {
-          // Quit in a moment, so the call returns before the page goes.
-          await within(page.evaluate(() => { setTimeout(() => window.runtime?.Quit?.(), 0); }), 3000, "asking the app to quit").catch(() => {});
-          await waitFor(() => exited, 5000, "the app to quit").catch(() => {});
-        } finally {
-          await cleanUp();
-        }
-      },
-    };
-  } catch (e) {
-    await cleanUp();
-    throw new Error(`The app did not start within ${Math.round(START_MS / 1000)} s: ${e.message}\nApp output:\n${log.slice(-2000) || "(none)"}`);
-  }
+    s.browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`, { timeout: left() });
+    s.page = await waitFor(() => s.browser.contexts().flatMap((c) => c.pages()).find((p) => p.url().startsWith("http")), left(), "the app page");
+    s.page.setDefaultTimeout(30000);
+    await s.page.waitForFunction(() => !!(window.go && window.go.main && window.go.main.App), null, { timeout: left() });
+    await s.page.waitForSelector("#app, body", { timeout: left() });
+    return s;
+  };
+  // quit asks the app to quit, then closes whatever of it is left, its WebView2 processes too.
+  const quit = async (s) => {
+    if (!s) return;
+    try {
+      if (s.page) {
+        // Quit in a moment, so the call returns before the page goes.
+        await within(s.page.evaluate(() => { setTimeout(() => window.runtime?.Quit?.(), 0); }), 3000, "asking the app to quit").catch(() => {});
+        await waitFor(() => s.exited, 5000, "the app to quit").catch(() => {});
+      }
+    } finally {
+      await within(s.browser?.close(), 5000, "closing the connection").catch(() => {});
+      killTree(s.child.pid);
+      for (const [pid] of ps(run)) killTree(pid);
+      await pause(500);
+    }
+  };
+  let cur = null;
+  const start = async (port) => {
+    try {
+      return await launch(port);
+    } catch (e) {
+      await quit(cur);
+      await removeRun(run);
+      throw new Error(`The app did not start within ${Math.round(START_MS / 1000)} s: ${e.message}\nApp output:\n${log.slice(-2000) || "(none)"}`);
+    }
+  };
+
+  await start(port);
+  const app = {
+    page: cur.page,
+    browser: cur.browser,
+    library: lib,
+    log: () => log,
+    // run calls a command the way the interface does.
+    run: (id, params = {}) => within(app.page.evaluate(async ([id, p]) => JSON.parse((await window.go.main.App.Run(id, JSON.stringify(p))) || "null"), [id, params]), 30000, `the command ${id}`),
+    shot: (name) => app.page.screenshot({ path: join(shots, name), timeout: 15000 }),
+    // restart quits the app and opens it again on the same library copy; app.page is then the
+    // new window's page.
+    async restart() {
+      await quit(cur);
+      await start(await freePort());
+      app.page = cur.page;
+      app.browser = cur.browser;
+    },
+    async stop() {
+      try {
+        await quit(cur);
+      } finally {
+        await removeRun(run);
+      }
+    },
+  };
+  return app;
 }

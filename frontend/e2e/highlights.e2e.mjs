@@ -5,7 +5,7 @@ const ROM12 = 45012000;
 const v = (n) => ROM12 + n;
 
 // readRom12 shows Romans 12 in Read mode, its highlights cleared from the verses given.
-async function readRom12(t, ...verses) {
+export async function readRom12(t, ...verses) {
   const { page, app } = t;
   for (const n of verses) {
     for (const h of await app.run("highlight.list", { ref: `Rom 12:${n}` })) await app.run("highlight.delete", { id: h.id });
@@ -72,7 +72,7 @@ async function toolbar(page, label) {
 }
 
 // highlightWords drags over words of one verse (or from one verse to another) and colours them.
-async function highlightWords(t, from, to, colour = "green") {
+export async function highlightWords(t, from, to, colour = "green") {
   if (to) await words(t.page, ...to);
   const a = await words(t.page, ...from);
   const b = to ? await words(t.page, ...to) : a;

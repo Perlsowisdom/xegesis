@@ -78,8 +78,9 @@ ${Array.from({ length: count }, (_, i) => para(i + 1)).join("\n")}
 </body></html>`;
 }
 
-// epub is a two-chapter book, long enough to scroll.
-export function epub(title = "E2E Test Book") {
+// epub is a two-chapter book, long enough to scroll. Books with other titles get their own identifier.
+export function epub(title = "E2E Test Book", { author = "The Test Harness" } = {}) {
+  const uid = title === "E2E Test Book" ? "e2e-test-book" : title.toLowerCase().replace(/[^a-z0-9]+/g, "-");
   return zip([
     ["mimetype", "application/epub+zip"],
     ["META-INF/container.xml", `<?xml version="1.0"?>
@@ -89,8 +90,8 @@ export function epub(title = "E2E Test Book") {
     ["OEBPS/content.opf", `<?xml version="1.0" encoding="UTF-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
-    <dc:identifier id="uid">urn:uuid:e2e-test-book</dc:identifier><dc:title>${title}</dc:title>
-    <dc:creator>The Test Harness</dc:creator><dc:rights>Public domain</dc:rights>
+    <dc:identifier id="uid">urn:uuid:${uid}</dc:identifier><dc:title>${title}</dc:title>
+    <dc:creator>${author}</dc:creator><dc:rights>Public domain</dc:rights>
   </metadata>
   <manifest>
     <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
