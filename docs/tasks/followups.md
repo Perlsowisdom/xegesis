@@ -114,3 +114,7 @@ Design first: mock-up for approval, then build.
 - Side by side, a whole-verse highlight is drawn on each Bible's cell rather than the whole row, and an empty cell is not coloured.
 - Ranged highlights moved by `highlight.update` have no interface yet (the command takes a range; the toolbar only recolours, underlines and removes).
 - Offsets count code points of the text as drawn from the Bible's markup. If a Bible module is reinstalled with different text, ranges in it may drift; they are not re-found by their words yet.
+
+## After the editor polish pass (4 November 2026)
+
+- A plain click on a link now follows it, but external `http`, `https` and `mailto` links were not tested in the real app. The code calls Wails `BrowserOpenURL`.
