@@ -122,6 +122,16 @@ export function openTab(g: Grid, spec: TabSpec, paneId = g.selected): Grid {
   return n;
 }
 
+// openBookTab opens a book in the selected pane, or shows the tab already there for it when no
+// particular place is asked for, so reading the same book again does not pile up tabs.
+export function openBookTab(g: Grid, spec: TabSpec): Grid {
+  const p = selectedPane(g);
+  const same = !spec.locator && !spec.section && spec.itemId
+    ? p?.tabs.find((t) => t.kind === "book" && t.itemId === spec.itemId && (!spec.fileId || !t.fileId || t.fileId === spec.fileId))
+    : undefined;
+  return same ? selectTab(g, same.id) : openTab(g, spec);
+}
+
 export function selectTab(g: Grid, tabId: string): Grid {
   const f = findTab(g, tabId);
   if (!f) return g;

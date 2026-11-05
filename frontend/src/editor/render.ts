@@ -25,6 +25,9 @@ function block(b: Block): Node {
       return h("hr", { class: "md-hr" });
     case "versequote":
       return verseQuoteEl(b.lines);
+    case "table":
+      return h("div", { class: "md-table-wrap" }, h("table", { class: "md-table" }, b.rows.map((r, i) =>
+        h("tr", {}, r.map((c) => h(b.header && i === 0 ? "th" : "td", {}, inline(c)))))));
     default:
       return b.spans.length === 0 ? h("p", { class: "md-empty", "aria-hidden": "true" }) : h("p", {}, inline(b.spans));
   }

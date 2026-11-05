@@ -34,6 +34,12 @@ export interface Marking {
 
 let open: { close(): void } | null = null;
 
+// closeMarking closes the toolbar wherever it is open: going to another page leaves the selected
+// text behind, and its toolbar must not stay over the new page.
+export function closeMarking(): void {
+  open?.close();
+}
+
 export function attachMarking(root: HTMLElement, a: MarkActions): Marking {
   let bar: HTMLElement | null = null;
   let mode: { kind: "selection"; range: Range } | { kind: "mark"; target: MarkTarget } | { kind: "custom"; run: Parameters<Marking["showFor"]>[1] } | null = null;

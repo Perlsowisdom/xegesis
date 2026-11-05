@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   Grid, MAX_COLUMNS, MIN_SIZE, TabSpec, activeTab, applyPreset, canDrop, closePane, closeTab, dropTab, emptyGrid, equalise,
-  findPane, findTab, insertTab, moveTab, openTab, paneRef, panes, resizeBetween, resizeColumns, restore, selectTab, serialise,
+  findPane, findTab, insertTab, moveTab, openBookTab, openTab, paneRef, panes, resizeBetween, resizeColumns, restore, selectTab, serialise,
   setLinked, setRef, shape, updateTab,
 } from "./grid";
 
@@ -64,6 +64,17 @@ describe("opening and closing", () => {
     expect(activeTab(findPane(g, g.selected)!.pane)?.title).toBe("Book 9");
   });
 
+  it("shows a book already open in the pane instead of opening it again", () => {
+    let g = grid([[["A"]]]);
+    g = openBookTab(g, book(9));
+    g = selectTab(g, tabId(g, "A"));
+    g = openBookTab(g, book(9));
+    expect(titles(g)).toEqual([[["A", "Book 9"]]]);
+    expect(activeTab(findPane(g, g.selected)!.pane)?.title).toBe("Book 9");
+    // A place in the book opens it there, in a tab of its own.
+    g = openBookTab(g, { ...book(9), section: 2 });
+    expect(titles(g)).toEqual([[["A", "Book 9", "Book 9"]]]);
+  });
   it("makes the next tab current when the current one closes", () => {
     let g = grid([[["A", "B", "C"]]]);
     g = selectTab(g, tabId(g, "B"));

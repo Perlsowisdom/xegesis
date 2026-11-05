@@ -13,7 +13,7 @@ import { closePopover, openPopover, togglePopover } from "../popover";
 import { loadPref, navigate, onPassage, savePref, setPassage, state } from "../state";
 import {
   Grid, MAX_COLUMNS, MAX_PANES, MoveTarget, Pane, Tab, TabSpec, Zone, activeTab, applyPreset, closePane, closeTab, dropTab,
-  equalise, findPane, findTab, insertTab, moveTab, openTab, paneRef, panes, resizeColumns, resizePanes, restore,
+  equalise, findPane, findTab, insertTab, moveTab, openBookTab, openTab, paneRef, panes, resizeColumns, resizePanes, restore,
   selectPane, selectTab, setLinked, setRef, shape, updateTab,
 } from "./grid";
 import { DRAG_TYPE, dragging, setDragging } from "./drag";
@@ -556,7 +556,7 @@ export function studyGrid(o: StudyGridOptions) {
     // open shows a tab in the selected pane; a book already open there is reused.
     open(spec: TabSpec) {
       navigate("reader");
-      setGrid(openTab(g, spec));
+      setGrid(spec.kind === "book" ? openBookTab(g, spec) : openTab(g, spec));
       focusSelected();
     },
     presets(anchor: HTMLElement) {

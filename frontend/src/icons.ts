@@ -38,6 +38,10 @@ const PATHS: Record<string, string> = {
   copy: '<rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5V6a1.5 1.5 0 0 0-1.5-1.5H6A1.5 1.5 0 0 0 4.5 6v8A1.5 1.5 0 0 0 6 15.5h2.5"/>',
   pen: '<path d="M4 20l1-4.5L15.5 5a2 2 0 0 1 3 3L8 18.5z"/><path d="M13.5 7l3 3"/>',
   // A closed book with a plus on its cover: the editor's Insert control.
+  checklist: '<rect x="3.5" y="4.5" width="5" height="5" rx="1"/><path d="M4.8 7l1 1 1.6-1.8" stroke-width="1.4"/><rect x="3.5" y="14.5" width="5" height="5" rx="1"/><path d="M11.5 7h9M11.5 17h9"/>',
+  divider: '<path d="M3.5 12h17"/><path d="M7 7h10M7 17h10" opacity=".45"/>',
+  table: '<rect x="3.5" y="4.5" width="17" height="15" rx="1.5"/><path d="M3.5 9.5h17M3.5 14.5h17M9.5 9.5v10M15 9.5v10"/>',
+  code: '<path d="M8.5 7.5L4 12l4.5 4.5M15.5 7.5L20 12l-4.5 4.5"/>',
   "book-plus": '<path d="M5 4.5A1.5 1.5 0 0 1 6.5 3H19v15H6.5A1.5 1.5 0 0 0 5 19.5z"/><path d="M5 19.5A1.5 1.5 0 0 0 6.5 21H19v-3"/><path d="M12 7.5v6M9 10.5h6"/>',
   highlight: '<path d="M14.5 4.5l5 5-8.5 8.5H6v-5z"/><path d="M4 20.5h16"/>',
   contents: '<path d="M4 6h16M4 12h16M4 18h10"/>',

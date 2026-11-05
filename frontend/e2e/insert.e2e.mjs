@@ -166,9 +166,11 @@ export default [
     async run(t) {
       await t.openNote("", "Slash inserts");
       await t.focusEnd();
-      for (const [cmd, title] of [["/verse", "Insert a verse reference"], ["/quote", "Insert verse text"], ["/highlight", "Insert a highlight"], ["/link", "Link to a note or sermon"]]) {
+      // The menu is alphabetical, so /quote and /link list the block quote and the web link first.
+      for (const [cmd, title, down] of [["/verse", "Insert a verse reference", 0], ["/quote", "Insert verse text", 1], ["/highlight", "Insert a highlight", 0], ["/link", "Link to a note or sermon", 1]]) {
         await t.type(cmd);
         await t.page.waitForSelector(".slash-menu:not([hidden])");
+        for (let i = 0; i < down; i++) await t.press("ArrowDown");
         await t.press("Enter");
         const pop = t.page.locator(".popover .pop-title");
         await pop.waitFor({ timeout: 5000 });

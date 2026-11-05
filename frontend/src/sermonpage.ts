@@ -1,9 +1,9 @@
 // A sermon, lesson or Bible study as a page: the note page's layout (title, a slim toolbar, the
-// text) with its properties under the title (passage, date preached, theme, kind) and, in a narrow
-// column at the left, its outline. The outline is the text's headings: clicking a point goes to it,
-// dragging a point moves its whole section, Ctrl+] and Ctrl+[ make it a sub-point and back, and +
-// adds one. The headings are saved as the outline too (document.update's points), for export.
-// Outlines from before are added to the text as headings the first time a sermon opens.
+// text) with its properties under the title (passage, date preached, theme, kind). Its outline is
+// the text's headings, shown by the editor's strip at the right edge as in notes; Ctrl+] and Ctrl+[
+// make a heading a sub-point and back. The headings are saved as the outline too (document.update's
+// points), for export. Outlines from before are added to the text as headings the first time a
+// sermon opens.
 
 import { Message, Ref, run } from "./api";
 import { button, clear, h } from "./dom";
@@ -16,8 +16,7 @@ import { parseMarkdown } from "./editor/markdown";
 import { icon } from "./icons";
 import { openPopover } from "./popover";
 import { openExport } from "./printexport";
-import { DocKind, KIND_NAME, migrateOutline, outlineOf, pointsOf, untitled } from "./sermonwords";
-import { outlineMarks } from "./editor/structurewords";
+import { DocKind, KIND_NAME, migrateOutline, pointsOf, untitled } from "./sermonwords";
 import type { SermonDoc } from "./views/sermons";
 import { folderName, loadFolders, moveMenu, workChanged } from "./work";
 import { deleteSermon } from "./views/notes";
@@ -51,16 +50,10 @@ export function sermonPage(o: SermonPageOptions): SermonPage {
   const titleHost = h("div", {});
   const props = h("dl", { class: "page-props" });
   const edHost = h("div", { class: "page-text", "aria-busy": "true" });
-  const outlineList = h("ol", { class: "outline-list", "aria-label": "Points" });
-  const addPoint = h("button", { type: "button", class: "ghost-btn", "aria-label": "Add a point", title: "Add a point" }, icon("plus"));
-  const aside = h("aside", { class: "outline-col", "aria-label": "Outline" },
-    h("div", { class: "outline-head" }, h("span", { class: "outline-title" }, "Outline"), addPoint),
-    outlineList,
-    h("p", { class: "outline-hint" }, "The outline is the headings in the text. Drag a point to move its section; Ctrl+] and Ctrl+[ make it a sub-point and back."));
   const page = h("article", { class: "doc-page sermon-page", "aria-label": "Sermon" },
     pageHead({ crumbs: [crumbs], status: status.el, extra: [printBtn], menu: (b) => menu(b), menuLabel: "Sermon actions" }),
     msg.el, titleHost, props, edHost);
-  const el = h("div", { class: "sermon-layout" }, aside, h("div", { class: "sermon-main" }, page));
+  const el = h("div", { class: "sermon-layout" }, page);
 
   let d: SermonDoc | null = null;
   let editor: RichEditor | null = null;
@@ -71,11 +64,9 @@ export function sermonPage(o: SermonPageOptions): SermonPage {
   let saving: Promise<void> | null = null;
   let alive = true;
   let editingTheme = false;
-  let dragKey = "";
 
   const tbox = titleBox({ value: "", placeholder: "Untitled sermon", label: "Title", onInput: (v) => { title = v; changed(); }, onEnter: () => editor?.focus() });
   titleHost.append(tbox.el);
-  addPoint.addEventListener("click", () => editor?.addHeading(2));
 
   function renderCrumbs() {
     const sep = () => h("span", { class: "crumb-sep", "aria-hidden": "true" }, "›");
@@ -180,95 +171,6 @@ export function sermonPage(o: SermonPageOptions): SermonPage {
     saving = null;
   }
 
-  // The outline -----------------------------------------------------------------------------------
-
-  function renderOutline() {
-    if (!editor) return;
-    const heads = editor.headings();
-    const points = outlineOf(parseMarkdown(editor.getMarkdown()));
-    const here = editor.caretHeading();
-    const marks = outlineMarks(heads.map((x) => x.level));
-    clear(outlineList, heads.length === 0
-      ? h("li", { class: "outline-empty" }, "No points yet. Add a heading to the text, or choose +.")
-      : heads.map((hd, i) => {
-        const { depth, label } = marks[i];
-        const refs = points[i]?.refs.map((r) => r.label).join("; ") ?? "";
-        const b = h("button", { type: "button", class: `outline-point depth-${depth}${hd.key === here ? " on" : ""}`, draggable: "true",
-          "data-key": hd.key, "data-level": String(hd.level), "aria-current": hd.key === here ? "true" : null,
-          title: `${["Large", "Medium", "Small"][hd.level - 1] ?? "Small"} heading. Go to this point; drag to move its section.` },
-        h("span", { class: "outline-num", "aria-hidden": "true" }, label),
-        h("span", { class: "outline-label" }, hd.text.replace(/^\d{1,3}[.)]\s+/, "") || h("span", { class: "untitled" }, "Untitled point")),
-        refs ? h("span", { class: "outline-ref" }, refs) : null);
-        b.addEventListener("click", () => editor?.revealHeading(hd.key));
-        b.addEventListener("keydown", (e) => pointKey(e, hd.key, i));
-        b.addEventListener("dragstart", (e) => {
-          dragKey = hd.key;
-          e.dataTransfer?.setData("text/plain", hd.text);
-          if (e.dataTransfer) e.dataTransfer.effectAllowed = "move";
-          b.classList.add("dragging");
-        });
-        b.addEventListener("dragend", () => { dragKey = ""; b.classList.remove("dragging"); clearDrop(); });
-        b.addEventListener("dragover", (e) => {
-          if (!dragKey) return;
-          e.preventDefault();
-          clearDrop();
-          const r = b.getBoundingClientRect();
-          b.classList.add(e.clientY < r.top + r.height / 2 ? "drop-before" : "drop-after");
-        });
-        b.addEventListener("drop", (e) => {
-          if (!dragKey) return;
-          e.preventDefault();
-          const after = b.classList.contains("drop-after");
-          clearDrop();
-          // Dropping after a point puts the section after that point's whole section.
-          const target = after ? nextSectionStart(i) : hd.key;
-          if (dragKey !== hd.key) editor?.moveSection(dragKey, target);
-          dragKey = "";
-        });
-        return h("li", {}, b);
-      }));
-  }
-
-  // nextSectionStart is the heading after the section of the i-th heading, or null at the end.
-  function nextSectionStart(i: number): string | null {
-    const heads = editor?.headings() ?? [];
-    for (let j = i + 1; j < heads.length; j++) if (heads[j].level <= heads[i].level) return heads[j].key;
-    return null;
-  }
-
-  function clearDrop() {
-    for (const x of outlineList.querySelectorAll(".drop-before, .drop-after")) x.classList.remove("drop-before", "drop-after");
-  }
-
-  function pointKey(e: KeyboardEvent, key: string, i: number) {
-    const heads = editor?.headings() ?? [];
-    const cur = heads[i];
-    const mod = e.ctrlKey || e.metaKey;
-    const refocus = () => queueMicrotask(() => outlineList.querySelector<HTMLElement>(`[data-key="${editor?.headings().find((x) => x.text === cur.text)?.key ?? key}"]`)?.focus());
-    if (mod && (e.code === "BracketRight" || e.code === "BracketLeft")) {
-      e.preventDefault();
-      editor?.setHeadingLevel(key, Math.min(3, Math.max(1, cur.level + (e.code === "BracketRight" ? 1 : -1))));
-      refocus();
-    } else if (e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
-      // Alt+↑ and Alt+↓ move the point's section, the keyboard way to drag it.
-      e.preventDefault();
-      if (e.key === "ArrowUp") {
-        let j = i - 1;
-        while (j >= 0 && heads[j].level > cur.level) j--;
-        if (j >= 0) editor?.moveSection(key, heads[j].key);
-      } else {
-        const after = nextSectionStart(i);
-        const k = after ? heads.findIndex((x) => x.key === after) : -1;
-        if (k >= 0) editor?.moveSection(key, nextSectionStart(k));
-      }
-      refocus();
-    } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-      e.preventDefault();
-      const all = [...outlineList.querySelectorAll<HTMLElement>(".outline-point")];
-      all[Math.max(0, Math.min(all.length - 1, i + (e.key === "ArrowDown" ? 1 : -1)))]?.focus();
-    }
-  }
-
   // The menu --------------------------------------------------------------------------------------
 
   async function moveTo(b: HTMLElement) {
@@ -320,7 +222,7 @@ export function sermonPage(o: SermonPageOptions): SermonPage {
     edHost.removeAttribute("aria-busy");
     editor = createEditor(edHost, {
       markdown: got.body, placeholder: "Write here… Headings become the outline. Type / for more.", label: "Text of the sermon or lesson",
-      onChange: changed, onHeadings: renderOutline, foldKey: got.id,
+      onChange: changed, foldKey: got.id,
       onVerseRef: verseRefPopover,
       ...editorInserts({
         say: (w) => msg.info(w), passage: () => passage?.display ?? "", self: () => d?.id,
@@ -331,22 +233,9 @@ export function sermonPage(o: SermonPageOptions): SermonPage {
       editor.setMarkdown(body);
       changed();
     }
-    renderOutline();
     if (o.fresh) tbox.focus();
   }
 
-  // The current point follows the caret.
-  const onSel = () => {
-    if (!editor || !el.contains(document.activeElement)) return;
-    const here = editor.caretHeading();
-    for (const b of outlineList.querySelectorAll<HTMLElement>(".outline-point")) {
-      const on = b.dataset.key === here;
-      b.classList.toggle("on", on);
-      if (on) b.setAttribute("aria-current", "true");
-      else b.removeAttribute("aria-current");
-    }
-  };
-  document.addEventListener("selectionchange", onSel);
   const onUnload = () => void save();
   window.addEventListener("beforeunload", onUnload);
   el.addEventListener("keydown", (e) => {
@@ -366,7 +255,6 @@ export function sermonPage(o: SermonPageOptions): SermonPage {
     flush: save,
     destroy() {
       alive = false;
-      document.removeEventListener("selectionchange", onSel);
       window.removeEventListener("beforeunload", onUnload);
       void save().finally(() => {
         editor?.destroy();

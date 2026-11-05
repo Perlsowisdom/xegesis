@@ -551,21 +551,27 @@ func (l *layout) listItem(mark string, sp []tspan) {
 // next page; the column heads repeat at the top of each page.
 func (l *layout) table(g *Grid) {
 	numW := 0.0
-	if l.d.Opt.verseNumbers() {
+	if g.numbered(l.d.Opt) {
 		numW = l.base * 2.2
 	}
 	gap := l.base * 0.8
-	cols := max(len(g.Head), 1)
-	colW := (l.width() - numW - gap*float64(cols-1)) / float64(cols)
+	cols := g.Cols()
+	avail := l.width() - numW - gap*float64(cols-1)
 	xs := make([]float64, cols)
-	for c := range xs {
-		xs[c] = l.ml + numW + float64(c)*(colW+gap)
+	ws := make([]float64, cols)
+	x := l.ml + numW
+	for c, f := range g.fractions() {
+		xs[c], ws[c] = x, avail*f
+		x += ws[c] + gap
 	}
 	head := func() {
+		if !g.HasHead() {
+			return
+		}
 		var cells [][]line
 		hmax := 0.0
-		for _, h := range g.Head {
-			ls := l.lines(l.words(l.text(h, true, false, 1, 0)), colW)
+		for i, h := range g.Head {
+			ls := l.lines(l.words(l.text(h, true, false, 1, 0)), ws[i])
 			cells = append(cells, ls)
 			hmax = max(hmax, float64(len(ls))*ls[0].height())
 		}
@@ -574,7 +580,7 @@ func (l *layout) table(g *Grid) {
 		for c, ls := range cells {
 			y := top
 			for _, ln := range ls {
-				l.emit(ln, xs[c], colW, y, isRTL(g.Head[c]))
+				l.emit(ln, xs[c], ws[c], y, isRTL(g.Head[c]))
 				y -= ln.height()
 			}
 		}
@@ -590,7 +596,7 @@ func (l *layout) table(g *Grid) {
 		for c, cell := range r.Cells {
 			sp := l.spans(cell, 1, 0, false)
 			rtl[c] = isRTL(spansPlain(sp))
-			ls := l.lines(l.words(sp), colW)
+			ls := l.lines(l.words(sp), ws[min(c, cols-1)])
 			cells = append(cells, ls)
 			rows = max(rows, len(ls))
 		}
@@ -611,7 +617,7 @@ func (l *layout) table(g *Grid) {
 			}
 			for c, ls := range cells {
 				if k < len(ls) && c < cols {
-					l.emit(ls[k], xs[c], colW, l.y, rtl[c])
+					l.emit(ls[k], xs[c], ws[c], l.y, rtl[c])
 				}
 			}
 			l.y -= h

@@ -43,6 +43,9 @@ func parseBlock(src string) []Block {
 			return []Block{{Kind: Rule}}
 		}
 	}
+	if g := parseNoteTable(lines); g != nil {
+		return []Block{{Kind: Table, Table: g}}
+	}
 	if all(lines, func(i int, l string) bool { return checkRe.MatchString(l) }) {
 		var out []Block
 		for _, l := range lines {
@@ -325,6 +328,9 @@ func mdBlocks(bs []Block, opt Options) []string {
 }
 
 func mdTable(g *Grid, opt Options) string {
+	if g.Plain {
+		return mdNoteTable(g)
+	}
 	cell := func(s string) string { return strings.ReplaceAll(oneLine(s), "|", `\|`) }
 	var lines []string
 	head := []string{""}

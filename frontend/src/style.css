@@ -1253,13 +1253,14 @@ input.inline-chip[type=text] { height: 28px; border-radius: 999px; padding: 0 12
 .rich-text[data-empty]::before { content: attr(data-placeholder); color: var(--faint); position: absolute; pointer-events: none; }
 .rich-text p { margin: 0 0 12px; }
 .rich-text h1, .rich-text h2, .rich-text h3, .rich-text h4 { font-family: var(--reading); font-weight: 600; color: var(--fg); text-transform: none;
-  letter-spacing: 0; scroll-margin-top: 56px; border-radius: 4px; }
+  letter-spacing: 0; border-radius: 4px; }
 .rich-text h1 { font-size: 1.75rem; line-height: 1.25; margin: 28px 0 10px; }
 .rich-text h2 { font-size: 1.38rem; line-height: 1.3; margin: 22px 0 6px; }
 .rich-text h3 { font-size: 1.14rem; margin: 18px 0 4px; }
 .rich-text h4, .rich-text h5, .rich-text h6 { font-size: 1rem; margin: 14px 0 4px; }
 .rich-text > :first-child { margin-top: 0; }
-.rich-text :is(h1, h2, h3, h4, h5, h6) { scroll-margin-top: 72px; }
+/* Jumping to a block stops just below the sticky toolbar, whatever its height (--rt-bar, editor/index.ts). */
+.rich-text > *, .rich-text :is(h1, h2, h3, h4, h5, h6) { scroll-margin-top: calc(var(--rt-bar, 44px) + 18px); }
 .rich-text ul, .rich-text ol { margin: 0 0 12px; padding-left: 1.6em; }
 .rich-text li { margin: 2px 0; }
 .rich-text ul.rt-checklist { padding-left: 0; list-style: none; }
@@ -1297,8 +1298,10 @@ input.inline-chip[type=text] { height: 28px; border-radius: 999px; padding: 0 12
 .rich-compact .rt-fold-gutter { left: -20px; }
 @media (prefers-reduced-motion: reduce) { .rt-fold, .rt-fold::before { transition: none; } }
 /* The outline strip: a mark per heading at the right edge; hovering shows the names. */
-.rt-strip { position: absolute; top: 0; bottom: 0; right: -34px; width: 22px; z-index: 4; }
-.rt-strip-inner { position: sticky; top: 30vh; }
+/* It starts below the toolbar and stays just under it when stuck, and its names open above the
+   toolbar's layer, so the toolbar never covers them. */
+.rt-strip { position: absolute; top: calc(var(--rt-bar, 44px) + 14px); bottom: 0; right: -34px; width: 22px; z-index: 6; }
+.rt-strip-inner { position: sticky; top: calc(var(--rt-bar, 44px) + 18px); }
 .rt-strip-marks { display: flex; flex-direction: column; align-items: flex-end; gap: 7px; padding: 6px 2px; }
 .rt-strip-mark { display: block; height: 3px; width: 14px; padding: 0; border: 0; border-radius: 2px; background: var(--line); cursor: pointer; }
 .rt-strip-mark.depth-1 { width: 10px; }
@@ -1423,44 +1426,11 @@ button.danger-link { color: var(--bad); margin-top: 8px; display: block; }
 .work-page .doc-page { padding-top: 0; }
 @media (max-width: 700px) { .doc-page { padding: 0 2px 60px; } }
 
-/* A sermon page: the outline in a narrow column at the left, the page beside it (sermonpage.ts). */
-.sermon-layout { display: grid; grid-template-columns: 240px minmax(0, 1fr); align-items: start; container-type: inline-size; width: 100%; }
-.sermon-main { min-width: 0; }
-.outline-col { position: sticky; top: 0; max-height: 100vh; overflow: auto; padding: 8px 14px 20px 0; margin-right: 8px;
-  border-right: 1px solid var(--line); scrollbar-width: thin; }
-.outline-head { display: flex; align-items: center; justify-content: space-between; margin: 0 0 8px 8px; }
-.outline-title { font-size: .74rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
-.outline-list { list-style: none; margin: 0; padding: 0; }
-.outline-point { display: flex; align-items: baseline; gap: 7px; width: 100%; text-align: left; border: 0; border-radius: 7px; padding: 7px 8px;
-  background: transparent; color: var(--text); font-size: .86rem; line-height: 1.35; white-space: normal; cursor: pointer; position: relative;
-  transition: background-color .12s, color .12s; }
-.outline-point:hover:not(:disabled) { background: var(--ghost-hover); border: 0; }
-.outline-point.on { background: var(--well-on); color: var(--fg); }
-:root:not([data-theme="dark"]) .outline-point.on { background: var(--rail-on); }
-.outline-point.depth-0 { font-weight: 600; color: var(--fg); }
-.outline-point.depth-1 { padding-left: 24px; font-size: .84rem; }
-.outline-point.depth-2 { padding-left: 42px; font-size: .8rem; color: var(--muted); }
-.outline-point.depth-2.on { color: var(--fg); }
-.outline-point:focus-visible { outline-offset: -2px; }
-.outline-num { flex: none; min-width: 14px; color: var(--faint); font-variant-numeric: tabular-nums; font-size: .8rem; }
-.outline-label { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.outline-ref { flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: .72rem; }
-.outline-point.dragging { opacity: .45; }
-.outline-point.drop-before::before, .outline-point.drop-after::after { content: ""; position: absolute; left: 6px; right: 6px; height: 2px;
-  border-radius: 2px; background: var(--accent); }
-.outline-point.drop-before::before { top: -1px; }
-.outline-point.drop-after::after { bottom: -1px; }
-.outline-empty { color: var(--muted); font-size: .82rem; line-height: 1.45; padding: 4px 8px; }
-.outline-hint { color: var(--faint); font-size: .76rem; line-height: 1.5; margin: 14px 8px 0; }
+/* A sermon page: the page alone; its outline is the editor's strip at the right (sermonpage.ts). */
+.sermon-layout { display: block; width: 100%; }
 .kind-menu button.on { color: var(--accent); font-weight: 600; }
 .sermon-page { padding-top: 0; }
-@container (max-width: 680px) {
-  .sermon-main { grid-column: 1 / -1; }
-  .outline-col { display: none; }
-}
 .work-view:has(> .work-page:not([hidden])) { max-width: none; }
-.grid-body .sermon-layout { margin: 0 -6px; }
-.grid-body .outline-col { top: -8px; }
 
 /* The marking toolbar over selected text, and the highlight colours (marking.ts). */
 .mark-bar { position: fixed; z-index: 65; display: flex; align-items: center; gap: 2px; padding: 5px 6px; background: var(--pop-bg);
@@ -1603,3 +1573,34 @@ button.danger-link { color: var(--bad); margin-top: 8px; display: block; }
 .pick-empty { color: var(--muted); font-size: .84rem; padding: 6px 8px; }
 .document .vnum[draggable="true"], .vnum[draggable="true"] { cursor: grab; }
 .hl-row[draggable="true"] { cursor: grab; }
+
+/* The toolbar's overflow menu (⋯ More) and tables (editor/index.ts, editor/table.ts). */
+.rich-toolbar { flex-wrap: nowrap; overflow: hidden; }
+.rich-toolbar > [hidden] { display: none; }
+.rich-toolbar > * { flex-shrink: 0; }
+.rich-more { flex: none; }
+.more-menu { min-width: 220px; }
+.more-menu .mm-glyph { display: inline-grid; place-items: center; width: 20px; color: var(--muted); font-weight: 600; }
+.more-menu .hm-name { flex: 1; }
+.more-menu .hm-keys { color: var(--faint); font-size: .75rem; }
+.table-menu { min-width: 220px; }
+.table-menu button.danger { color: var(--danger, #b3261e); }
+.table-picker { padding: 10px 12px 12px; }
+.tp-grid { display: grid; grid-template-columns: repeat(10, 18px); gap: 3px; outline: none; margin-top: 6px; }
+.tp-grid:focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; border-radius: 4px; }
+.tp-cell { width: 18px; height: 18px; border: 1px solid var(--line); border-radius: 3px; background: var(--bg); cursor: pointer; }
+.tp-cell.on { background: color-mix(in srgb, var(--accent) 28%, transparent); border-color: var(--accent); }
+.tp-label { margin-top: 8px; text-align: center; font-variant-numeric: tabular-nums; color: var(--muted); font-size: .85rem; }
+.rich-text .rt-table-wrap { overflow-x: auto; margin: 6px 0 14px; }
+.rich-text table.rt-table { border-collapse: collapse; table-layout: fixed; margin: 6px 0 14px; font-size: .98em; }
+.rich-text .rt-table-wrap > table.rt-table { margin: 0; }
+.rich-text .rt-cell, .rich-text .rt-cell-head { border: 1px solid var(--line); padding: 5px 9px; vertical-align: top; min-width: 48px; text-align: left; }
+.rich-text .rt-cell-head { background: var(--panel); font-weight: 600; color: var(--fg); }
+.rich-text .rt-cell p, .rich-text .rt-cell-head p { margin: 0; }
+.rich-text.rt-col-resize, .rich-text.rt-col-resize * { cursor: col-resize; }
+.rt-col-guide { position: absolute; width: 2px; margin-left: -1px; background: var(--accent); pointer-events: none; z-index: 7; }
+.rich-text .selected { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.md-table-wrap { overflow-x: auto; }
+.md-table { border-collapse: collapse; margin: 6px 0 12px; }
+.md-table th, .md-table td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; }
+.md-table th { background: var(--panel); }
