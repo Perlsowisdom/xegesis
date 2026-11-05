@@ -108,4 +108,22 @@ export default [
       t.assert.ok(page.x - layout.x < 40, "the page starts at the left, with no column beside it");
     },
   },
+  {
+    row: "A folded heading stays folded when its words are edited",
+    shot: "st-06-fold-rename.png",
+    async run(t) {
+      await t.openNote(SECTIONS, "Fold rename");
+      await foldAlpha(t);
+      // Edit the folded heading: click at its end and type more words.
+      await t.editor().locator("h1", { hasText: "Alpha" }).click();
+      await t.press("End");
+      await t.type(" renamed");
+      await t.page.waitForTimeout(300);
+      t.assert.equal(await t.editor().locator("h1", { hasText: "Alpha renamed" }).count(), 1);
+      t.assert.equal(await visible(t, "Alpha text"), false, "still folded after the rename");
+      t.assert.equal(await visible(t, "Gamma text"), true);
+      t.assert.equal(await t.page.locator(`${t.root} .rt-fold.closed`).count(), 1);
+      await t.shot();
+    },
+  },
 ];

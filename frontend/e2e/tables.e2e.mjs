@@ -173,4 +173,31 @@ export default [
       t.assert.ok(Math.abs(again - after) < 6, `kept: ${after} -> ${again}`);
     },
   },
+  {
+    row: "A column cannot be dragged narrower than 60px, and words wrap only between words",
+    shot: "tb6-06-min-width.png",
+    async run(t) {
+      await t.openNote("| Alpha beta gamma | Delta epsilon |\n| --- | --- |\n| one two three | four five |", "Table min width");
+      const th = table(t).locator("th").first();
+      const box = await th.boundingBox();
+      const { mouse } = t.page;
+      await mouse.move(box.x + box.width - 2, box.y + box.height / 2);
+      await t.page.waitForTimeout(100);
+      await mouse.down();
+      for (let i = 1; i <= 12; i++) await mouse.move(box.x + box.width - 2 - i * 40, box.y + box.height / 2);
+      await mouse.up();
+      await t.page.waitForTimeout(250);
+      // The saved width stops at the minimum; the cell can show wider only so its longest word fits.
+      const w = (await th.boundingBox()).width;
+      const m = /<!-- table widths=(\d+),/.exec(await t.saved());
+      t.assert.ok(m && Number(m[1]) === 60, `dragged far left, the saved width is 60, got ${m && m[1]}`);
+      t.assert.ok(w >= 60 && w < box.width / 2, `narrow but not below 60px: ${w}`);
+      // No word is split: each cell's longest word fits on a line.
+      const split = await table(t).evaluate((tb) => [...tb.querySelectorAll("th, td")].some((c) => c.scrollWidth > c.clientWidth + 1));
+      t.assert.equal(split, false, "words are not cut or overflowing");
+      const style = await th.evaluate((e) => { const c = getComputedStyle(e); return [c.wordBreak, c.overflowWrap]; });
+      t.assert.deepEqual(style, ["normal", "normal"], "no mid-word breaks");
+      await t.shot();
+    },
+  },
 ];

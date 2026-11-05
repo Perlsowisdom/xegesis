@@ -39,3 +39,19 @@ export function outlineMarks(levels: number[]): OutlineMark[] {
     return { depth, label };
   });
 }
+
+// carryFolds keeps a folded heading folded when its words change: prev and next map each heading's
+// node key to its foldId before and after an edit. It changes folded in place and says whether it did.
+export function carryFolds(prev: Map<string, string>, next: Map<string, string>, folded: Set<string>): boolean {
+  const still = new Set(next.values());
+  const moved: [string, string][] = [];
+  for (const [k, id] of next) {
+    const was = prev.get(k);
+    if (was && was !== id && folded.has(was) && !still.has(was)) moved.push([was, id]);
+  }
+  for (const [was, id] of moved) {
+    folded.delete(was);
+    folded.add(id);
+  }
+  return moved.length > 0;
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { foldId, foldedRange, outlineMarks } from "./structurewords";
+import { carryFolds, foldId, foldedRange, outlineMarks } from "./structurewords";
 
 describe("folding", () => {
   it("hides a section up to the next heading as high", () => {
@@ -25,5 +25,19 @@ describe("outline numbering", () => {
   });
   it("starts at the shallowest level used", () => {
     expect(outlineMarks([2, 3, 2]).map((m) => m.depth)).toEqual([0, 1, 0]);
+  });
+});
+
+describe("folds follow an edited heading", () => {
+  it("re-saves the key when the words change", () => {
+    const folded = new Set(["1|Alpha|0"]);
+    const changed = carryFolds(new Map([["a", "1|Alpha|0"]]), new Map([["a", "1|Alpha two|0"]]), folded);
+    expect(changed).toBe(true);
+    expect([...folded]).toEqual(["1|Alpha two|0"]);
+  });
+  it("leaves other folds and unchanged headings alone", () => {
+    const folded = new Set(["1|B|0"]);
+    expect(carryFolds(new Map([["a", "1|A|0"]]), new Map([["a", "1|A2|0"]]), folded)).toBe(false);
+    expect([...folded]).toEqual(["1|B|0"]);
   });
 });

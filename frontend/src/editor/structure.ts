@@ -5,7 +5,7 @@
 // and which sections are folded is remembered per document on this device (localStorage).
 
 import type { LexicalEditor } from "lexical";
-import { foldedRange, foldId } from "./structurewords";
+import { carryFolds, foldedRange, foldId } from "./structurewords";
 
 export interface StructureHeading {
   key: string;
@@ -48,10 +48,12 @@ export function structure(o: StructureOptions) {
   let folded = new Set<string>();
   let hover: string | null = null;
   let last = "";
+  let prevIds = new Map<string, string>(); // each heading's fold id at the last apply, by node key
 
   function load(k: string) {
     key = k;
     folded = new Set();
+    prevIds = new Map();
     if (!k) return;
     try {
       const v = JSON.parse(localStorage.getItem(STORE + k) ?? "[]");
@@ -87,6 +89,9 @@ export function structure(o: StructureOptions) {
   function apply() {
     const hs = o.headings();
     const idOf = ids(hs);
+    // A heading edited while folded keeps its fold: the fold follows the heading node.
+    if (carryFolds(prevIds, idOf, folded)) save();
+    prevIds = idOf;
     const blocks = o.blockKeys();
     const isFolded = blocks.map((b) => b.level > 0 && folded.has(idOf.get(b.key) ?? ""));
     const hidden = foldedRange(blocks.map((b) => b.level), isFolded);
