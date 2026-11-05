@@ -122,3 +122,42 @@ export function currentEntry(toc: TOCEntry[], section: number): number {
   });
   return best;
 }
+
+// Scroll mode ----------------------------------------------------------------------------------------
+
+export type Layout = "pages" | "scroll";
+export const NARROW_WIDTH = 700;
+
+// effectiveLayout is the reader's choice, or Scroll on a narrow (phone) screen and Pages elsewhere.
+export function effectiveLayout(chosen: unknown, width: number): Layout {
+  if (chosen === "pages" || chosen === "scroll") return chosen;
+  return width < NARROW_WIDTH ? "scroll" : "pages";
+}
+
+// pageAtOffset is the 1-based page whose top is the last one at or above y; tops are ascending.
+export function pageAtOffset(tops: number[], y: number): number {
+  let lo = 0;
+  let hi = tops.length - 1;
+  let best = 0;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (tops[mid] <= y) {
+      best = mid;
+      lo = mid + 1;
+    } else hi = mid - 1;
+  }
+  return tops.length ? best + 1 : 0;
+}
+
+// renderPlan says which PDF pages to draw and which to free. near are the pages close to the
+// viewport; a drawn page stays until it is more than keep pages beyond them.
+export function renderPlan(near: number[], drawn: number[], keep: number): { render: number[]; free: number[] } {
+  if (near.length === 0) return { render: [], free: [] };
+  const lo = Math.min(...near) - keep;
+  const hi = Math.max(...near) + keep;
+  const has = new Set(drawn);
+  return {
+    render: [...near].filter((n) => !has.has(n)).sort((a, b) => a - b),
+    free: drawn.filter((n) => n < lo || n > hi).sort((a, b) => a - b),
+  };
+}

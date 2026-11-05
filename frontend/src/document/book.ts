@@ -8,8 +8,10 @@ import { openExport } from "../printexport";
 import { ItemSummary, Message, Note, Ref, run } from "../api";
 import {
   CopyResult, DEFAULT_PREFS, ReadingPrefs, TOCEntry, base64ToBytes, concatBytes, copyMessage, currentEntry,
-  pageRects, tidyPrefs, tocOptions,
+  pageAtOffset, pageRects, renderPlan, tidyPrefs, tocOptions,
 } from "../bookhelpers";
+import { LAYOUT_EVENT, currentLayout, setLayout } from "../booklayout";
+import { segmented } from "../controls";
 import { button, clear, h, select } from "../dom";
 import { sidebar } from "../views/sidebar";
 import { addToList } from "../listpicker";
@@ -104,12 +106,23 @@ export function bookDoc(host: DocHost): DocView {
   let prefs = loadPrefs();
   let book: BookInfo | null = null;
   let section = 1;
-  let cfi = "";
   let toc: TOCEntry[] = [];
   let pdf: { fileId: string; doc: PdfDoc } | null = null;
   let page: RenderedPage | null = null;
-  let highlights: Highlight[] = [];
-  let notes: BookNote[] = [];
+  // Highlights and notes by section (or PDF page): one entry in Pages mode, every loaded one in Scroll.
+  const store = new Map<number, { hs: Highlight[]; ns: BookNote[] }>();
+  let layout = currentLayout();
+  const scrolling = () => layout === "scroll";
+  let growing = false;
+  let syncFrame = 0;
+  // PDF Scroll mode: a slot for every page, drawn only while near the view.
+  const slots = new Map<number, HTMLElement>();
+  const drawn = new Map<number, RenderedPage>();
+  const pending = new Set<number>();
+  const near = new Set<number>();
+  let observer: IntersectionObserver | null = null;
+  let planTimer = 0;
+  let pdfSeq = 0;
   const back: { section: number; para: number }[] = [];
   let saveTimer = 0;
   let loadSeq = 0;
@@ -266,33 +279,192 @@ export function bookDoc(host: DocHost): DocView {
   }
 
 
+  // header shows where the reader is: the place label, the contents entry and the pane's saved place.
+  function header(n: number) {
+    if (!book) return;
+    section = n;
+    where.textContent = `${book.format === "pdf" ? "Page" : "Section"} ${n} of ${book.sections}`;
+    if (host.tab().section !== n) host.update({ section: n });
+    prev.disabled = n <= 1;
+    next.disabled = n >= book.sections;
+    const ci = currentEntry(toc, n);
+    contents.value = ci >= 0 ? String(ci) : "";
+  }
+
+  async function fetchSection(b: BookInfo, n: number): Promise<HTMLElement | null> {
+    const s = await msg.attempt(() => run<SectionData>("book.section", { item_id: b.item_id, file_id: b.file_id, section: n }));
+    if (!s) return null;
+    // The core sanitised this HTML: no scripts, styles, event attributes or remote resources.
+    const sec = h("div", { class: "book-sec", "data-sec": String(n), ...(s.cfi ? { "data-cfi": s.cfi } : {}) });
+    sec.innerHTML = s.html || `<p class="empty">This section has no text.</p>`;
+    return sec;
+  }
+
   async function show(n: number, target: Target) {
     if (!book) return;
     const b = book;
     const seq = ++loadSeq;
-    section = n;
-    const unit = b.format === "pdf" ? "Page" : "Section";
-    where.textContent = `${unit} ${n} of ${b.sections}`;
-    if (host.tab().section !== n) host.update({ section: n });
-    prev.disabled = n <= 1;
-    next.disabled = n >= b.sections;
-    const ci = currentEntry(toc, n);
-    contents.value = ci >= 0 ? String(ci) : "";
+    header(n);
+    store.clear();
+    stopPdfScroll();
+    pdfBox.classList.toggle("pdf-scroll", !b.reflowable && scrolling());
     if (b.reflowable) {
-      const s = await msg.attempt(() => run<SectionData>("book.section", { item_id: b.item_id, file_id: b.file_id, section: n }));
-      if (!s || seq !== loadSeq || !alive) return;
-      cfi = s.cfi ?? "";
-      // The core sanitised this HTML: no scripts, styles, event attributes or remote resources.
-      text.innerHTML = s.html || `<p class="empty">This section has no text.</p>`;
+      const sec = await fetchSection(b, n);
+      if (!sec || seq !== loadSeq || !alive) return;
+      text.replaceChildren(sec);
       body.scrollTop = 0;
+      await loadMarksFor(n);
+    } else if (scrolling()) {
+      await buildSlots(n, seq);
     } else {
       await drawPage(n);
       if (seq !== loadSeq) return;
+      await loadMarksFor(n);
     }
-    await loadMarks();
     if (seq !== loadSeq) return;
     scrollTo(target);
     savePosition();
+    if (b.reflowable && scrolling()) syncScroll();
+  }
+
+  // Scroll mode: the next section loads below when the end is near, the previous above when the
+  // start is, and the view is kept where it was.
+  async function grow(dir: 1 | -1) {
+    if (growing || !book?.reflowable) return;
+    const edge = (dir > 0 ? text.lastElementChild : text.firstElementChild) as HTMLElement | null;
+    const n = Number(edge?.dataset.sec) + dir;
+    if (!edge || n < 1 || n > book.sections) return;
+    const seq = loadSeq;
+    growing = true;
+    try {
+      const sec = await fetchSection(book, n);
+      if (!sec || seq !== loadSeq || !alive) return;
+      if (dir > 0) text.append(sec);
+      else {
+        const top = body.scrollTop;
+        const height = body.scrollHeight;
+        text.prepend(sec);
+        body.scrollTop = top + (body.scrollHeight - height);
+      }
+      await loadMarksFor(n);
+    } finally {
+      growing = false;
+    }
+    if (seq === loadSeq) syncScroll();
+  }
+
+  // syncScroll updates the place shown while scrolling, and loads or draws what is coming.
+  function syncScroll() {
+    if (!book || !scrolling()) return;
+    const bt = body.getBoundingClientRect().top;
+    if (book.reflowable) {
+      let cur = 0;
+      for (const c of text.children) {
+        if (c.getBoundingClientRect().top <= bt + body.clientHeight * 0.35) cur = Number((c as HTMLElement).dataset.sec);
+        else break;
+      }
+      if (cur && cur !== section) {
+        header(cur);
+        listMarks();
+      }
+      const room = body.clientHeight * 1.5;
+      if (body.scrollHeight - body.scrollTop - body.clientHeight < room) void grow(1);
+      if (body.scrollTop < room) void grow(-1);
+    } else if (slots.size) {
+      const y = bt - pdfBox.getBoundingClientRect().top + body.clientHeight * 0.35;
+      const n = pageAtOffset([...slots.values()].map((sl) => sl.offsetTop), y);
+      if (n && n !== section) {
+        header(n);
+        listMarks();
+      }
+    }
+  }
+
+  // PDF Scroll mode -------------------------------------------------------------------------------
+
+  function stopPdfScroll() {
+    pdfSeq++;
+    observer?.disconnect();
+    observer = null;
+    clearTimeout(planTimer);
+    for (const r of drawn.values()) r.cancel();
+    drawn.clear();
+    pending.clear();
+    near.clear();
+    slots.clear();
+  }
+
+  async function buildSlots(start: number, seq: number) {
+    if (!pdf || !book) return;
+    page?.cancel();
+    page = null;
+    const doc = pdf.doc;
+    const width = Math.max(200, body.clientWidth - 24);
+    const p1 = await doc.getPage(1);
+    if (seq !== loadSeq || !alive || !book) return;
+    const vp = p1.getViewport({ scale: 1 });
+    const scale = Math.max(0.2, (width / vp.width) * prefs.zoom);
+    const w = Math.floor(vp.width * scale);
+    const hh = Math.floor(vp.height * scale);
+    const mine = ++pdfSeq;
+    const list: HTMLElement[] = [];
+    for (let n = 1; n <= book.sections; n++) {
+      const sl = h("div", { class: "pdf-slot", "data-page": String(n), style: `width:${w}px;height:${hh}px` });
+      slots.set(n, sl);
+      list.push(sl);
+    }
+    pdfBox.replaceChildren(...list);
+    const first = slots.get(start);
+    body.scrollTop = first ? first.offsetTop - 8 : 0;
+    observer = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        const n = Number((e.target as HTMLElement).dataset.page);
+        if (e.isIntersecting) near.add(n);
+        else near.delete(n);
+      }
+      clearTimeout(planTimer);
+      planTimer = window.setTimeout(() => applyPlan(mine), 60);
+    }, { root: body, rootMargin: "100% 0px" });
+    for (const sl of list) observer.observe(sl);
+  }
+
+  function applyPlan(mine: number) {
+    if (mine !== pdfSeq || !alive) return;
+    const plan = renderPlan([...near], [...drawn.keys()], 2);
+    for (const n of plan.free) {
+      drawn.get(n)?.cancel();
+      drawn.delete(n);
+      slots.get(n)?.replaceChildren();
+      store.delete(n);
+    }
+    for (const n of plan.render) if (!pending.has(n)) void drawSlot(n, mine);
+    syncScroll();
+  }
+
+  async function drawSlot(n: number, mine: number) {
+    if (!pdf) return;
+    pending.add(n);
+    const doc = pdf.doc;
+    const width = Math.max(200, body.clientWidth - 24);
+    try {
+      const view = await import("./pdf");
+      const r = await view.renderPage(doc, n, width, prefs.zoom);
+      const sl = slots.get(n);
+      if (mine !== pdfSeq || !sl) return r.cancel();
+      const was = sl.offsetHeight;
+      sl.replaceChildren(r.page);
+      sl.style.width = r.page.style.width;
+      sl.style.height = r.page.style.height;
+      // A page above the view that turns out taller or shorter must not move the text being read.
+      if (sl.offsetTop + was <= body.scrollTop + pdfBox.offsetTop) body.scrollTop += sl.offsetHeight - was;
+      drawn.set(n, r);
+      void linkPdfRefs(r.page);
+      void loadMarksFor(n);
+    } catch (e) {
+      if (mine === pdfSeq && !(e instanceof Error && /cancel/i.test(e.name + e.message))) msg.attempt(() => Promise.reject(e));
+    } finally {
+      pending.delete(n);
+    }
   }
 
   async function drawPage(n: number) {
@@ -337,7 +509,12 @@ export function bookDoc(host: DocHost): DocView {
 
   function scrollTo(t: Target) {
     const id = t.anchor || (t.para ? `bp-${t.para}` : "");
-    const node = id ? text.querySelector<HTMLElement>(`[id="${CSS.escape(id)}"]`) : null;
+    if (book && !book.reflowable && scrolling()) {
+      const sl = slots.get(section);
+      if (sl) body.scrollTop = sl.offsetTop - 8;
+      return;
+    }
+    const node = id ? secEl(section)?.querySelector<HTMLElement>(`[id="${CSS.escape(id)}"]`) : null;
     if (!node || !book?.reflowable) return;
     body.scrollTop += node.getBoundingClientRect().top - body.getBoundingClientRect().top - 8;
     if (t.flash) {
@@ -347,12 +524,15 @@ export function bookDoc(host: DocHost): DocView {
     }
   }
 
+  const secEl = (n: number) => text.querySelector<HTMLElement>(`.book-sec[data-sec="${n}"]`);
+  const secOf = (node: Node) => (node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement)?.closest<HTMLElement>(".book-sec") ?? null;
+
   // visiblePara is the paragraph at the top of the view.
   function visiblePara(): number {
     if (!book?.reflowable) return 0;
     const top = body.getBoundingClientRect().top;
     let para = 0;
-    for (const m of text.querySelectorAll<HTMLElement>("span.bp")) {
+    for (const m of secEl(section)?.querySelectorAll<HTMLElement>("span.bp") ?? []) {
       if (m.getBoundingClientRect().top > top + 4) break;
       para = Number(m.dataset.p);
     }
@@ -366,7 +546,33 @@ export function bookDoc(host: DocHost): DocView {
       run("book.set_position", { item_id: book.item_id, file_id: book.file_id, section, para: visiblePara() }).catch(() => {});
     }, 1500);
   }
-  body.addEventListener("scroll", savePosition, { passive: true });
+  body.addEventListener("scroll", () => {
+    savePosition();
+    if (!scrolling() || syncFrame) return;
+    syncFrame = requestAnimationFrame(() => {
+      syncFrame = 0;
+      syncScroll();
+    });
+  }, { passive: true });
+
+  // Space and the page keys move by a screen in Scroll mode; the arrow keys scroll natively.
+  body.addEventListener("keydown", (e) => {
+    if (!scrolling() || e.target !== body || e.altKey || e.ctrlKey || e.metaKey) return;
+    const dir = e.key === "PageDown" || (e.key === " " && !e.shiftKey) ? 1 : e.key === "PageUp" || (e.key === " " && e.shiftKey) ? -1 : 0;
+    if (!dir) return;
+    e.preventDefault();
+    body.scrollBy({ top: dir * body.clientHeight * 0.9 });
+  });
+
+  // The Pages / Scroll choice changed (in the Aa popover, or this pane's own setting).
+  const onLayout = () => {
+    const l = currentLayout();
+    if (!alive || l === layout) return;
+    layout = l;
+    settings.update();
+    if (book) void show(section, { para: book.reflowable ? visiblePara() : 0 });
+  };
+  document.addEventListener(LAYOUT_EVENT, onLayout);
 
   // destroy frees the pane's book: a PDF's pages and the document pdf.js holds go with it.
   function destroy() {
@@ -375,6 +581,9 @@ export function bookDoc(host: DocHost): DocView {
     loadSeq++;
     clearTimeout(saveTimer);
     resizer.disconnect();
+    document.removeEventListener(LAYOUT_EVENT, onLayout);
+    cancelAnimationFrame(syncFrame);
+    stopPdfScroll();
     book = null;
     page?.cancel();
     page = null;
@@ -386,29 +595,42 @@ export function bookDoc(host: DocHost): DocView {
 
   // Highlights and notes ----------------------------------------------------------------------------
 
-  async function loadMarks() {
+  // loadMarksFor fetches one section's (or page's) highlights and notes and paints them.
+  async function loadMarksFor(n: number) {
     if (!book) return;
-    const p = { item_id: book.item_id, section };
+    const p = { item_id: book.item_id, section: n };
     const [hs, ns] = await Promise.all([
       msg.attempt(() => run<Highlight[]>("highlight.list", p)),
       msg.attempt(() => run<BookNote[]>("note.list", { ...p, limit: 200 })),
     ]);
-    highlights = hs ?? [];
-    notes = ns ?? [];
-    paintMarks();
-    listMarks();
+    if (!book || !alive) return;
+    store.set(n, { hs: hs ?? [], ns: ns ?? [] });
+    paintMarks(n);
+    if (n === section) listMarks();
   }
 
-  function paintMarks() {
+  async function loadMarks() {
     if (!book) return;
+    await Promise.all([...(store.size ? store.keys() : [section])].map((n) => loadMarksFor(n)));
+  }
+
+  const allHighlights = () => [...store.values()].flatMap((v) => v.hs);
+
+  function paintMarks(n: number) {
+    if (!book) return;
+    const m = store.get(n);
+    if (!m) return;
     if (book.reflowable) {
-      for (const m of [...text.querySelectorAll("mark.hl")]) m.replaceWith(...m.childNodes);
-      text.normalize();
-      for (const hl of highlights) if (hl.locator) markText(hl.locator, hlClasses(hl.style).join(" "), hl.id);
-      for (const n of notes) if (n.locator) markText(n.locator, "hl hl-note", n.id);
-    } else if (page) {
-      clear(page.marks, highlights.map((hl) => rectsEl(hl.locator, `pdf-hl ${hlClasses(hl.style).slice(1).join(" ")}`)),
-        notes.map((n) => rectsEl(n.locator, "pdf-hl hl-note")));
+      const sec = secEl(n);
+      if (!sec) return;
+      for (const x of [...sec.querySelectorAll("mark.hl")]) x.replaceWith(...x.childNodes);
+      sec.normalize();
+      for (const hl of m.hs) if (hl.locator) markText(sec, hl.locator, hlClasses(hl.style).join(" "), hl.id);
+      for (const nt of m.ns) if (nt.locator) markText(sec, nt.locator, "hl hl-note", nt.id);
+    } else {
+      const pg = scrolling() ? drawn.get(n) : page;
+      if (pg) clear(pg.marks, m.hs.map((hl) => rectsEl(hl.locator, `pdf-hl ${hlClasses(hl.style).slice(1).join(" ")}`)),
+        m.ns.map((nt) => rectsEl(nt.locator, "pdf-hl hl-note")));
     }
   }
 
@@ -418,6 +640,7 @@ export function bookDoc(host: DocHost): DocView {
   }
 
   function listMarks() {
+    const { hs: highlights, ns: notes } = store.get(section) ?? { hs: [], ns: [] };
     const items = [
       ...highlights.map((hl) => ({ kind: "Highlight", id: hl.id, a: hl.locator, label: hl.locator?.text ?? "", style: hl.style })),
       ...notes.map((n) => ({ kind: "Note", id: n.id, a: n.locator, label: `${n.title || "Untitled"}: ${n.body}`, style: "note" })),
@@ -438,16 +661,16 @@ export function bookDoc(host: DocHost): DocView {
     }
   }
 
-  function markText(a: Anchor, cls: string, id: string) {
-    const start = pointAt(text, a.para ?? 0, a.offset ?? 0);
-    const end = pointAt(text, a.end_para ?? a.para ?? 0, a.end_offset ?? a.offset ?? 0);
+  function markText(root: HTMLElement, a: Anchor, cls: string, id: string) {
+    const start = pointAt(root, a.para ?? 0, a.offset ?? 0);
+    const end = pointAt(root, a.end_para ?? a.para ?? 0, a.end_offset ?? a.offset ?? 0);
     if (!start || !end) return;
     const r = document.createRange();
     r.setStart(start.node, start.offset);
     r.setEnd(end.node, end.offset);
     if (r.collapsed) return;
     const parts: [Text, number, number][] = [];
-    for (const t of textNodes(text)) {
+    for (const t of textNodes(root)) {
       if (!r.intersectsNode(t)) continue;
       const s = t === r.startContainer ? r.startOffset : 0;
       const e = t === r.endContainer ? r.endOffset : t.length;
@@ -484,14 +707,29 @@ export function bookDoc(host: DocHost): DocView {
     if (!book) return null;
     const quote = r.toString().replace(/\s+/g, " ").trim().slice(0, 2000);
     if (book.reflowable) {
-      const s = posOf(text, r.startContainer, r.startOffset);
-      const e = posOf(text, r.endContainer, r.endOffset);
+      const sec = secOf(r.startContainer);
+      if (!sec) return null;
+      const s = posOf(sec, r.startContainer, r.startOffset);
+      // A selection that runs on into the next section is cut at the end of this one.
+      let endNode = r.endContainer;
+      let endOffset = r.endOffset;
+      if (secOf(endNode) !== sec) {
+        const last = textNodes(sec).pop();
+        if (!last) return null;
+        endNode = last;
+        endOffset = last.length;
+      }
+      const e = posOf(sec, endNode, endOffset);
       if (!s || !e || !s.para) return null;
-      return { section, ...(cfi ? { cfi } : {}), para: s.para, offset: s.offset, end_para: e.para, end_offset: e.offset, text: quote };
+      const cfi = sec.dataset.cfi;
+      return { section: Number(sec.dataset.sec), ...(cfi ? { cfi } : {}), para: s.para, offset: s.offset, end_para: e.para, end_offset: e.offset, text: quote };
     }
-    if (!page) return null;
-    const rects = pageRects([...r.getClientRects()], page.page.getBoundingClientRect());
-    return rects.length ? { section, page: section, rects, text: quote } : null;
+    const pg = (r.startContainer.nodeType === Node.ELEMENT_NODE ? (r.startContainer as Element) : r.startContainer.parentElement)?.closest<HTMLElement>(".pdf-page");
+    if (!pg) return null;
+    const n = Number(pg.parentElement?.dataset.page || section);
+    const box = pg.getBoundingClientRect();
+    const rects = pageRects([...r.getClientRects()].filter((c) => c.top >= box.top - 1 && c.bottom <= box.bottom + 1), box);
+    return rects.length ? { section: n, page: n, rects, text: quote } : null;
   }
 
   async function addHighlight(style: string, given?: Range) {
@@ -611,11 +849,15 @@ export function bookDoc(host: DocHost): DocView {
       zoom.textContent = `${Math.round(prefs.zoom * 100)}%`;
       if (zoomed && book && !book.reflowable) void show(section, {});
     }
-    const el = h("details", { class: "book-settings", hidden: true }, h("summary", {}, "Page size"), fixed);
+    const turn = h("div", { class: "row" }, h("span", {}, "Turning"), segmented({ label: "Turning pages", small: true, value: layout,
+      options: [["pages", "Pages"], ["scroll", "Scroll"]], onChange: (v) => setLayout(v) }));
+    const el = h("details", { class: "book-settings", hidden: true }, h("summary", {}, "View"), turn, fixed);
     return {
       el,
       update() {
-        el.hidden = !!book?.reflowable;
+        el.hidden = !book;
+        fixed.hidden = !!book?.reflowable;
+        for (const r of turn.querySelectorAll<HTMLInputElement>("input")) r.checked = r.value === layout;
       },
     };
   }
@@ -650,7 +892,7 @@ export function bookDoc(host: DocHost): DocView {
     list: () => addExcerpt(),
     at: (target) => {
       const m = target.closest<HTMLElement>("mark[data-mark]");
-      const hl = m && highlights.find((x) => x.id === m.dataset.mark);
+      const hl = m && allHighlights().find((x) => x.id === m.dataset.mark);
       return m && hl ? { id: hl.id, style: hl.style, el: m } : null;
     },
   });

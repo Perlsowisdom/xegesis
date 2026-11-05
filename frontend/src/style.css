@@ -528,6 +528,11 @@ mark.hl { color: inherit; border-radius: 2px; }
 .book-marks li { border-top: 1px solid var(--line); padding: 4px 0; }
 .book-marks-box summary { cursor: pointer; font-size: .9rem; margin-top: 8px; }
 .pdf-box { display: flex; justify-content: center; }
+.book-body { overflow-anchor: none; }
+.book-sec + .book-sec { margin-top: 2.5rem; padding-top: 2rem; border-top: 1px solid var(--line); }
+.pdf-box.pdf-scroll { position: relative; flex-direction: column; align-items: center; gap: 12px; padding: 8px 0; }
+.pdf-slot { flex: none; background: color-mix(in srgb, var(--line) 35%, transparent); }
+.pdf-slot:has(.pdf-page) { background: none; }
 .pdf-page { position: relative; background: #fff; box-shadow: 0 1px 4px rgb(0 0 0 / .25); }
 .pdf-page canvas { display: block; }
 .pdf-marks { position: absolute; inset: 0; pointer-events: none; }
