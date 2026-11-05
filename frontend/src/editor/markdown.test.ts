@@ -134,3 +134,32 @@ describe("pasted Markdown", () => {
     expect(parsePasted("a\r\n\r\nb").map((b) => b.type)).toEqual(["paragraph", "paragraph"]);
   });
 });
+
+describe("tables", () => {
+  const md = "| Name | Ref |\n| --- | --- |\n| **Grace** | [Romans 8:28](#passage/Rom.8.28) |\n| a \\| b | line<br>two |";
+  it("reads a GitHub-style table with formats, chips, pipes and line breaks", () => {
+    const [b] = parseMarkdown(md);
+    expect(b.type).toBe("table");
+    if (b.type !== "table") return;
+    expect(b.header).toBe(true);
+    expect(b.rows).toHaveLength(3);
+    expect(b.rows[1][0]).toEqual([{ text: "Grace", bold: true }]);
+    expect(b.rows[1][1]).toEqual([{ text: "Romans 8:28", link: "#passage/Rom.8.28" }]);
+    expect(b.rows[2][0]).toEqual([{ text: "a | b" }]);
+    expect(b.rows[2][1]).toEqual([{ text: "line" }, { text: "", br: true }, { text: "two" }]);
+  });
+  it("round-trips, with column widths and no header row", () => {
+    expect(toMarkdown(parseMarkdown(md))).toBe(md);
+    const sized = "<!-- table widths=120,64 header=no -->\n| a | b |\n| --- | --- |\n| c |  |";
+    const [b] = parseMarkdown(sized);
+    expect(b).toMatchObject({ type: "table", header: false, widths: [120, 64] });
+    expect(toMarkdown(parseMarkdown(sized))).toBe(sized);
+    expect(toMarkdown(parseMarkdown("text\n\n" + sized + "\n\nafter"))).toBe("text\n\n" + sized + "\n\nafter");
+  });
+  it("leaves things that only look like tables as text", () => {
+    for (const s of ["| a | b |", "| a | b |\n| - | - |", "| a | b |\n| --- | --- |\n| c |", "a | b\n--- | ---"]) {
+      expect(parseMarkdown(s)[0].type).toBe("paragraph");
+      expect(toMarkdown(parseMarkdown(s))).toBe(s);
+    }
+  });
+});

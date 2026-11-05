@@ -216,3 +216,43 @@ func TestChipsAndQuotationsExport(t *testing.T) {
 		t.Errorf("app addresses leaked into HTML:\n%s", h)
 	}
 }
+
+// Tables in notes are GitHub-style Markdown with an optional comment for widths and a missing
+// header row; they round-trip through export and show in HTML, Word and PDF.
+func TestNoteTablesRoundTripAndExport(t *testing.T) {
+	md := "<!-- table widths=120,60 -->\n| Point | Verse |\n| --- | --- |\n| **Grace** | [Romans 8:28](#passage/Rom.8.28) |\n| a \\| b | one<br>two |"
+	bs := parseNote(md)
+	if len(bs) != 1 || bs[0].Kind != Table || !bs[0].Table.Plain || len(bs[0].Table.Rows) != 2 || len(bs[0].Table.Widths) != 2 {
+		t.Fatalf("blocks %+v", bs)
+	}
+	if c := bs[0].Table.Rows[1].Cells[0]; spansText(c) != "a | b" {
+		t.Errorf("escaped pipe: %+v", c)
+	}
+	d := Doc{Pieces: []Piece{{Blocks: bs}}}
+	if out := string(Markdown(d)); !strings.Contains(out, md) {
+		t.Errorf("markdown %q", out)
+	}
+	h := HTML(d)
+	for _, w := range []string{`<table class="xd-par xd-table">`, `<col style="width:66.7%">`, "<th dir=\"auto\">Point</th>", "<strong>Grace</strong>", "one<br>two"} {
+		if !strings.Contains(h, w) {
+			t.Errorf("html lacks %q:\n%s", w, h)
+		}
+	}
+	if strings.Contains(h, `class="xd-n"`) {
+		t.Errorf("a note table has no verse-number column:\n%s", h)
+	}
+	if _, err := DOCX(d); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := PDF(d); err != nil {
+		t.Fatal(err)
+	}
+	noHead := "<!-- table header=no -->\n| a | b |\n| --- | --- |\n| c | d |"
+	d = Doc{Pieces: []Piece{{Blocks: parseNote(noHead)}}}
+	if out := string(Markdown(d)); !strings.Contains(out, noHead) {
+		t.Errorf("markdown %q", out)
+	}
+	if h := HTML(d); strings.Contains(h, "<thead>") {
+		t.Errorf("no header row expected:\n%s", h)
+	}
+}

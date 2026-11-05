@@ -288,17 +288,21 @@ func docxTable(b *strings.Builder, g *Grid, opt Options, links *relList) {
 	w, _, _ := pageSize(opt)
 	width := twips(w) - 2*907
 	numW := 0
-	if opt.verseNumbers() {
+	if g.numbered(opt) {
 		numW = 520
 	}
-	colW := (width - numW) / max(len(g.Head), 1)
+	cols := g.Cols()
+	colWs := make([]int, cols)
+	for i, f := range g.fractions() {
+		colWs[i] = int(float64(width-numW) * f)
+	}
 	b.WriteString(`<w:tbl><w:tblPr><w:tblW w:w="` + fmt.Sprint(width) + `" w:type="dxa"/><w:tblLayout w:type="fixed"/>` +
 		`<w:tblCellMar><w:left w:w="60" w:type="dxa"/><w:right w:w="100" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid>`)
 	if numW > 0 {
 		fmt.Fprintf(b, `<w:gridCol w:w="%d"/>`, numW)
 	}
-	for range g.Head {
-		fmt.Fprintf(b, `<w:gridCol w:w="%d"/>`, colW)
+	for _, w := range colWs {
+		fmt.Fprintf(b, `<w:gridCol w:w="%d"/>`, w)
 	}
 	b.WriteString(`</w:tblGrid>`)
 	cell := func(w int, content string, head bool) string {
@@ -308,21 +312,28 @@ func docxTable(b *strings.Builder, g *Grid, opt Options, links *relList) {
 		}
 		return `<w:tc><w:tcPr>` + pr + `</w:tcPr>` + content + `</w:tc>`
 	}
-	b.WriteString(`<w:tr><w:trPr><w:tblHeader/><w:cantSplit/></w:trPr>`)
-	if numW > 0 {
-		b.WriteString(cell(numW, `<w:p/>`, true))
+	if g.HasHead() {
+		b.WriteString(`<w:tr><w:trPr><w:tblHeader/><w:cantSplit/></w:trPr>`)
+		if numW > 0 {
+			b.WriteString(cell(numW, `<w:p/>`, true))
+		}
+		for i, h := range g.headSpans() {
+			bold := make([]Span, len(h))
+			for j, s := range h {
+				s.Bold = true
+				bold[j] = s
+			}
+			b.WriteString(cell(colWs[min(i, cols-1)], para("", isRTL(spansText(h)), runs(bold, links)), true))
+		}
+		b.WriteString(`</w:tr>`)
 	}
-	for _, h := range g.Head {
-		b.WriteString(cell(colW, para("", isRTL(h), run(h, runStyle{bold: true})), true))
-	}
-	b.WriteString(`</w:tr>`)
 	for _, r := range g.Rows {
 		b.WriteString(`<w:tr><w:trPr><w:cantSplit/></w:trPr>`)
 		if numW > 0 {
 			b.WriteString(cell(numW, para("", false, run(r.Num, runStyle{sup: true})), false))
 		}
-		for _, c := range r.Cells {
-			b.WriteString(cell(colW, para("", isRTL(spansText(c)), runs(c, links)), false))
+		for i, c := range r.Cells {
+			b.WriteString(cell(colWs[min(i, cols-1)], para("", isRTL(spansText(c)), runs(c, links)), false))
 		}
 		b.WriteString(`</w:tr>`)
 	}

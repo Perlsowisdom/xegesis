@@ -49,7 +49,7 @@ import {
 import { createEmptyHistoryState, registerHistory } from "@lexical/history";
 import { $createLinkNode, $isLinkNode, LinkNode, TOGGLE_LINK_COMMAND, $toggleLink } from "@lexical/link";
 import {
-  $createListItemNode, $createListNode, $isListItemNode, $isListNode, INSERT_ORDERED_LIST_COMMAND, INSERT_UNORDERED_LIST_COMMAND,
+  $createListItemNode, $createListNode, $isListItemNode, $isListNode, INSERT_CHECK_LIST_COMMAND, INSERT_ORDERED_LIST_COMMAND, INSERT_UNORDERED_LIST_COMMAND,
   ListItemNode, ListNode, REMOVE_LIST_COMMAND, registerCheckList, registerList,
 } from "@lexical/list";
 import {
@@ -62,6 +62,10 @@ import {
   $createHeadingNode, $createQuoteNode, $isHeadingNode, $isQuoteNode, HeadingNode, QuoteNode, registerRichText,
 } from "@lexical/rich-text";
 import { $setBlocksType } from "@lexical/selection";
+import {
+  $createTableCellNode, $createTableNode, $createTableRowNode, $isTableCellNode, $isTableNode, $isTableRowNode, TableCellHeaderStates,
+  TableCellNode, TableNode, TableRowNode,
+} from "@lexical/table";
 import { h } from "../dom";
 import { icon } from "../icons";
 import { closePopover, openPopover } from "../popover";
@@ -71,7 +75,8 @@ import {
   RefChipNode, VerseQuoteNode, chipKind,
 } from "./nodes";
 import { refCandidates } from "./refwords";
-import { SLASH_ITEMS, SlashId, filterSlash, slashQuery } from "./slashwords";
+import { SLASH_ITEMS, SlashId, filterSlash, slashQuery, tableSize } from "./slashwords";
+import { inTable, insertTable, registerTables, tableMenu, tablePicker } from "./table";
 import { structure } from "./structure";
 
 export interface HeadingInfo {
@@ -132,10 +137,12 @@ const MOD = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl+";
 export function createEditor(host: HTMLElement, opts: EditorOptions = {}): RichEditor {
   const editor = createLexical({
     namespace: "xegesis-notes",
-    nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, LinkNode, DividerNode, VerseQuoteNode, RefChipNode, ...(opts.nodes ?? [])],
+    nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, LinkNode, DividerNode, VerseQuoteNode, RefChipNode, TableNode, TableRowNode, TableCellNode,
+      ...(opts.nodes ?? [])],
     theme: {
       text: { underline: "rt-u", bold: "rt-b", italic: "rt-i", code: "rt-code" }, link: "rt-link",
       list: { checklist: "rt-checklist", listitemChecked: "rt-checked", listitemUnchecked: "rt-unchecked" },
+      table: "rt-table", tableCell: "rt-cell", tableCellHeader: "rt-cell-head", tableRow: "rt-row", tableScrollableWrapper: "rt-table-wrap",
     },
     onError: (e) => {
       throw e;
@@ -158,7 +165,7 @@ export function createEditor(host: HTMLElement, opts: EditorOptions = {}): RichE
   // The toolbar sticks to the top: what is jumped to, and the outline strip, keep below it (style.css).
   const barSize = new ResizeObserver(() => host.style.setProperty("--rt-bar", `${bar.el.offsetHeight}px`));
   barSize.observe(bar.el);
-  const slash = slashMenu(doc, editor, content, opts, (id, anchor) => runInsert(id, anchor));
+  const slash = slashMenu(doc, editor, content, opts, (id, anchor) => runInsert(id, anchor), bar);
   const struct = structure({
     editor, host, content, strip: variant === "page",
     headings: () => headings(),
@@ -212,6 +219,7 @@ export function createEditor(host: HTMLElement, opts: EditorOptions = {}): RichE
     }, COMMAND_PRIORITY_LOW),
     editor.registerCommand(KEY_DOWN_COMMAND, (e: KeyboardEvent) => shortcut(e), COMMAND_PRIORITY_LOW),
     editor.registerCommand(KEY_TAB_COMMAND, (e) => tabToChip(e), COMMAND_PRIORITY_LOW),
+    registerTables(editor, content, (e) => tabToChip(e)),
     editor.registerCommand(DRAGOVER_COMMAND, (e) => {
       if (!ours(e)) return false;
       e.preventDefault();
@@ -262,6 +270,8 @@ export function createEditor(host: HTMLElement, opts: EditorOptions = {}): RichE
     if (!e.shiftKey && !e.altKey && k === "k") return run(() => bar.askLink());
     if (e.shiftKey && !e.altKey && k === "k" && opts.onVerseRef) return run(() => runInsert("verseref", bar.insertButton()));
     if (!e.shiftKey && !e.altKey && k === "u") return run(() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "underline"));
+    if (!e.shiftKey && !e.altKey && k === "e") return run(() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "code"));
+    if (e.shiftKey && !e.altKey && k === "x") return run(() => bar.toggleList("check"));
     // Ctrl+Alt+1, 2 and 3 make a large, medium or small heading; Ctrl+Alt+0 plain text.
     const digit = /^Digit([0-3])$/.exec(e.code);
     if (e.altKey && !e.shiftKey && digit) return run(() => bar.setHeading(Number(digit[1])));
@@ -509,6 +519,7 @@ export function createEditor(host: HTMLElement, opts: EditorOptions = {}): RichE
     destroy() {
       off.forEach((f) => f());
       barSize.disconnect();
+      bar.destroy();
       if (typeof extra === "function") extra();
       slash.destroy();
       struct.destroy();
@@ -647,6 +658,14 @@ export function fromBlocks(blocks: Block[]): LexicalNode[] {
         return $createDividerNode();
       case "versequote":
         return $createVerseQuoteNode(b.lines);
+      case "table": {
+        const t = $createTableNode();
+        if (b.widths) t.setColWidths(b.widths);
+        b.rows.forEach((r, i) => t.append($createTableRowNode().append(...r.map((c) =>
+          $createTableCellNode(b.header && i === 0 ? TableCellHeaderStates.ROW : TableCellHeaderStates.NO_STATUS)
+            .append($createParagraphNode().append(...spanNodes(c)))))));
+        return t;
+      }
       default:
         return $createParagraphNode().append(...spanNodes(b.spans));
     }
@@ -679,6 +698,7 @@ export function toBlocks(nodes: LexicalNode[]): Block[] {
     if ($isQuoteNode(n)) return { type: "quote", spans: inline(n) };
     if ($isDividerNode(n)) return { type: "divider" };
     if ($isVerseQuoteNode(n)) return { type: "versequote", lines: n.getLines() };
+    if ($isTableNode(n)) return tableBlock(n);
     if ($isListNode(n)) {
       const items = n.getChildren();
       return { type: "list", ordered: n.getListType() === "number",
@@ -690,9 +710,30 @@ export function toBlocks(nodes: LexicalNode[]): Block[] {
   });
 }
 
+// tableBlock reads a table: each cell's paragraphs become lines of one cell.
+function tableBlock(t: TableNode): Block {
+  const rows = t.getChildren().filter($isTableRowNode).map((r) => r.getChildren().filter($isTableCellNode).map((c) => {
+    const out: Span[] = [];
+    c.getChildren().forEach((p, i) => {
+      if (i) out.push({ text: "", br: true });
+      out.push(...($isElementNode(p) ? inline(p) : [{ text: p.getTextContent() }]));
+    });
+    return out;
+  }));
+  const first = t.getFirstChild();
+  const header = $isTableRowNode(first) && first.getChildrenSize() > 0
+    && first.getChildren().every((c) => $isTableCellNode(c) && c.hasHeaderState(TableCellHeaderStates.ROW));
+  const cols = Math.max(0, ...rows.map((r) => r.length));
+  const widths = t.getColWidths();
+  return { type: "table", rows, header, ...(widths && widths.length === cols ? { widths: widths.map((w) => Math.round(w)) } : {}) };
+}
+
 // Toolbar ------------------------------------------------------------------------------------------
 
-type Tool = { id: string; label: string; keys?: string; glyph?: string; icon?: string; cls?: string; run(): void; active?(): boolean };
+type Tool = {
+  id: string; label: string; keys?: string; glyph?: string; icon?: string; cls?: string; menu?: boolean;
+  run(anchor: HTMLElement): void; active?(): boolean;
+};
 
 function toolbar(doc: Document, editor: LexicalEditor, opts: EditorOptions, variant: "page" | "compact",
   insert: (id: InsertId, anchor: HTMLElement) => void) {
@@ -706,7 +747,7 @@ function toolbar(doc: Document, editor: LexicalEditor, opts: EditorOptions, vari
     const s = $getSelection();
     return $isRangeSelection(s) ? s : null;
   };
-  const isFormat = (f: "bold" | "italic" | "underline") => () => !!sel()?.hasFormat(f);
+  const isFormat = (f: "bold" | "italic" | "underline" | "code") => () => !!sel()?.hasFormat(f);
   const isHeading = () => {
     const b = topBlock();
     return !!b && $isHeadingNode(b);
@@ -741,7 +782,7 @@ function toolbar(doc: Document, editor: LexicalEditor, opts: EditorOptions, vari
   };
 
   // The heading button offers the three sizes and plain text.
-  function askHeading() {
+  function askHeading(anchor: HTMLElement) {
     const now = editor.getEditorState().read(headingLevel);
     const sizes: [number, string, string, string][] = [
       [1, "Large heading", "h-large", `${MOD}Alt+1`], [2, "Medium heading", "h-medium", `${MOD}Alt+2`],
@@ -758,12 +799,13 @@ function toolbar(doc: Document, editor: LexicalEditor, opts: EditorOptions, vari
       });
       return b;
     }));
-    openPopover(el.querySelector<HTMLElement>("[data-tool=heading]")!, list, { label: "Heading size", menu: true, side: "below" });
+    openPopover(anchor, list, { label: "Heading size", menu: true, side: "below" });
     list.querySelector<HTMLElement>(".on, button")?.focus();
   }
-  function toggleList(type: "bullet" | "number") {
+  function toggleList(type: "bullet" | "number" | "check") {
     const on = editor.getEditorState().read(isList(type));
-    editor.dispatchCommand(on ? REMOVE_LIST_COMMAND : type === "bullet" ? INSERT_UNORDERED_LIST_COMMAND : INSERT_ORDERED_LIST_COMMAND, undefined);
+    editor.dispatchCommand(on ? REMOVE_LIST_COMMAND
+      : type === "bullet" ? INSERT_UNORDERED_LIST_COMMAND : type === "number" ? INSERT_ORDERED_LIST_COMMAND : INSERT_CHECK_LIST_COMMAND, undefined);
   }
   function toggleQuote() {
     editor.update(() => {
@@ -774,25 +816,34 @@ function toolbar(doc: Document, editor: LexicalEditor, opts: EditorOptions, vari
     });
   }
 
+  // The buttons, in groups: text formats, block kinds, then what is put in.
   const tools: (Tool | "|")[] = [
     { id: "bold", label: "Bold", keys: `${MOD}B`, glyph: "B", cls: "t-bold", run: () => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "bold"), active: isFormat("bold") },
     { id: "italic", label: "Italic", keys: `${MOD}I`, glyph: "I", cls: "t-italic", run: () => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "italic"), active: isFormat("italic") },
     { id: "underline", label: "Underline", keys: `${MOD}U`, glyph: "U", cls: "t-underline", run: () => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "underline"), active: isFormat("underline") },
+    { id: "code", label: "Code", keys: `${MOD}E`, icon: "code", run: () => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "code"), active: isFormat("code") },
     "|",
-    { id: "heading", label: "Heading size", keys: `${MOD}Alt+1, 2 or 3`, glyph: "H", cls: "t-heading", run: () => askHeading(), active: isHeading },
+    { id: "heading", label: "Heading size", keys: `${MOD}Alt+1, 2 or 3`, glyph: "H", cls: "t-heading", menu: true, run: (a) => askHeading(a), active: isHeading },
+    "|",
     { id: "bullets", label: "Bulleted list", keys: `${MOD}Shift+8`, icon: "bullets", run: () => toggleList("bullet"), active: isList("bullet") },
     { id: "numbers", label: "Numbered list", keys: `${MOD}Shift+7`, icon: "numbers", run: () => toggleList("number"), active: isList("number") },
-    { id: "quote", label: "Quote", keys: `${MOD}Shift+9`, icon: "quote", run: () => toggleQuote(), active: isQuote },
+    { id: "checks", label: "Checkbox list", keys: `${MOD}Shift+X`, icon: "checklist", run: () => toggleList("check"), active: isList("check") },
     "|",
-    { id: "link", label: "Link", keys: `${MOD}K`, icon: "link", run: () => askLink(), active: () => { const u = linkUrl(); return !!u && !u.startsWith("#"); } },
-    ...(insertsOf(opts).length ? [{ id: "insert", label: "Insert a verse, a highlight or a link to a note", icon: "book-plus", cls: "t-insert", run: () => askInsert() } as Tool] : []),
+    { id: "quote", label: "Quote", keys: `${MOD}Shift+9`, icon: "quote", run: () => toggleQuote(), active: isQuote },
+    { id: "divider", label: "Divider", icon: "divider", run: () => insertDivider(editor) },
+    { id: "link", label: "Link", keys: `${MOD}K`, icon: "link", menu: true, run: (a) => askLink(a), active: () => { const u = linkUrl(); return !!u && !u.startsWith("#"); } },
+    { id: "table", label: "Table", icon: "table", menu: true, run: (a) => askTable(a) },
+    ...(insertsOf(opts).length ? [{ id: "insert", label: "Insert a verse, a highlight or a link to a note", icon: "book-plus", cls: "t-insert", menu: true, run: (a: HTMLElement) => askInsert(a) } as Tool] : []),
   ];
 
+  const sep = () => Object.assign(doc.createElement("span"), { className: "rich-sep" });
+  const byId = new Map<string, Tool>();
   for (const t of tools) {
     if (t === "|") {
-      el.append(Object.assign(doc.createElement("span"), { className: "rich-sep" }));
+      el.append(sep());
       continue;
     }
+    byId.set(t.id, t);
     const b = doc.createElement("button");
     b.type = "button";
     b.className = `rich-btn ${t.cls ?? ""}`;
@@ -803,24 +854,85 @@ function toolbar(doc: Document, editor: LexicalEditor, opts: EditorOptions, vari
     if (t.icon) b.append(icon(t.icon));
     else b.textContent = t.glyph ?? "";
     if (t.active && t.id !== "heading") b.setAttribute("aria-pressed", "false");
-    if (t.id === "heading" || t.id === "insert") b.setAttribute("aria-haspopup", "menu");
+    if (t.menu && t.id !== "link") b.setAttribute("aria-haspopup", "menu");
     // Keep the selection in the text while a button is used.
     b.addEventListener("mousedown", (e) => e.preventDefault());
     b.addEventListener("click", () => {
-      t.run();
-      if (t.id !== "link" && t.id !== "insert" && t.id !== "heading") editor.focus();
+      t.run(b);
+      if (!t.menu) editor.focus();
     });
     el.append(b);
     buttons.push({ b, active: t.active });
   }
-  if (opts.tools?.length) {
-    el.append(Object.assign(doc.createElement("span"), { className: "rich-sep" }), ...opts.tools);
-  }
+  if (opts.tools?.length) el.append(sep(), ...opts.tools);
+
+  // ⋯ More holds whatever does not fit on the row, in order; it is never cut off.
+  const more = doc.createElement("button");
+  more.type = "button";
+  more.className = "rich-btn rich-more";
+  more.dataset.tool = "more";
+  more.title = "More";
+  more.setAttribute("aria-label", "More formatting");
+  more.setAttribute("aria-haspopup", "menu");
+  more.append(icon("more"));
+  more.hidden = true;
+  more.addEventListener("mousedown", (e) => e.preventDefault());
+  more.addEventListener("click", () => askMore());
   const hint = doc.createElement("span");
   hint.className = "rich-hint";
   hint.textContent = "Type / for more";
   hint.setAttribute("aria-hidden", "true");
   if (variant === "page") el.append(hint);
+  el.append(more);
+
+  // The row's items that can move into ⋯ More, in order (separators go with what follows them).
+  const movable = () => [...el.children].filter((c) => c !== more && c !== hint) as HTMLElement[];
+  function fit() {
+    const items = movable();
+    for (const c of items) c.hidden = false;
+    hint.hidden = false;
+    more.hidden = true;
+    if (el.scrollWidth <= el.clientWidth + 1) return;
+    hint.hidden = true;
+    if (el.scrollWidth <= el.clientWidth + 1) return;
+    more.hidden = false;
+    for (let i = items.length - 1; i >= 0 && el.scrollWidth > el.clientWidth + 1; i--) {
+      items[i].hidden = true;
+      // A separator never ends the row.
+      while (i > 0 && items[i - 1].classList.contains("rich-sep")) items[--i].hidden = true;
+    }
+    rove(items.find((x) => !x.hidden && x.matches("button")) ?? more);
+  }
+  const fitter = new ResizeObserver(() => fit());
+  fitter.observe(el);
+
+  function askMore() {
+    const hidden = movable().filter((c) => c.hidden && c.matches("button"));
+    const list = h("div", { class: "menu-list more-menu" }, hidden.map((b) => {
+      const t = byId.get(b.dataset.tool ?? "");
+      const item = h("button", { type: "button", "data-tool": b.dataset.tool ?? "" },
+        h("span", { class: "mm-glyph", "aria-hidden": "true" }, [...b.childNodes].map((n) => n.cloneNode(true))),
+        h("span", { class: "hm-name" }, b.getAttribute("aria-label") ?? b.textContent ?? ""),
+        t?.keys ? h("kbd", { class: "hm-keys" }, t.keys) : null);
+      item.addEventListener("mousedown", (e) => e.preventDefault());
+      item.addEventListener("click", () => {
+        closePopover();
+        if (!t) {
+          b.click();
+          return;
+        }
+        // A tool with its own popover opens it from ⋯ More, after this menu has gone.
+        if (t.menu) setTimeout(() => t.run(more), 0);
+        else {
+          t.run(more);
+          editor.focus();
+        }
+      });
+      return item;
+    }));
+    openPopover(more, list, { label: "More formatting", menu: true, side: "below" });
+    list.querySelector<HTMLElement>("button")?.focus();
+  }
 
   // One stop on Tab; the arrow keys move along the toolbar.
   const items = () => [...el.querySelectorAll<HTMLElement>("button")].filter((x) => !x.hidden);
@@ -849,12 +961,15 @@ function toolbar(doc: Document, editor: LexicalEditor, opts: EditorOptions, vari
     if (e.target instanceof HTMLElement && e.target.matches("button")) rove(e.target);
   });
 
-  const linkBtn = () => el.querySelector<HTMLElement>("[data-tool=link]")!;
-  const insertButton = () => el.querySelector<HTMLElement>("[data-tool=insert]") ?? linkBtn();
+  // anchorFor is where a tool's popover opens: its button, or ⋯ More when the button is in there.
+  const anchorFor = (id: string) => {
+    const b = el.querySelector<HTMLElement>(`[data-tool=${id}]`);
+    return b && !b.hidden ? b : more;
+  };
+  const insertButton = () => anchorFor(el.querySelector("[data-tool=insert]") ? "insert" : "link");
 
   // The Insert control: one menu for verses, highlights and links to notes.
-  function askInsert() {
-    const anchor = insertButton();
+  function askInsert(anchor: HTMLElement) {
     const list = h("div", { class: "menu-list insert-menu" }, insertsOf(opts).map((it) => {
       const b = h("button", { type: "button", "data-insert": it.id },
         h("span", { class: `im-glyph g-${it.id}`, "aria-hidden": "true" }, it.glyph),
@@ -872,8 +987,18 @@ function toolbar(doc: Document, editor: LexicalEditor, opts: EditorOptions, vari
     list.querySelector<HTMLElement>("button")?.focus();
   }
 
+  // The table button: a grid to point at for the size, up to 10 by 10.
+  function askTable(anchor: HTMLElement) {
+    // In a table, the button offers its rows, columns and header instead.
+    if (inTable(editor)) return tableMenu(editor, anchor);
+    openPopover(anchor, tablePicker(doc, (rows, cols) => {
+      closePopover();
+      insertTable(editor, rows, cols);
+    }), { label: "Table size", side: "below" });
+  }
+
   // The link address is typed in a small popover under the Link button.
-  function askLink() {
+  function askLink(anchor: HTMLElement = anchorFor("link")) {
     const current = editor.getEditorState().read(() => linkUrl()) ?? "";
     const input = doc.createElement("input");
     input.type = "url";
@@ -909,7 +1034,7 @@ function toolbar(doc: Document, editor: LexicalEditor, opts: EditorOptions, vari
       editor.dispatchCommand(TOGGLE_LINK_COMMAND, url || null);
       editor.focus();
     });
-    openPopover(linkBtn(), form, { label: "Link", side: "below" });
+    openPopover(anchor, form, { label: "Link", side: "below" });
     input.select();
   }
 
@@ -918,7 +1043,11 @@ function toolbar(doc: Document, editor: LexicalEditor, opts: EditorOptions, vari
       if (active) b.setAttribute("aria-pressed", String(active()));
     }
   }
-  return { el, sync, askLink, insertButton, setHeading, toggleList, toggleQuote };
+  return {
+    el, sync, insertButton, setHeading, toggleList, toggleQuote,
+    askLink: () => askLink(), askTable: (a?: HTMLElement) => askTable(a ?? anchorFor("table")),
+    destroy: () => fitter.disconnect(),
+  };
 }
 
 // The things the Insert control and the slash menu put in, each when the host can do it.
@@ -940,6 +1069,24 @@ function insertsOf(opts: EditorOptions) {
 
 const DROP_TYPES = ["application/x-xegesis-verse", "application/x-xegesis-highlight", "application/x-xegesis-related"];
 
+// insertDivider puts a divider line after the caret's block (in place of it when it is empty).
+function insertDivider(editor: LexicalEditor) {
+  editor.update(() => {
+    const b = topBlock();
+    const d = $createDividerNode();
+    if (!b) return;
+    if ($isParagraphNode(b) && b.getTextContentSize() === 0) {
+      b.insertBefore(d);
+      b.selectStart();
+    } else {
+      b.insertAfter(d);
+      const p = $createParagraphNode();
+      d.insertAfter(p);
+      p.select();
+    }
+  });
+}
+
 // insertChip puts a reference chip where the caret is (in place of any selected words).
 function insertChip(editor: LexicalEditor, label: string, href: string) {
   editor.update(() => {
@@ -960,7 +1107,7 @@ function insertChip(editor: LexicalEditor, label: string, href: string) {
 // Slash menu ---------------------------------------------------------------------------------------
 
 function slashMenu(doc: Document, editor: LexicalEditor, content: HTMLElement, opts: EditorOptions,
-  insert: (id: InsertId, anchor: HTMLElement) => void) {
+  insert: (id: InsertId, anchor: HTMLElement) => void, links: { askLink(): void }) {
   const box = doc.createElement("div");
   box.className = "slash-menu";
   box.setAttribute("role", "listbox");
@@ -1016,7 +1163,8 @@ function slashMenu(doc: Document, editor: LexicalEditor, content: HTMLElement, o
       t.className = "slash-text";
       const n = doc.createElement("span");
       n.className = "slash-name";
-      n.textContent = it.label;
+      const size = it.id === "table" ? tableSize(query) : null;
+      n.textContent = size && /\d/.test(query) ? `Table ${size.rows} × ${size.cols}` : it.label;
       const hint = doc.createElement("span");
       hint.className = "slash-hint";
       hint.textContent = it.hint;
@@ -1079,6 +1227,7 @@ function slashMenu(doc: Document, editor: LexicalEditor, content: HTMLElement, o
     const it = shown()[i];
     if (!it) return;
     close();
+    const typed = query;
     // Take the "/query" out of the text first.
     editor.update(() => {
       const s = $getSelection();
@@ -1093,15 +1242,18 @@ function slashMenu(doc: Document, editor: LexicalEditor, content: HTMLElement, o
       $setSelection(r);
       r.removeText();
     }, { discrete: true });
+    query = typed;
     run(it.id);
   }
 
   function run(id: SlashId) {
     switch (id) {
-      case "heading":
+      case "h1":
+      case "h2":
+      case "h3":
         editor.update(() => {
           const s = $getSelection();
-          if ($isRangeSelection(s)) $setBlocksType(s, () => $createHeadingNode("h2"));
+          if ($isRangeSelection(s)) $setBlocksType(s, () => $createHeadingNode(id));
         });
         break;
       case "bullets":
@@ -1110,6 +1262,20 @@ function slashMenu(doc: Document, editor: LexicalEditor, content: HTMLElement, o
       case "numbers":
         editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined);
         break;
+      case "checks":
+        editor.dispatchCommand(INSERT_CHECK_LIST_COMMAND, undefined);
+        break;
+      case "code":
+        editor.dispatchCommand(FORMAT_TEXT_COMMAND, "code");
+        break;
+      case "table": {
+        const size = tableSize(query) ?? { rows: 3, cols: 3 };
+        insertTable(editor, size.rows, size.cols);
+        return;
+      }
+      case "link":
+        setTimeout(() => links.askLink(), 30);
+        return;
       case "quote":
         editor.update(() => {
           const s = $getSelection();
@@ -1117,20 +1283,7 @@ function slashMenu(doc: Document, editor: LexicalEditor, content: HTMLElement, o
         });
         break;
       case "divider":
-        editor.update(() => {
-          const b = topBlock();
-          const d = $createDividerNode();
-          if (!b) return;
-          if ($isParagraphNode(b) && b.getTextContentSize() === 0) {
-            b.insertBefore(d);
-            b.selectStart();
-          } else {
-            b.insertAfter(d);
-            const p = $createParagraphNode();
-            d.insertAfter(p);
-            p.select();
-          }
-        });
+        insertDivider(editor);
         break;
       case "verseref":
       case "versequote":

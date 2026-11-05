@@ -88,17 +88,33 @@ func htmlBlocks(b *strings.Builder, bs []Block, opt Options) {
 }
 
 func tableHTML(b *strings.Builder, g *Grid, opt Options) {
-	b.WriteString(`<table class="xd-par"><thead><tr>`)
-	if opt.verseNumbers() {
-		b.WriteString(`<th class="xd-n"></th>`)
+	num := g.numbered(opt)
+	if g.Plain {
+		b.WriteString(`<table class="xd-par xd-table">`)
+		if len(g.Widths) == g.Cols() {
+			b.WriteString("<colgroup>")
+			for _, f := range g.fractions() {
+				fmt.Fprintf(b, `<col style="width:%.1f%%">`, f*100)
+			}
+			b.WriteString("</colgroup>")
+		}
+	} else {
+		b.WriteString(`<table class="xd-par">`)
 	}
-	for _, h := range g.Head {
-		fmt.Fprintf(b, `<th dir="auto">%s</th>`, esc(h))
+	if g.HasHead() {
+		b.WriteString(`<thead><tr>`)
+		if num {
+			b.WriteString(`<th class="xd-n"></th>`)
+		}
+		for _, h := range g.headSpans() {
+			fmt.Fprintf(b, `<th dir="auto">%s</th>`, inlineHTML(h))
+		}
+		b.WriteString(`</tr></thead>`)
 	}
-	b.WriteString(`</tr></thead><tbody>`)
+	b.WriteString(`<tbody>`)
 	for _, r := range g.Rows {
 		b.WriteString(`<tr>`)
-		if opt.verseNumbers() {
+		if num {
 			fmt.Fprintf(b, `<td class="xd-n">%s</td>`, esc(r.Num))
 		}
 		for _, c := range r.Cells {
@@ -189,6 +205,8 @@ func CSS(o Options, title string) string {
 .xdoc table.xd-par td { vertical-align: top; padding: .25em .4em; }
 .xdoc table.xd-par th.xd-n, .xdoc table.xd-par td.xd-n { width: 2.2em; padding-left: 0; }
 .xdoc table.xd-par tr { break-inside: avoid; }
+.xdoc table.xd-table th, .xdoc table.xd-table td { border: 1px solid #bbb; padding: .25em .45em; }
+.xdoc table.xd-table th { background: #f2f2f2; }
 .xdoc a { color: inherit; }
 `, o.fontSize())
 }

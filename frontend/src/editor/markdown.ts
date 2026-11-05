@@ -3,8 +3,8 @@
 // further blank line is an empty paragraph; at the edges every blank line is an empty paragraph.
 //
 // The reader is deliberately conservative. It recognises only what the writer emits in exactly that
-// form (headings "# ", bullets "- ", check items "- [ ] ", numbers "1. ", quotes "> ", a divider "---", **bold**, *italic*,
-// <u>underline</u>, `code`, [text](url)); anything else stays literal text, so a note written by hand
+// form (headings "# ", bullets "- ", check items "- [ ] ", numbers "1. ", quotes "> ", a divider "---", tables,
+// **bold**, *italic*, <u>underline</u>, `code`, [text](url)); anything else stays literal text, so a note written by hand
 // is not rewritten. A quote whose last line is a credit ("> — [Rom 8:28](#passage/…) (KJV)…", as
 // document.quote writes it) is a verse quotation, kept line for line.
 // This file has no dependency on the editor, so it is tested on its own.
@@ -27,7 +27,10 @@ export type Block =
   | { type: "list"; ordered: boolean; items: Span[][]; checked?: boolean[] }
   | { type: "divider" }
   // lines are the quotation's lines without their "> " (a bare ">" is ""); the last is the credit.
-  | { type: "versequote"; lines: string[] };
+  | { type: "versequote"; lines: string[] }
+  // A table: rows of cells of spans. header: the first row is a header row. widths: each column's
+  // width in pixels, once set by dragging.
+  | { type: "table"; rows: Span[][][]; header: boolean; widths?: number[] };
 
 // splitBlocks mirrors backup.ParseBlocks. An empty paragraph is "".
 export function splitBlocks(md: string): string[] {
@@ -94,6 +97,8 @@ function parseBlock(src: string): Block {
   if (lines.length > 1 && lines.every((l) => l === ">" || l.startsWith("> ")) && /^> — \S/.test(lines[lines.length - 1])) {
     return { type: "versequote", lines: lines.map((l) => l.slice(2)) };
   }
+  const table = parseTable(lines);
+  if (table) return table;
   if (lines.every((l) => /^- \[[ x]\] \S/.test(l))) {
     return { type: "list", ordered: false, items: lines.map((l) => parseInline(l.slice(6))), checked: lines.map((l) => l[3] === "x") };
   }
@@ -107,6 +112,65 @@ function parseBlock(src: string): Block {
     return { type: "quote", spans: joinLines(lines.map((l) => parseInline(l.slice(2)))) };
   }
   return { type: "paragraph", spans: joinLines(lines.map((l) => parseInline(l))) };
+}
+
+// Tables are GitHub-style: a first row, a separator row ("| --- |"), then the other rows; a "|" in a
+// cell is written "\|" and a line break "<br>". A comment line straight above keeps what the table
+// itself cannot say: <!-- table widths=120,200 header=no --> (either part may be left out).
+const TABLE_NOTE = /^<!-- table((?: (?:widths=\d{1,4}(?:,\d{1,4})*|header=no))*) -->$/;
+const TABLE_SEP = /^\|(?: *:?-{3,}:? *\|)+$/;
+
+function parseTable(lines: string[]): Block | null {
+  let note = "";
+  let rest = lines;
+  const m = TABLE_NOTE.exec(lines[0] ?? "");
+  if (m) {
+    note = m[1];
+    rest = lines.slice(1);
+  }
+  if (rest.length < 2 || !TABLE_SEP.test(rest[1]) || !rest.every((l) => l.length > 1 && l.startsWith("|") && l.endsWith("|"))) return null;
+  const cols = rowCells(rest[1]).length;
+  const rows = [rest[0], ...rest.slice(2)].map(rowCells);
+  if (rows.some((r) => r.length !== cols)) return null;
+  const widths = /widths=([\d,]+)/.exec(note)?.[1].split(",").map(Number);
+  return {
+    type: "table", header: !/header=no/.test(note),
+    rows: rows.map((r) => r.map((c) => joinLines(c.split("<br>").map((part) => parseInline(part))))),
+    ...(widths && widths.length === cols ? { widths } : {}),
+  };
+}
+
+// rowCells splits "| a | b\|c |" into ["a", "b|c"].
+function rowCells(line: string): string[] {
+  const inner = line.slice(1, -1);
+  const cells: string[] = [];
+  let cur = "";
+  for (let i = 0; i < inner.length; i++) {
+    if (inner[i] === "\\" && inner[i + 1] === "|") {
+      cur += "|";
+      i++;
+    } else if (inner[i] === "|") {
+      cells.push(cur);
+      cur = "";
+    } else cur += inner[i];
+  }
+  cells.push(cur);
+  return cells.map((c) => c.replace(/^ /, "").replace(/ $/, ""));
+}
+
+function writeTable(b: Extract<Block, { type: "table" }>): string {
+  const cols = Math.max(1, ...b.rows.map((r) => r.length));
+  const cell = (spans: Span[] | undefined) => writeInline(spans ?? []).replace(/\|/g, "\\|").replace(/\n/g, "<br>");
+  const row = (r: Span[][]) => `| ${Array.from({ length: cols }, (_, i) => cell(r[i])).join(" | ")} |`;
+  const parts = [
+    ...(b.widths && b.widths.length === cols ? [` widths=${b.widths.map((w) => Math.round(w)).join(",")}`] : []),
+    ...(b.header ? [] : [" header=no"]),
+  ];
+  const rows = b.rows.length ? b.rows : [[]];
+  return [
+    ...(parts.length ? [`<!-- table${parts.join("")} -->`] : []),
+    row(rows[0]), `| ${Array.from({ length: cols }, () => "---").join(" | ")} |`, ...rows.slice(1).map(row),
+  ].join("\n");
 }
 
 function joinLines(lines: Span[][]): Span[] {
@@ -205,6 +269,8 @@ function writeBlock(b: Block): string {
       return "---";
     case "versequote":
       return b.lines.map((l) => (l ? `> ${l}` : ">")).join("\n");
+    case "table":
+      return writeTable(b);
   }
 }
 

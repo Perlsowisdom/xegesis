@@ -40,10 +40,14 @@ type Block struct {
 	Table *Grid
 }
 
-// Grid is parallel Bibles side by side: one column per Bible, one row per verse.
+// Grid is parallel Bibles side by side (one column per Bible, one row per verse), or a table from
+// a note or sermon (Plain: no verse numbers; Head is empty when it has no header row).
 type Grid struct {
-	Head []string
-	Rows []GridRow
+	Head      []string
+	HeadSpans [][]Span // a note table's header cells, with their formatting
+	Rows      []GridRow
+	Plain     bool
+	Widths    []int // a note table's column widths in pixels, as set in the editor
 }
 
 type GridRow struct {

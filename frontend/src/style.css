@@ -1573,3 +1573,34 @@ button.danger-link { color: var(--bad); margin-top: 8px; display: block; }
 .pick-empty { color: var(--muted); font-size: .84rem; padding: 6px 8px; }
 .document .vnum[draggable="true"], .vnum[draggable="true"] { cursor: grab; }
 .hl-row[draggable="true"] { cursor: grab; }
+
+/* The toolbar's overflow menu (⋯ More) and tables (editor/index.ts, editor/table.ts). */
+.rich-toolbar { flex-wrap: nowrap; overflow: hidden; }
+.rich-toolbar > [hidden] { display: none; }
+.rich-toolbar > * { flex-shrink: 0; }
+.rich-more { flex: none; }
+.more-menu { min-width: 220px; }
+.more-menu .mm-glyph { display: inline-grid; place-items: center; width: 20px; color: var(--muted); font-weight: 600; }
+.more-menu .hm-name { flex: 1; }
+.more-menu .hm-keys { color: var(--faint); font-size: .75rem; }
+.table-menu { min-width: 220px; }
+.table-menu button.danger { color: var(--danger, #b3261e); }
+.table-picker { padding: 10px 12px 12px; }
+.tp-grid { display: grid; grid-template-columns: repeat(10, 18px); gap: 3px; outline: none; margin-top: 6px; }
+.tp-grid:focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; border-radius: 4px; }
+.tp-cell { width: 18px; height: 18px; border: 1px solid var(--line); border-radius: 3px; background: var(--bg); cursor: pointer; }
+.tp-cell.on { background: color-mix(in srgb, var(--accent) 28%, transparent); border-color: var(--accent); }
+.tp-label { margin-top: 8px; text-align: center; font-variant-numeric: tabular-nums; color: var(--muted); font-size: .85rem; }
+.rich-text .rt-table-wrap { overflow-x: auto; margin: 6px 0 14px; }
+.rich-text table.rt-table { border-collapse: collapse; table-layout: fixed; margin: 6px 0 14px; font-size: .98em; }
+.rich-text .rt-table-wrap > table.rt-table { margin: 0; }
+.rich-text .rt-cell, .rich-text .rt-cell-head { border: 1px solid var(--line); padding: 5px 9px; vertical-align: top; min-width: 48px; text-align: left; }
+.rich-text .rt-cell-head { background: var(--panel); font-weight: 600; color: var(--fg); }
+.rich-text .rt-cell p, .rich-text .rt-cell-head p { margin: 0; }
+.rich-text.rt-col-resize, .rich-text.rt-col-resize * { cursor: col-resize; }
+.rt-col-guide { position: absolute; width: 2px; margin-left: -1px; background: var(--accent); pointer-events: none; z-index: 7; }
+.rich-text .selected { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.md-table-wrap { overflow-x: auto; }
+.md-table { border-collapse: collapse; margin: 6px 0 12px; }
+.md-table th, .md-table td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; }
+.md-table th { background: var(--panel); }

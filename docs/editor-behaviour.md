@@ -23,6 +23,17 @@ The others come from the user's requests.
 | Press Backspace at the start of a heading or list item | It turns back into plain text |
 | Paste Markdown text | It arrives formatted, not as raw symbols (`__word__` underlines here too) |
 
+## Toolbar and / menu (T34g)
+
+- Every Markdown format is also a toolbar button, in groups: Bold, Italic, Underline, Code |
+  Heading size | Bulleted, Numbered and Checkbox list | Quote, Divider, Link, Table, Insert. When the
+  row does not fit a narrow pane, the rest goes into a "⋯ More" menu at its end, never off-screen.
+- The `/` menu lists every format and insert alphabetically: Bulleted list, Checkbox list, Code,
+  Divider, Heading large/medium/small, Highlight, Link, Link to a note or sermon, Numbered list,
+  Quote, Table, Verse reference, Verse text. Typing filters it; `/verse`, `/quote`, `/highlight`
+  and `/link` still find their items (with `/quote` and `/link`, the verse text and the note link
+  are second, after Quote and Link).
+
 ## Headings and structure
 
 - The toolbar's heading button opens a choice of **Large, Medium and Small**, with Ctrl+Alt+1/2/3.
