@@ -98,3 +98,9 @@ Design first: mock-up for approval, then build.
 - Reference chips open passages and notes in the Study grid; plain links still need Ctrl+click.
 - Highlights are quoted as whole verses until T34f; `highlightText` (src/insertwords.ts) already takes
   a character range for it.
+
+## After T34g (4 November 2026)
+
+- Table columns can be dragged so narrow that words break mid-word. Set a minimum column width, or wrap only between words.
+- The cause of "EPUBs won't open" is not confirmed. A stuck selection toolbar covering the Library was fixed, which is the likely cause. Ask the user to retry.
+- Selecting a book's text by dragging in Read mode is unreliable as the first check of a full e2e run; the test retries.
