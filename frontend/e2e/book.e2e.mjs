@@ -14,8 +14,9 @@ async function addBooks(t) {
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, "e2e-test-book.epub"), epub(EPUB_TITLE));
   writeFileSync(join(dir, "e2e-test-pages.pdf"), pdf());
+  writeFileSync(join(dir, "e2e-scroll-pages.pdf"), pdf(Array.from({ length: 40 }, (_, i) => `Scroll page ${i + 1}: grace.`)));
   const res = await t.app.run("library.add", { paths: [dir] });
-  t.assert.ok(res.added >= 2, `books added: ${JSON.stringify(res)}`);
+  t.assert.ok(res.added >= 3, `books added: ${JSON.stringify(res)}`);
   const find = async (text) => {
     for (let i = 0; i < 40; i++) {
       const r = await t.app.run("library.items", { text, limit: 5 });
@@ -25,7 +26,7 @@ async function addBooks(t) {
     }
     throw new Error(`"${text}" is not in the library`);
   };
-  t.app.books = { epub: await find(EPUB_TITLE), pdf: await find("e2e-test-pages") };
+  t.app.books = { epub: await find(EPUB_TITLE), pdf: await find("e2e-test-pages"), scrollPdf: await find("e2e-scroll-pages") };
   return t.app.books;
 }
 
@@ -45,10 +46,10 @@ async function openFromLibrary(t, title, button) {
 // closeBooks closes the test books' tabs and goes back to Study mode, so later checks start clean.
 async function closeBooks(t) {
   const { page } = t;
-  await page.evaluate(() => { location.hash = "#reader"; });
+  await page.evaluate(() => { location.hash = "#reader"; localStorage.removeItem("xegesis.book.layout"); });
   await page.waitForTimeout(200);
   for (let i = 0; i < 12; i++) {
-    const tab = page.locator(".grid-tab-btn").filter({ hasText: /E2E Test Book|e2e-test-pages/ }).first();
+    const tab = page.locator(".grid-tab-btn").filter({ hasText: /E2E Test Book|e2e-test-pages|e2e-scroll-pages/ }).first();
     if (!(await tab.count())) break;
     await tab.dispatchEvent("auxclick", { button: 1 });
     await page.waitForTimeout(100);
@@ -91,6 +92,19 @@ async function dragOver(t, el) {
   await t.page.waitForTimeout(100);
   return t.page.evaluate(() => getSelection().toString());
 }
+
+// chooseLayout presses Pages or Scroll in the Aa popover (Read mode).
+async function chooseLayout(t, which) {
+  const { page } = t;
+  await page.evaluate(() => { location.hash = "#reader"; });
+  if (!(await page.locator(".aa-btn:visible").count())) await page.locator(".topbar button", { hasText: /^Read$/ }).first().click();
+  await page.locator(".aa-btn:visible").first().click();
+  await page.getByRole("radiogroup", { name: "Books" }).locator("label", { hasText: which }).click();
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(200);
+}
+
+const place = (t) => ({ innerText: () => t.page.evaluate(() => [...document.querySelectorAll(".book-where")].map((e) => e.textContent).join(" | ")) });
 
 const checks = [
   {
@@ -173,6 +187,74 @@ const checks = [
       await page.waitForFunction(() => !!(window.go && window.go.main && window.go.main.App));
       await page.evaluate(() => { location.hash = "#reader"; });
       await visibleBook(t).locator(".book-text p", { hasText: "The first words" }).waitFor({ timeout: 15000 });
+    },
+  },
+  {
+    row: "Scroll mode: an EPUB flows into the next chapter, and back to Pages",
+    shot: "bk-05-epub-scroll.png",
+    async run(t) {
+      const { page } = t;
+      await addBooks(t);
+      await chooseLayout(t, "Scroll");
+      await openFromLibrary(t, EPUB_TITLE, "Read");
+      const book = visibleBook(t);
+      await book.locator(".book-sec[data-sec='1'] p", { hasText: "The first words of chapter 1" }).waitFor({ timeout: 15000 });
+      t.assert.equal(await book.locator(".book-sec[data-sec='2']").count(), 0, "chapter 2 is not loaded yet");
+      const body = book.locator(".book-body");
+      await body.hover();
+      for (let i = 0; i < 12 && !(await book.locator(".book-sec[data-sec='2']").count()); i++) {
+        await page.mouse.wheel(0, 1200);
+        await page.waitForTimeout(350);
+      }
+      t.assert.equal(await book.locator(".book-sec[data-sec='2']").count(), 1, "chapter 2 loaded below chapter 1");
+      t.assert.equal(await book.locator(".book-sec[data-sec='1']").count(), 1, "chapter 1 is still there");
+      // Space moves by a screen.
+      await body.focus();
+      const before = await body.evaluate((e) => e.scrollTop);
+      await page.keyboard.press("Space");
+      await page.waitForTimeout(500);
+      t.assert.ok(await body.evaluate((e, b) => e.scrollTop > b + 100, before), "Space scrolls a screen");
+      // Scroll into chapter 2: the place follows.
+      await body.evaluate((e) => { const s = e.querySelector(".book-sec[data-sec='2']"); e.scrollTop += s.getBoundingClientRect().top - e.getBoundingClientRect().top + 60; });
+      await page.waitForTimeout(500);
+      t.assert.ok(/Section 2 of/.test(await place(t).innerText()), `the place says ${await place(t).innerText()}`);
+      const sel = await selectWords(t, book.locator(".book-sec[data-sec='2'] .book-text p, .book-sec[data-sec='2'] p").first());
+      t.assert.ok(sel.trim().length > 5, `selected "${sel}" in chapter 2`);
+      await page.locator(".mark-bar").waitFor({ timeout: 3000 });
+      await t.shot();
+      await chooseLayout(t, "Pages");
+      await page.waitForTimeout(1000);
+      await book.locator(".book-sec[data-sec='2']").waitFor({ timeout: 10000 });
+      t.assert.equal(await book.locator(".book-sec").count(), 1, "one chapter at a time again");
+    },
+  },
+  {
+    row: "Scroll mode: a PDF stacks its pages, draws only those near, and goes back to Pages",
+    shot: "bk-06-pdf-scroll.png",
+    async run(t) {
+      const { page } = t;
+      await addBooks(t);
+      await chooseLayout(t, "Scroll");
+      await openFromLibrary(t, "e2e-scroll-pages", "Read");
+      const book = visibleBook(t);
+      await book.locator(".pdf-slot .textLayer span", { hasText: "Scroll page 1" }).first().waitFor({ timeout: 20000 });
+      t.assert.equal(await book.locator(".pdf-slot").count(), 40, "a slot for every page");
+      t.assert.ok(/Page 1 of 40/.test(await place(t).innerText()), "starts on page 1");
+      const body = book.locator(".book-body");
+      const drawnCount = () => book.locator(".pdf-slot canvas").count();
+      t.assert.ok((await drawnCount()) < 10, `only near pages are drawn (${await drawnCount()})`);
+      await body.evaluate((e) => { e.scrollTop = e.querySelector(".pdf-slot[data-page='20']").offsetTop; });
+      await page.waitForTimeout(1500);
+      const txt = await place(t).innerText();
+      t.assert.ok(/Page (19|20|21) of 40/.test(txt), `the indicator follows the scroll: ${txt}`);
+      await book.locator(".pdf-slot[data-page='20'] canvas").waitFor({ timeout: 10000 });
+      t.assert.equal(await book.locator(".pdf-slot[data-page='1'] canvas").count(), 0, "page 1 was freed");
+      t.assert.ok((await drawnCount()) < 12, `far pages stay freed (${await drawnCount()})`);
+      await t.shot();
+      await chooseLayout(t, "Pages");
+      await book.locator(".pdf-box .pdf-page").first().waitFor({ timeout: 10000 });
+      t.assert.equal(await book.locator(".pdf-slot").count(), 0, "no stack of pages in Pages mode");
+      t.assert.equal(await book.locator(".pdf-page").count(), 1, "one page at a time");
     },
   },
 ];

@@ -62,3 +62,30 @@ describe("copyMessage", () => {
     expect(ok).toContain("997");
   });
 });
+
+import { effectiveLayout, pageAtOffset, renderPlan } from "./bookhelpers";
+
+describe("scroll mode helpers", () => {
+  it("defaults to scroll on narrow screens unless chosen", () => {
+    expect(effectiveLayout(null, 400)).toBe("scroll");
+    expect(effectiveLayout(null, 1200)).toBe("pages");
+    expect(effectiveLayout("pages", 400)).toBe("pages");
+    expect(effectiveLayout("scroll", 1200)).toBe("scroll");
+    expect(effectiveLayout("junk", 699)).toBe("scroll");
+    expect(effectiveLayout(undefined, 700)).toBe("pages");
+  });
+  it("finds the page at an offset", () => {
+    const tops = [0, 100, 200, 300];
+    expect(pageAtOffset(tops, -5)).toBe(1);
+    expect(pageAtOffset(tops, 99)).toBe(1);
+    expect(pageAtOffset(tops, 100)).toBe(2);
+    expect(pageAtOffset(tops, 999)).toBe(4);
+    expect(pageAtOffset([], 10)).toBe(0);
+  });
+  it("renders near pages and frees far ones", () => {
+    expect(renderPlan([5, 6, 7], [], 2)).toEqual({ render: [5, 6, 7], free: [] });
+    expect(renderPlan([5, 6, 7], [3, 5, 6], 2)).toEqual({ render: [7], free: [] });
+    expect(renderPlan([20, 21], [1, 2, 3, 19, 20], 2)).toEqual({ render: [21], free: [1, 2, 3] });
+    expect(renderPlan([], [1, 2], 2)).toEqual({ render: [], free: [] });
+  });
+});

@@ -12,6 +12,7 @@ import { openGridPresets, setGridPresets } from "../gridhook";
 import { icon } from "../icons";
 import { todayCard } from "../plancard";
 import { togglePopover } from "../popover";
+import { currentLayout, setLayout } from "../booklayout";
 import { ReaderMode, ReadingPrefs, SPACINGS, TEXT_SIZES, gridButtonPlace, stepSize } from "../shellwords";
 import { navigate, onPrefs, prefs, setPrefs, state } from "../state";
 import { openReport } from "./report";
@@ -140,5 +141,7 @@ export function readingControls(): HTMLElement {
     choice("font", "Typeface", undefined, [["serif", "Book"], ["sans", "Plain"]]),
     choice("width", "Line length", undefined, [["narrow", "Comfortable"], ["wide", "Full width"]]),
     choice("spacing", "Line spacing", undefined, [["tight", "Tight"], ["normal", "Normal"], ["loose", "Loose"]]),
-    choice("theme", "Page", "Read mode's own page colour.", [["auto", "App"], ["light", "Light"], ["sepia", "Sepia"], ["dark", "Dark"]]));
+    choice("theme", "Page", "Read mode's own page colour.", [["auto", "App"], ["light", "Light"], ["sepia", "Sepia"], ["dark", "Dark"]]),
+    settingRow("Books", "Scroll runs a book's pages or chapters together. Kept on this device.", segmented({ label: "Books", value: currentLayout(), small: true,
+      options: [["pages", "Pages"], ["scroll", "Scroll"]], onChange: (v) => setLayout(v) })));
 }
