@@ -377,15 +377,15 @@ td.actions button { margin: 0 2px 2px 0; }
 .grid-tabstrip { display: flex; align-items: center; flex: 1 1 8rem; min-width: 2.75rem; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
 .grid-tabstrip::-webkit-scrollbar { display: none; }
 .grid-tabs { display: flex; min-width: 0; }
-.grid-tab { display: inline-flex; align-items: center; border-radius: 6px; max-width: 12rem; flex: none; }
+.grid-tab { display: inline-flex; align-items: center; border-radius: 6px; max-width: 12rem; flex: 0 0 auto; min-width: 0; }
 .grid-tab.on { background: var(--bg); box-shadow: 0 1px 2px rgb(0 0 0 / .1); }
 .grid-tab-btn { border: 0; background: none; padding: 3px 4px 3px 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  font-size: .85rem; color: var(--muted); max-width: 10rem; cursor: pointer; }
+  font-size: .85rem; color: var(--muted); max-width: 10rem; min-width: 0; cursor: pointer; }
 .grid-tab.on .grid-tab-btn { color: var(--fg); font-weight: 600; }
 .grid-tab-close { border: 0; background: none; padding: 2px 4px; color: var(--muted); opacity: .55; cursor: pointer; display: inline-flex; }
 .grid-tab-close .icon { width: 13px; height: 13px; }
 .grid-tab:hover .grid-tab-close, .grid-tab.on .grid-tab-close { opacity: 1; }
-.grid-plus { flex: none; position: sticky; right: 0; background: var(--panel); }
+.grid-plus { flex: none; }
 .grid-plus .icon, .grid-link .icon { width: 17px; height: 17px; }
 .grid-link[aria-pressed="true"] { color: var(--accent); }
 .grid-place { flex: 0 2 11rem; min-width: 5.5rem; display: flex; }

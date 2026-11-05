@@ -286,7 +286,7 @@ export function studyGrid(o: StudyGridOptions) {
     contents.addEventListener("click", () => viewOf(paneId)?.menu?.contents?.(contents));
     const more: HTMLButtonElement = h("button", { type: "button", class: "icon-btn", "aria-label": "Pane menu", title: "More", "aria-haspopup": "menu", "aria-expanded": "false" }, icon("more"));
     more.addEventListener("click", () => togglePopover(more, () => paneMenu(paneId, more), { label: "Pane menu", side: "below", menu: true, className: "pane-menu" }));
-    const bar = h("div", { class: "grid-bar" }, h("div", { class: "grid-tabstrip" }, tabs, plus), place, tools, link, contents, more);
+    const bar = h("div", { class: "grid-bar" }, h("div", { class: "grid-tabstrip" }, tabs), plus, place, tools, link, contents, more);
     const body = h("div", { class: "grid-body" });
     const preview = h("div", { class: "grid-preview", hidden: true, "aria-hidden": "true" });
     const pel = h("section", { class: "grid-pane", "data-pane": paneId }, bar, body, preview);
