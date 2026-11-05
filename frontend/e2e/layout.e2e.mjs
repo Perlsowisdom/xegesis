@@ -126,4 +126,45 @@ export default [
       await closeBooks(t);
     },
   },
+  {
+    row: "T38b 5: a sermon holds several passages as chips (+ to add, x to remove), found by any of them",
+    shot: "t38b-05-passages.png",
+    async run(t) {
+      const { page, app } = t;
+      const d = await app.run("document.create", { kind: "sermon", title: "Walking on water" });
+      await page.evaluate((id) => { location.hash = `#sermons/${id}`; }, d.id);
+      await t.current(".sermon-layout");
+      const root = t.root;
+      const chips = page.locator(`${root} .passage-chips .doc-chip-wrap`);
+      const addPassage = async (text) => {
+        await page.locator(`${root} .passage-chips > .chip-add, ${root} .passage-chips > button.doc-chip`).last().click();
+        const input = page.locator(".popover .ref-pop input");
+        await input.waitFor();
+        await t.type(text);
+        await page.locator(".popover .ref-pop .ref-note.ok").waitFor({ timeout: 5000 });
+        await t.press("Enter");
+        await page.locator(".popover .ref-pop").waitFor({ state: "detached", timeout: 5000 });
+      };
+      await addPassage("Matt 14:22-33");
+      await addPassage("Psalm 84");
+      t.assert.equal(await chips.count(), 2);
+      t.assert.deepEqual((await chips.allTextContents()).map((x) => x.replace(/[✦×]/g, "").trim()), ["Matthew 14:22-33", "Psalms 84"]);
+      await t.press("Control+s");
+      await page.waitForFunction((r) => document.querySelector(`${r} .save-state`)?.getAttribute("data-state") === "saved", root, { timeout: 10000 });
+      await t.shot();
+      const got = await app.run("document.get", { id: d.id });
+      t.assert.deepEqual(got.passages.map((x) => x.display), ["Matthew 14:22-33", "Psalms 84"]);
+      for (const ref of ["Matt 14:25", "Ps 84:2"]) {
+        const found = await app.run("document.list", { ref });
+        t.assert.ok((found.documents ?? found).some((x) => x.id === d.id), `found by ${ref}`);
+      }
+      // remove the first with its x
+      await chips.first().locator(".doc-chip-x").click();
+      await page.waitForFunction((r) => document.querySelectorAll(`${r} .passage-chips .doc-chip-wrap`).length === 1, root, { timeout: 5000 });
+      await t.press("Control+s");
+      await page.waitForTimeout(600);
+      t.assert.deepEqual((await app.run("document.get", { id: d.id })).passages.map((x) => x.display), ["Psalms 84"]);
+      await app.run("document.delete", { id: d.id }).catch(() => {});
+    },
+  },
 ];

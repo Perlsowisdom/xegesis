@@ -11,7 +11,7 @@ import { deleteNote, historyDrawer, noteName, placeOf } from "../notes";
 import { NotePage, notePage } from "../notepage";
 import { openPopover } from "../popover";
 import { openExport } from "../printexport";
-import { untitled } from "../sermonwords";
+import { passageText, untitled } from "../sermonwords";
 import { navigate } from "../state";
 import {
   WorkItem, actionMenu, draggableItem, emptyState, folderName, loadFolders, moreButton, moveMenu, onWorkChanged, workChanged,
@@ -208,7 +208,7 @@ export function notesSectionView() {
     ]),
     h("h3", { class: "card-title" }, name),
     h("p", { class: `card-line${line ? "" : " none"}` }, line || "No outline or text yet"),
-    meta(d.passage ? h("span", { class: "meta-chip place-chip" }, d.passage.display) : null,
+    meta(passageText(d) ? h("span", { class: "meta-chip place-chip" }, passageText(d)) : null,
       d.preached_on ? h("span", { class: "meta-chip" }, `Preached ${preachedText(d.preached_on)}`) : null,
       d.theme ? h("span", { class: "meta-chip theme-chip" }, d.theme) : null, folderChip(d.folder_id)),
     h("p", { class: "card-foot" }, editedText(d.updated_at)));

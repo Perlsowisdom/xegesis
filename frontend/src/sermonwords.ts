@@ -23,10 +23,16 @@ export function sermonAddress(hash: string): { id: string; fresh: boolean } | nu
   return m ? { id: decodeURIComponent(m[1]), fresh: !!m[2] } : null;
 }
 
+// passageText is all of a document's passages in one line, such as "Matthew 14:22-33; Psalms 84".
+export function passageText(d: { passage?: { display: string }; passages?: { display: string }[] }): string {
+  if (d.passages?.length) return d.passages.map((p) => p.display).join("; ");
+  return d.passage?.display ?? "";
+}
+
 // docSummary is the line under a document's title in the list: kind, passage and length.
-export function docSummary(d: { kind: DocKind; passage?: { display: string }; points: Point[]; words: number }): string {
+export function docSummary(d: { kind: DocKind; passage?: { display: string }; passages?: { display: string }[]; points: Point[]; words: number }): string {
   const parts: string[] = [KIND_NAME[d.kind] ?? d.kind];
-  if (d.passage?.display) parts.push(d.passage.display);
+  if (passageText(d)) parts.push(passageText(d));
   if (d.points.length) parts.push(`${d.points.length} ${d.points.length === 1 ? "point" : "points"}`);
   parts.push(`${d.words.toLocaleString("en")} ${d.words === 1 ? "word" : "words"}`);
   return parts.join(" · ");

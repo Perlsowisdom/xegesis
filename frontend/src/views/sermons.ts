@@ -10,7 +10,7 @@ import { button, clear, h } from "../dom";
 import { icon } from "../icons";
 import { openPopover } from "../popover";
 import { loadPref, navigate, savePref } from "../state";
-import { DocKind, KIND_NAME, Point, sermonAddress, untitled } from "../sermonwords";
+import { DocKind, KIND_NAME, Point, passageText, sermonAddress, untitled } from "../sermonwords";
 import { SermonPage, sermonPage } from "../sermonpage";
 import { WorkItem, actionMenu, draggableItem, emptyState, folderName, loadFolders, moreButton, moveMenu, onWorkChanged, workChanged } from "../work";
 import { SermonKey, nextSort, preachedText, sortSermons } from "../workwords";
@@ -21,6 +21,7 @@ export interface SermonDoc {
   kind: DocKind;
   title: string;
   passage?: Ref & { start: number; end: number };
+  passages?: (Ref & { start: number; end: number })[];
   points: Point[];
   body: string;
   words: number;
@@ -112,7 +113,7 @@ export function sermonsView() {
     const none = () => h("span", { class: "none", "aria-label": "None" }, "—");
     const tr = h("tr", { tabindex: "0", class: selected === d.id ? "on" : "", "aria-selected": String(selected === d.id), title: "Double-click to open in Study" },
       h("td", { class: "sermon-title" }, h("strong", {}, name), where.length ? h("small", { class: "hint" }, where.join(" · ")) : null),
-      h("td", { class: "nowrap" }, d.passage?.display ?? none()),
+      h("td", { class: "nowrap" }, passageText(d) || none()),
       h("td", { class: "nowrap" }, d.preached_on ? preachedText(d.preached_on) : none()),
       h("td", { class: "theme-cell" }, d.theme || none()),
       h("td", { class: "row-actions" }, moreButton(`Actions for ${name}`, menu)));

@@ -288,3 +288,30 @@ func TestQuoteOnlySomeWords(t *testing.T) {
 		t.Fatalf("live words = %+v", q)
 	}
 }
+
+func TestSeveralPassages(t *testing.T) {
+	e := setup(t)
+	var d Document
+	e.must("document.create", map[string]any{"passages": []string{"Matt 14:22-33", "Psalm 84"}}, &d)
+	if len(d.Passages) != 2 || d.Passages[1].Display != "Psalms 84" || d.Passage == nil || d.Passage.Display != d.Passages[0].Display {
+		t.Fatalf("created = %+v", d.Passages)
+	}
+	// Found by any of its passages, and an older single passage still works.
+	for _, ref := range []string{"Matt 14:25", "Ps 84:1"} {
+		var list []Document
+		e.must("document.list", map[string]any{"ref": ref}, &list)
+		if len(list) != 1 || list[0].ID != d.ID {
+			t.Fatalf("ref %s found %d documents", ref, len(list))
+		}
+	}
+	var one Document
+	e.must("document.update", map[string]any{"id": d.ID, "passage": "John 3:16"}, &one)
+	if len(one.Passages) != 1 || one.Passages[0].Display != "John 3:16" {
+		t.Fatalf("single passage replaces the list: %+v", one.Passages)
+	}
+	var none Document
+	e.must("document.update", map[string]any{"id": d.ID, "passages": []string{}}, &none)
+	if len(none.Passages) != 0 || none.Passage != nil {
+		t.Fatalf("cleared: %+v", none.Passages)
+	}
+}

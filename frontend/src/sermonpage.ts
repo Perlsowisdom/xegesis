@@ -64,7 +64,7 @@ export function sermonPage(o: SermonPageOptions): SermonPage {
   let d: SermonDoc | null = null;
   let editor: RichEditor | null = null;
   let title = "";
-  let passage: Ref | null = null;
+  let passages: Ref[] = []; // the sermon's passages, in order
   let timer = 0;
   let dirty = false;
   let saving: Promise<void> | null = null;
@@ -86,9 +86,12 @@ export function sermonPage(o: SermonPageOptions): SermonPage {
     if (!d) return;
     const doc = d;
     const row = (label: string, ...value: Node[]) => [h("dt", {}, label), h("dd", {}, value)];
-    const passageChip = passage
-      ? docChip({ kind: "verse", label: [h("span", { class: "star", "aria-hidden": "true" }, "✦"), passage.display], title: "Change the passage", onClick: editPassage })
-      : docChip({ kind: "add", label: "+ passage", title: "Choose the main passage", onClick: editPassage });
+    const chips: Node[] = passages.map((r, i) => docChip({ kind: "verse", label: [h("span", { class: "star", "aria-hidden": "true" }, "✦"), r.display],
+      title: "Change this passage", onClick: (b) => editPassage(b, i), removeLabel: `Remove ${r.display}`,
+      onRemove: () => { passages = passages.filter((_, k) => k !== i); setFact({}); } }));
+    chips.push(docChip({ kind: "add", label: passages.length ? "+" : "+ passage", title: passages.length ? "Add another passage" : "Choose the passage",
+      onClick: (b) => editPassage(b, -1) }));
+    const passageChip = h("span", { class: "passage-chips" }, chips);
     const preached = docChip({ kind: doc.preached_on ? "plain" : "add", label: [icon("calendar"), preachedChip(doc.preached_on)], title: "When it was preached or taught",
       onClick: (b) => calendarPopover(b, { value: doc.preached_on ?? "", noneText: "Not preached yet", onPick: (iso) => setFact({ preached_on: iso }) }) });
     let theme: Node;
@@ -120,7 +123,7 @@ export function sermonPage(o: SermonPageOptions): SermonPage {
         button(KIND_NAME[k], () => { if (k !== doc.kind) setFact({ kind: k }); }, { class: k === doc.kind ? "on" : "", "aria-checked": String(k === doc.kind) }))),
       { label: "Kind", menu: true }) });
     drawFold(doc);
-    clear(props, row("Passage", passageChip), row("Preached", preached), row("Theme", theme), row("Kind", kind));
+    clear(props, row(passages.length > 1 ? "Passages" : "Passage", passageChip), row("Preached", preached), row("Theme", theme), row("Kind", kind));
   }
 
   // The fold button: unfolded it says "Details"; folded it is one line of chips, such as
@@ -130,7 +133,7 @@ export function sermonPage(o: SermonPageOptions): SermonPage {
     fold.setAttribute("aria-expanded", String(!folded));
     fold.title = folded ? "Show the details" : "Fold the details into one line";
     const parts = folded
-      ? [passage?.display, doc.preached_on ? preachedChip(doc.preached_on) : "", doc.theme, KIND_NAME[doc.kind] ?? "Sermon"].filter((x): x is string => !!x)
+      ? [passages.map((r) => r.display).join(" · "), doc.preached_on ? preachedChip(doc.preached_on) : "", doc.theme, KIND_NAME[doc.kind] ?? "Sermon"].filter((x): x is string => !!x)
       : [];
     clear(fold, h("span", { class: "props-arrow", "aria-hidden": "true" }, icon("chevron")),
       folded ? parts.map((x) => h("span", { class: "props-chip" }, x)) : h("span", { class: "props-label" }, "Details"));
@@ -142,11 +145,13 @@ export function sermonPage(o: SermonPageOptions): SermonPage {
     if (d) drawFold(d);
   });
 
-  function editPassage(b: HTMLElement) {
+  // editPassage changes passage i, or adds one when i is -1.
+  function editPassage(b: HTMLElement, i: number) {
+    const cur = i >= 0 ? passages[i] : undefined;
     refPopover(b, {
-      title: "Main passage", value: passage?.display ?? "", action: passage ? "Change" : "Choose",
-      onSave: (r) => { passage = r; setFact({ passage: r.display }); },
-      onRemove: passage ? () => { passage = null; setFact({ passage: "" }); } : undefined, removeText: "No main passage",
+      title: i >= 0 ? "Change passage" : "Add a passage", value: cur?.display ?? "", action: cur ? "Change" : "Add",
+      onSave: (r) => { passages = i >= 0 ? passages.map((x, k) => (k === i ? r : x)) : [...passages, r]; setFact({}); },
+      onRemove: cur ? () => { passages = passages.filter((_, k) => k !== i); setFact({}); } : undefined, removeText: "Remove this passage",
     });
   }
 
@@ -180,7 +185,7 @@ export function sermonPage(o: SermonPageOptions): SermonPage {
     saving = (async () => {
       const before = doc.title;
       const got = await msg.attempt(() => run<SermonDoc>("document.update", {
-        id: doc.id, title, kind: doc.kind, passage: passage?.display ?? "", preached_on: doc.preached_on ?? "", theme: doc.theme ?? "",
+        id: doc.id, title, kind: doc.kind, passages: passages.map((r) => r.display), preached_on: doc.preached_on ?? "", theme: doc.theme ?? "",
         body, points: pointsOf(parseMarkdown(body)),
       }));
       if (!got) {
@@ -233,7 +238,8 @@ export function sermonPage(o: SermonPageOptions): SermonPage {
     d = got;
     try { folded = !o.fresh && localStorage.getItem(FOLD_KEY) === "1"; } catch { folded = false; }
     title = got.title === untitled(got.kind) && o.fresh ? "" : got.title;
-    passage = got.passage ? { display: got.passage.display, osis: got.passage.osis, start: got.passage.start, end: got.passage.end } : null;
+    passages = (got.passages?.length ? got.passages : got.passage ? [got.passage] : [])
+      .map((r) => ({ display: r.display, osis: r.osis, start: r.start, end: r.end }));
     tbox.el.textContent = title;
     tbox.el.toggleAttribute("data-empty", !title);
     tbox.el.dataset.placeholder = untitled(got.kind);
@@ -252,8 +258,8 @@ export function sermonPage(o: SermonPageOptions): SermonPage {
       onChange: changed, foldKey: got.id,
       onVerseRef: verseRefPopover,
       ...editorInserts({
-        say: (w) => msg.info(w), passage: () => passage?.display ?? "", self: () => d?.id,
-        quote: (anchor) => quotePopover(anchor, passage?.display ?? "", (md) => editor?.insertMarkdown(md)),
+        say: (w) => msg.info(w), passage: () => passages[0]?.display ?? "", self: () => d?.id,
+        quote: (anchor) => quotePopover(anchor, passages[0]?.display ?? "", (md) => editor?.insertMarkdown(md)),
       }),
     });
     if (missing) {

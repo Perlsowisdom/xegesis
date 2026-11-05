@@ -5,7 +5,7 @@
 import { ItemSummary, Message, Module, Note, SavedList, run } from "../api";
 import { button, clear, h } from "../dom";
 import { noteName } from "../notes";
-import { untitled } from "../sermonwords";
+import { passageText, untitled } from "../sermonwords";
 import type { SermonDoc } from "../views/sermons";
 import { draggableSpec } from "./drag";
 import type { TabSpec } from "./grid";
@@ -84,7 +84,7 @@ export function workBrowser(host: DocHost): DocView {
     if (n !== seq) return;
     const empty = (what: string) => h("li", { class: "empty" }, q ? "None found." : `No ${what} yet.`);
     clear(notes, !ns?.length ? empty("notes") : ns.map((x) => row(host, noteName(x), x.ref?.display ?? x.item_title ?? "", { kind: "note", target: x.id, title: noteName(x) })));
-    clear(sermons, !ds?.length ? empty("sermons") : ds.slice(0, LIMIT).map((d) => row(host, d.title || untitled(d.kind), d.passage?.display ?? "",
+    clear(sermons, !ds?.length ? empty("sermons") : ds.slice(0, LIMIT).map((d) => row(host, d.title || untitled(d.kind), passageText(d),
       { kind: "sermon", target: d.id, title: d.title || untitled(d.kind) })));
     const needle = q.toLowerCase();
     const lf = (ls ?? []).filter((l) => !needle || l.name.toLowerCase().includes(needle));
