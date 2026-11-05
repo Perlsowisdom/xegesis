@@ -1,4 +1,4 @@
-// The right sidebar: study tools beside whatever is open. Its tabs are AI chat, Related, Notes,
+// The right sidebar: study tools beside whatever is open. Its tabs are AI chat (views/chat.ts), Related, Notes,
 // Highlights, Word and Compare; Settings → Right sidebar chooses which show and in what order. It
 // opens and closes with the Reader's sidebar button and Ctrl+., so it has no close button of its own. Tools follow the
 // passage in the Reader and load only while they are visible. At phone width it is a sheet.
@@ -38,6 +38,7 @@ import { noteName, notesPanel } from "../notes";
 import { TOOLS, ToolId, activeTool, visibleTools } from "../shellwords";
 import { loadPref, navigate, onPassage, onPrefs, prefs, savePref, setPassage, setPrefs, state } from "../state";
 import { relatedPanel, wordPanel } from "./study";
+import { chatPanel } from "./chat";
 
 interface Tool {
   el: HTMLElement;
@@ -65,8 +66,10 @@ function makeSidebar() {
     scope: () => (selectedMarkScope() as MarkScope | null) ?? (state.parsed ? { kind: "bible", book: bookOf(state.parsed.display) } : null),
     footer: h("div", { class: "hl-foot" }, allLink),
   });
+  const chat = chatPanel();
   const tools: Record<ToolId, Tool> = {
-    chat: { el: chatPanel(), stale: false },
+    // The chat checks the assistant's settings each time it is shown.
+    chat: { el: chat.el, stale: true, refresh: () => { tools.chat.stale = true; return chat.refresh(); } },
     related: { el: related.el, stale: true, refresh: () => related.showPassage(state.parsed?.osis ?? null, state.parsed?.display) },
     notes: { el: notes.el, stale: true, refresh: () => notes.refresh() },
     highlights: { el: hls.el, stale: true, refresh: () => hls.refresh() },
@@ -259,19 +262,6 @@ let instance: ReturnType<typeof makeSidebar> | null = null;
 // sidebar is the one right sidebar; the shell places it and the Reader asks it to show things.
 export function sidebar() {
   return (instance ??= makeSidebar());
-}
-
-// The AI chat tool is a placeholder until the assistant is built (T36). It makes no network calls.
-function chatPanel(): HTMLElement {
-  return h("div", { class: "chat-off" },
-    h("h3", {}, "The assistant is off"),
-    h("p", {}, "Xegesis can work with an AI assistant when you choose one. There are three ways to turn it on:"),
-    h("ul", {},
-      h("li", {}, h("strong", {}, "Your own key"), " for an online service such as Claude or OpenAI."),
-      h("li", {}, h("strong", {}, "Claude Code or Codex"), " already set up on this computer."),
-      h("li", {}, h("strong", {}, "A local model"), " that runs on this computer, so nothing leaves it.")),
-    h("p", { class: "hint" }, "Nothing is sent anywhere until you choose, and each online option says what it sends first."),
-    button("Choose in Settings…", () => navigate("settings/model"), { class: "primary" }));
 }
 
 // Compare shows the passage in several Bibles, verse by verse.

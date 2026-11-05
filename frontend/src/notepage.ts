@@ -15,6 +15,7 @@ import { openExport } from "./printexport";
 import { folderName, loadFolders, moveMenu, workChanged } from "./work";
 import { editedText } from "./workwords";
 import { editorInserts } from "./insertpop";
+import { registerDoc } from "./activedoc";
 
 const SAVE_AFTER = 900;
 
@@ -270,7 +271,9 @@ export function notePage(o: NotePageOptions): NotePage {
       }),
     });
     if (!o.id) tbox.focus();
+    unregister = registerDoc({ kind: "note", el, id: () => note?.id ?? null, title: () => title || noteName(note ?? ({} as Note)), insert: (md) => editor?.insertMarkdown(md) });
   }
+  let unregister = () => {};
 
   // Leaving the page or the window saves first.
   const onUnload = () => void save();
@@ -297,6 +300,7 @@ export function notePage(o: NotePageOptions): NotePage {
         editor = null;
       });
       alive = false;
+      unregister();
       window.removeEventListener("beforeunload", onUnload);
     },
   };

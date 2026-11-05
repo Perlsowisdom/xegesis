@@ -1,16 +1,17 @@
 // Settings: grouped pages down the left side. General holds Appearance (the rail and reading),
 // Right sidebar (which tools, in what order), Bibles online (the API.Bible key, kept in the system
-// keychain and never shown back), Privacy and Your data. Assistant holds the Model page, which only
-// saves a choice for now. Advanced holds every command and the app's details.
+// keychain and never shown back), Privacy and Your data. Assistant holds the Model page: provider,
+// key, model and a connection test. Advanced holds every command and the app's details.
 //
 // Pages are addressed as #settings/<page>, so Help and the sidebar can link straight to one.
 
-import { Message, run } from "../api";
+import { Message, RunError, run } from "../api";
+import { AssistantConfig, LATER, LOCAL_CHOICES, ONLINE_CHOICES, providerLine } from "../assistantwords";
 import { segmented, settingRow, tick, toggleSwitch } from "../controls";
 import { badge, button, clear, field, h } from "../dom";
 import { icon } from "../icons";
 import { railControls } from "../shell/rail";
-import { APP_THEMES, LOCAL_PROVIDERS, ONLINE_PROVIDERS, Provider, ToolId, moveTool, providerText, showTool, toolLabel } from "../shellwords";
+import { APP_THEMES, ToolId, moveTool, showTool, toolLabel } from "../shellwords";
 import { prefs, setPrefs } from "../state";
 import { commandsView } from "./commands";
 import { dataSection } from "./data";
@@ -228,10 +229,12 @@ function privacyPage(): PageView {
 
   // Both status commands read local settings only; neither uses the network.
   async function show() {
-    const [key, cat] = await Promise.all([
+    const [key, cat, ai] = await Promise.all([
       run<KeyStatus>("apibible.status").catch(() => null),
       run<{ enabled: boolean }>("bible.sources").catch(() => null),
+      run<AssistantConfig>("assistant.config.get").catch(() => null),
     ]);
+    const aiOn = !!ai && ai.provider !== "off";
     const on = (yes: boolean | undefined) => (yes ? badge("On", "ok") : badge("Off"));
     clear(rows,
       h("dt", {}, "Bible catalogues"),
@@ -242,7 +245,9 @@ function privacyPage(): PageView {
       h("dt", {}, "Bibles online"),
       h("dd", {}, on(key?.key_set), " Reads Bibles from API.Bible with your own key. Set it in Bibles online."),
       h("dt", {}, "Assistant"),
-      h("dd", {}, badge(prefs.provider === "off" ? "Off" : "Chosen, not connected"), " Not built yet. Each online service will say what it sends before you use it."),
+      h("dd", {}, badge(!aiOn ? "Off" : ai!.local ? "On this computer" : "On", aiOn ? "ok" : ""),
+        !aiOn ? " Nothing is sent. Choose a provider in Assistant → Model."
+          : ` ${providerLine(ai!)}. Before the first message, the chat shows exactly what is sent and where.`),
       h("dt", {}, "Problem reports"),
       h("dd", {}, badge("Off"), " Nothing is sent. When this arrives, you will see each report and choose whether to send it."));
   }
@@ -256,45 +261,159 @@ function dataPage(): PageView {
 
 // Assistant ---------------------------------------------------------------------------------------
 
-// The Model page only saves the choice on this device. It runs no command and makes no network call.
+// The Model page chooses the provider, keeps its key in the system keychain (shown back only as
+// "Saved"), picks a model from the provider's list and tests the connection. Choosing sends
+// nothing; the model list and the test reach the provider only when asked for.
 function modelPage(): PageView {
-  const current = h("strong", {});
+  const msg = new Message();
+  const current = h("strong", { class: "provider-current" });
   const chips = h("div", { class: "provider-choices", hidden: true });
-  const change = button("Change", () => {
-    chips.hidden = !chips.hidden;
-    change.setAttribute("aria-expanded", String(!chips.hidden));
-    if (!chips.hidden) chips.querySelector<HTMLElement>("[aria-pressed=true]")?.focus();
-  }, { "aria-expanded": "false" });
+  const change = button("Change", () => toggle(chips.hidden), { "aria-expanded": "false" });
   const saved = h("p", { class: "msg ok", role: "status", "aria-live": "polite" });
+  const details = h("div", { class: "assistant-details" });
+  let cfg: AssistantConfig | null = null;
 
-  const chip = (p: { id: Provider; label: string }) =>
-    h("button", { type: "button", class: "provider-chip", "aria-pressed": "false", "data-id": p.id, onclick: () => pick(p.id) }, p.label);
-  clear(chips,
-    h("h3", {}, "Online, with your own key"),
-    h("div", { class: "row wrap" }, ONLINE_PROVIDERS.map(chip)),
-    h("h3", {}, "On this computer"),
-    h("div", { class: "row wrap" }, LOCAL_PROVIDERS.map(chip), chip({ id: "off", label: "Off" })));
+  function toggle(open: boolean) {
+    chips.hidden = !open;
+    change.setAttribute("aria-expanded", String(open));
+    if (open) chips.querySelector<HTMLElement>("[aria-pressed=true]")?.focus();
+  }
 
-  function pick(id: Provider) {
-    setPrefs({ provider: id });
+  const chip = (id: string, label: string) => {
+    const later = LATER[id];
+    return h("button", {
+      type: "button", class: "provider-chip", "aria-pressed": "false", "data-id": id, disabled: !!later,
+      title: later ? "Coming in T36b" : undefined, onclick: () => void pick(id),
+    }, label, later ? h("span", { class: "chip-later" }, " · coming in T36b") : null);
+  };
+  const labelOf = (id: string) => cfg?.presets.find((p) => p.id === id)?.label ?? LATER[id] ?? id;
+
+  function renderChips() {
+    clear(chips,
+      h("h3", {}, "Online, with your own key"),
+      h("div", { class: "row wrap" }, ONLINE_CHOICES.map((id) => chip(id, labelOf(id)))),
+      h("h3", {}, "On this computer"),
+      h("div", { class: "row wrap" }, LOCAL_CHOICES.map((id) => chip(id, labelOf(id)))),
+      h("h3", {}, "Other"),
+      h("div", { class: "row wrap" }, chip("custom", "Custom address"), chip("off", "Off")));
+  }
+
+  async function set(params: object): Promise<boolean> {
+    const c = await msg.attempt(() => run<AssistantConfig>("assistant.config.set", params));
+    if (c) cfg = c;
+    return !!c;
+  }
+
+  async function pick(id: string) {
+    if (!(await set({ provider: id }))) return;
+    saved.textContent = id === "off" ? "The assistant is off." : `Saved: ${providerLine(cfg!)}. Nothing has been sent.`;
     render();
-    saved.textContent = id === "off" ? "The assistant is off." : `Saved on this device: ${providerText(id)}. Nothing has connected.`;
+    void loadModels();
+  }
+
+  function keyForm(c: AssistantConfig): HTMLElement {
+    const key = h("input", { type: "password", autocomplete: "off", spellcheck: "false", placeholder: c.key_saved ? "Saved" : "Paste your key", "aria-label": `${c.label} key` });
+    const form = h("form", { class: "key-form", "aria-label": `${c.label} key` },
+      h("div", { class: "row wrap" }, key, h("button", { type: "submit", class: "primary" }, "Save key"),
+        c.key_saved ? button("Remove key", async () => {
+          if (await set({ clear_key: true })) { msg.ok("Key removed from the keychain."); render(); }
+        }, { class: "danger" }) : null),
+      h("p", { class: "key-state" }, c.key_saved ? badge("Saved", "ok") : badge(c.needs_key ? "No key" : "No key needed", c.needs_key ? "warn" : "")));
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const k = key.value.trim();
+      key.value = "";
+      if (!k) return msg.info("Paste a key first.");
+      if (await set({ key: k })) {
+        msg.ok("Key saved to the keychain.");
+        render();
+        void loadModels();
+      }
+    });
+    return form;
+  }
+
+  const models = h("div", { class: "model-chips row wrap", role: "group", "aria-label": "Models" });
+  async function loadModels() {
+    if (!cfg || cfg.provider === "off" || (cfg.needs_key && !cfg.key_saved)) {
+      clear(models, h("span", { class: "hint" }, cfg?.needs_key ? "Save the key to see the models." : ""));
+      return;
+    }
+    clear(models, h("span", { class: "hint" }, "Asking for the models…"));
+    let list: string[] = [];
+    try {
+      list = await run<string[]>("assistant.models");
+    } catch (e) {
+      clear(models, h("span", { class: "hint" }, e instanceof RunError ? e.info.message : String(e)));
+      return;
+    }
+    const chosen = cfg.model ?? "";
+    if (chosen && !list.includes(chosen)) list = [chosen, ...list];
+    clear(models, list.length ? list.map((m) => h("button", {
+      type: "button", class: "provider-chip model-chip", "aria-pressed": String(m === chosen), "data-model": m,
+      onclick: async () => {
+        if (await set({ model: m })) {
+          for (const b of models.querySelectorAll<HTMLElement>(".model-chip")) b.setAttribute("aria-pressed", String(b.dataset.model === m));
+          saved.textContent = `Model: ${m}.`;
+        }
+      },
+    }, m)) : h("span", { class: "hint" }, "This service does not list its models. Type the model's name below."));
   }
 
   function render() {
-    current.textContent = providerText(prefs.provider);
-    for (const b of chips.querySelectorAll<HTMLElement>(".provider-chip")) b.setAttribute("aria-pressed", String(b.dataset.id === prefs.provider));
+    if (!cfg) return;
+    current.textContent = providerLine(cfg);
+    for (const b of chips.querySelectorAll<HTMLElement>(".provider-chip")) b.setAttribute("aria-pressed", String(b.dataset.id === cfg.provider));
+    if (cfg.provider === "off") return void clear(details);
+    const c = cfg;
+    const addr = h("input", { type: "url", value: c.base_url ?? "", placeholder: "https://…/v1", "aria-label": "Address", spellcheck: "false" });
+    const saveAddr = button("Save address", async () => {
+      if (await set({ base_url: addr.value.trim() })) { msg.ok("Address saved."); render(); void loadModels(); }
+    });
+    const typed = h("input", { type: "text", value: c.model ?? "", placeholder: "Model name", "aria-label": "Model name", spellcheck: "false" });
+    const test = new Message();
+    const where = c.local ? "Runs on this computer: nothing leaves it, and personal copies of books may be read."
+      : `Sends to ${hostOf(c.base_url)} over the internet. Personal copies of books are never sent.`;
+    const address = h("div", { class: "row wrap" }, addr, saveAddr);
+    clear(details,
+      h("p", { class: "hint" }, where),
+      c.needs_key || c.provider === "local" || c.provider === "custom" ? [h("h3", {}, "Key"), keyForm(c)] : null,
+      h("h3", {}, "Model"), models,
+      h("div", { class: "row wrap" }, typed, button("Use this model", async () => {
+        const m = typed.value.trim();
+        if (m && (await set({ model: m }))) { saved.textContent = `Model: ${m}.`; void loadModels(); }
+      })),
+      c.provider === "custom" ? [h("h3", {}, "Address"), address]
+        : h("details", { class: "more-options" }, h("summary", {}, "More options"), field("Address", address, "Change it only for a proxy or another server with the same interface.")),
+      h("div", { class: "row wrap test-row" }, button("Test connection", async () => {
+        test.info("Testing…");
+        const r = await test.attempt(() => run<{ ok: boolean; message: string }>("assistant.test"));
+        if (r) (r.ok ? test.ok(r.message) : test.error(new RunError({ code: "unavailable", message: r.message })));
+      })),
+      test.el);
   }
-  render();
+
+  async function show() {
+    cfg = (await msg.attempt(() => run<AssistantConfig>("assistant.config.get"))) ?? null;
+    if (!cfg) return;
+    renderChips();
+    render();
+    void loadModels();
+  }
 
   const el = pageEl("Model", null,
-    h("p", { class: "notice" },
-      h("strong", {}, "Coming in a later version. "),
-      "Choosing here only saves your preference on this device. Nothing connects and nothing is sent."),
     h("div", { class: "provider-row" }, h("span", {}, "Provider"), current, change),
-    chips, saved,
-    h("p", { class: "hint" }, "Online services use a key you get from them, kept in your system keychain. Claude Code and Codex use the account already set up for them on this computer. A local model runs entirely on this computer."));
-  return { el, show: render };
+    chips, saved, details, msg.el,
+    h("p", { class: "hint" }, "Online services use a key you get from them, kept in your system keychain. Claude Code and Codex use the account already set up for them on this computer. A local model runs entirely on this computer. The assistant only reads your library; anything it writes comes as a draft for you to insert."));
+  return { el, show };
+}
+
+function hostOf(url?: string): string {
+  try {
+    return new URL(url ?? "").host;
+  } catch {
+    return url ?? "the service";
+  }
 }
 
 // Advanced ----------------------------------------------------------------------------------------

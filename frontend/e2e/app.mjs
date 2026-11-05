@@ -30,6 +30,8 @@ const SOURCE = process.env.XEGESIS_E2E_SOURCE ?? "C:\\Users\\perlj\\Documents\\X
 // each other's executable (a running app also locks it, so the other's build fails).
 const WORK = join(tmpdir(), "xegesis-e2e", createHash("sha1").update(repo.toLowerCase()).digest("hex").slice(0, 10));
 export const EXE = join(WORK, "xegesis-e2e.exe");
+// The keychain service name the app files keys under while tested (secrets.ServiceEnv).
+export const KEYRING_SERVICE = "xegesis-e2e";
 // How long the app may take to start before the run stops with an error.
 const START_MS = Number(process.env.XEGESIS_E2E_START_MS ?? 60000);
 
@@ -196,6 +198,8 @@ export async function startApp({ build: doBuild = true, port } = {}) {
         ...process.env,
         XEGESIS_LIBRARY: join(lib, "library.db"),
         WEBVIEW2_USER_DATA_FOLDER: profile,
+        // Keys the tests save go to their own keychain entries, never the person's.
+        XEGESIS_KEYRING_SERVICE: KEYRING_SERVICE,
         WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port} --remote-allow-origins=*`,
       },
       stdio: ["ignore", "pipe", "pipe"],
