@@ -5,6 +5,7 @@ package all
 import (
 	"path/filepath"
 
+	"github.com/Perlsowisdom/xegesis/internal/assistant"
 	"github.com/Perlsowisdom/xegesis/internal/backup"
 	"github.com/Perlsowisdom/xegesis/internal/bible"
 	"github.com/Perlsowisdom/xegesis/internal/bible/repos"
@@ -44,5 +45,6 @@ func Registry(dataDir string, s secrets.Store) *command.Registry {
 	report.Register(r)
 	document.Register(r)
 	folder.Register(r)
+	assistant.Register(r, s)
 	return r
 }
