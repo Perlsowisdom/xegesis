@@ -49,19 +49,52 @@ type HighlightCreateParams struct {
 	End           int     `json:"verse_end,omitempty" desc:"The last verse ID"`
 	Versification string  `json:"versification,omitempty" enum:"english,hebrew" desc:"Numbering of the verses given; default english. Highlights are kept in English numbering and show in every Bible"`
 	Style         string  `json:"style,omitempty" enum:"yellow,green,blue,pink,purple,underline,yellow-underline,green-underline,blue-underline,pink-underline,purple-underline" desc:"Default yellow. A colour with -underline underlines in that colour; underline alone is a yellow underline"`
+	RangeParams
+}
+
+// RangeParams give a Bible highlight exact words instead of whole verses.
+type RangeParams struct {
+	Range  *VerseRange `json:"range,omitempty" desc:"Bible: only these words, from a character in one verse to one in the same or a later verse (English numbering). The verses are taken from it. Overlapped parts of other highlights in the same Bible are taken out of them"`
+	Module string      `json:"module,omitempty" desc:"With range: the Bible the offsets count in"`
+	Parts  []QuotePart `json:"parts,omitempty" desc:"With range: each verse's highlighted words, as shown"`
+	Quote  string      `json:"quote,omitempty" desc:"With range and no parts: the highlighted words"`
+}
+
+// locator checks the range and gives what is stored for it.
+func (p RangeParams) locator(id string) (verseLocator, error) {
+	r := *p.Range
+	if err := validRange(id, r, p.Module, p.Quote); err != nil {
+		return verseLocator{}, err
+	}
+	loc := verseLocator{Range: r, Module: p.Module, Quote: p.Quote}
+	for _, w := range p.Parts {
+		if w.Verse < r.Start.Verse || w.Verse > r.End.Verse {
+			return loc, command.Errorf("bad_params", "%s: the words of verse %d are outside the range", id, w.Verse)
+		}
+	}
+	if len(p.Parts) > 0 {
+		loc.Parts, loc.Quote = p.Parts, joinParts(p.Parts)
+	}
+	if len(loc.Quote) > 20000 {
+		return loc, command.Errorf("bad_params", "%s: the quoted words are too long", id)
+	}
+	return loc, nil
 }
 
 type Highlight struct {
-	ID        string  `json:"id"`
-	ItemID    string  `json:"item_id,omitempty"`
-	Locator   *Anchor `json:"locator,omitempty"`
-	Ref       string  `json:"ref,omitempty" desc:"The highlighted verses, for a Bible highlight"`
-	Start     int64   `json:"verse_start,omitempty" desc:"First highlighted verse ID, in English numbering"`
-	End       int64   `json:"verse_end,omitempty" desc:"Last highlighted verse ID"`
-	Style     string  `json:"style"`
-	CreatedAt int64   `json:"created_at"`
-	ItemTitle string  `json:"item_title,omitempty" desc:"The book's title, for a book highlight"`
-	Text      string  `json:"text,omitempty" desc:"The highlighted words: a book highlight's own, or a Bible highlight's verses in the module asked for"`
+	ID        string      `json:"id"`
+	ItemID    string      `json:"item_id,omitempty"`
+	Locator   *Anchor     `json:"locator,omitempty"`
+	Ref       string      `json:"ref,omitempty" desc:"The highlighted verses, for a Bible highlight"`
+	Start     int64       `json:"verse_start,omitempty" desc:"First highlighted verse ID, in English numbering"`
+	End       int64       `json:"verse_end,omitempty" desc:"Last highlighted verse ID"`
+	Style     string      `json:"style"`
+	CreatedAt int64       `json:"created_at"`
+	ItemTitle string      `json:"item_title,omitempty" desc:"The book's title, for a book highlight"`
+	Text      string      `json:"text,omitempty" desc:"The highlighted words: a book highlight's own, a ranged Bible highlight's exact words, or a whole-verse highlight's verses in the module asked for"`
+	Range     *VerseRange `json:"range,omitempty" desc:"A Bible highlight on exact words: where they start and end"`
+	Module    string      `json:"module,omitempty" desc:"The Bible the range was made in; other Bibles show the whole verses"`
+	Parts     []QuotePart `json:"parts,omitempty" desc:"Each verse's highlighted words"`
 }
 
 func (s *service) highlightCreate(ctx context.Context, env *command.Env, p HighlightCreateParams) (Highlight, error) {
@@ -69,6 +102,32 @@ func (s *service) highlightCreate(ctx context.Context, env *command.Env, p Highl
 	r, haveVerses, err := passage.Resolve("highlight.create", p.Ref, p.Start, p.End, p.Versification)
 	if err != nil {
 		return Highlight{}, err
+	}
+	var cuts []ranged
+	var cut VerseRange
+	if p.Range != nil {
+		if p.ItemID != "" || p.Locator != nil {
+			return Highlight{}, command.Errorf("bad_params", "highlight.create: a range is for Bible verses; a book passage uses locator")
+		}
+		if p.Versification != "" && verse.System(p.Versification) != verse.English {
+			return Highlight{}, command.Errorf("bad_params", "highlight.create: a range is given in English numbering")
+		}
+		loc, err := p.RangeParams.locator("highlight.create")
+		if err != nil {
+			return Highlight{}, err
+		}
+		if haveVerses && (int64(r.Start) != loc.Range.Start.Verse || int64(r.End) != loc.Range.End.Verse) {
+			return Highlight{}, command.Errorf("bad_params", "highlight.create: the verses do not match the range")
+		}
+		r, haveVerses = verse.Range{Start: verse.ID(loc.Range.Start.Verse), End: verse.ID(loc.Range.End.Verse)}, true
+		raw, _ := json.Marshal(loc)
+		anchor["locator_json"] = string(raw)
+		cut = loc.Range
+		if cuts, err = overlapping(ctx, env.Store, cut, loc.Module, ""); err != nil {
+			return Highlight{}, err
+		}
+	} else if p.Module != "" || len(p.Parts) > 0 || p.Quote != "" {
+		return Highlight{}, command.Errorf("bad_params", "highlight.create: module, parts and quote go with range")
 	}
 	switch {
 	case p.ItemID != "" && p.Locator != nil && !haveVerses:
@@ -90,6 +149,9 @@ func (s *service) highlightCreate(ctx context.Context, env *command.Env, p Highl
 	}
 	id := store.NewID()
 	err = env.Store.Write(ctx, "highlight.create", func(tx *store.Tx) error {
+		if err := split(tx, cut, cuts); err != nil {
+			return err
+		}
 		if err := tx.Create("anchors", anchor); err != nil {
 			return err
 		}
@@ -161,7 +223,7 @@ func (s *service) highlightList(ctx context.Context, env *command.Env, p Highlig
 		where += ` AND h.style IN (?` + strings.Repeat(", ?", len(styles)-1) + `)`
 		args = append(args, styles...)
 	}
-	order := ` ORDER BY a.verse_start IS NULL, a.verse_start, a.verse_end, i.title, json_extract(a.locator_json, '$.section'),
+	order := ` ORDER BY a.verse_start IS NULL, a.verse_start, json_extract(a.locator_json, '$.range.start.offset'), a.verse_end, i.title, json_extract(a.locator_json, '$.section'),
 		json_extract(a.locator_json, '$.para'), json_extract(a.locator_json, '$.offset'), h.created_at, h.rowid`
 	if p.Newest {
 		order = ` ORDER BY h.created_at DESC, h.rowid DESC`
@@ -227,10 +289,27 @@ func (s *service) verseText(ctx context.Context, env *command.Env, module string
 
 type HighlightUpdateParams struct {
 	ID    string `json:"id" required:"true"`
-	Style string `json:"style" required:"true" enum:"yellow,green,blue,pink,purple,underline,yellow-underline,green-underline,blue-underline,pink-underline,purple-underline" desc:"The new colour, with -underline to underline in it"`
+	Style string `json:"style,omitempty" enum:"yellow,green,blue,pink,purple,underline,yellow-underline,green-underline,blue-underline,pink-underline,purple-underline" desc:"The new colour, with -underline to underline in it"`
+	RangeParams
 }
 
 func (s *service) highlightUpdate(ctx context.Context, env *command.Env, p HighlightUpdateParams) (Highlight, error) {
+	if p.Style == "" && p.Range == nil {
+		return Highlight{}, command.Errorf("bad_params", "highlight.update: give style, or range")
+	}
+	var loc verseLocator
+	var cuts []ranged
+	if p.Range != nil {
+		var err error
+		if loc, err = p.RangeParams.locator("highlight.update"); err != nil {
+			return Highlight{}, err
+		}
+		if cuts, err = overlapping(ctx, env.Store, loc.Range, loc.Module, p.ID); err != nil {
+			return Highlight{}, err
+		}
+	} else if p.Module != "" || len(p.Parts) > 0 || p.Quote != "" {
+		return Highlight{}, command.Errorf("bad_params", "highlight.update: module, parts and quote go with range")
+	}
 	err := env.Store.Write(ctx, "highlight.update", func(tx *store.Tx) error {
 		cur, err := tx.Get("highlights", store.ByID(p.ID))
 		if err != nil {
@@ -239,7 +318,25 @@ func (s *service) highlightUpdate(ctx context.Context, env *command.Env, p Highl
 		if cur["deleted_at"] != nil {
 			return command.Errorf("not_found", "highlight %s is deleted", p.ID)
 		}
-		if cur["style"] == p.Style {
+		if p.Range != nil {
+			anchorID, _ := cur["anchor_id"].(string)
+			a, err := tx.Get("anchors", store.ByID(anchorID))
+			if err != nil {
+				return err
+			}
+			if a["verse_start"] == nil {
+				return command.Errorf("bad_params", "highlight.update: a range is for Bible highlights")
+			}
+			if err := split(tx, loc.Range, cuts); err != nil {
+				return err
+			}
+			raw, _ := json.Marshal(loc)
+			fields := store.Row{"verse_start": loc.Range.Start.Verse, "verse_end": loc.Range.End.Verse, "locator_json": string(raw)}
+			if err := tx.Update("anchors", store.ByID(anchorID), fields); err != nil {
+				return err
+			}
+		}
+		if p.Style == "" || cur["style"] == p.Style {
 			return nil
 		}
 		return tx.Update("highlights", store.ByID(p.ID), store.Row{"style": p.Style})
@@ -290,7 +387,12 @@ func queryHighlights(ctx context.Context, st *store.Store, where string, args ..
 			return nil, err
 		}
 		h.ItemID = item.String
-		if loc.Valid {
+		if loc.Valid && !item.Valid {
+			var v verseLocator
+			if json.Unmarshal([]byte(loc.String), &v) == nil && !v.Range.empty() {
+				h.Range, h.Module, h.Parts, h.Text = &v.Range, v.Module, v.Parts, v.Quote
+			}
+		} else if loc.Valid {
 			var a Anchor
 			if json.Unmarshal([]byte(loc.String), &a) == nil {
 				h.Locator = &a

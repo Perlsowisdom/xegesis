@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/Perlsowisdom/xegesis/internal/bible"
@@ -24,6 +25,7 @@ type QuoteParams struct {
 	Ref     string `json:"ref" required:"true" desc:"The passage, e.g. \"Rom 8:28-30\""`
 	Module  string `json:"module" required:"true" desc:"The Bible to quote, from bible.modules"`
 	Preview bool   `json:"preview,omitempty" desc:"Only return the quotation, for an editor to place where the cursor is; nothing is saved"`
+	Words   string `json:"words,omitempty" desc:"Quote only these words of the passage, such as a highlight's exact words; they must be in its text"`
 }
 
 type QuoteResult struct {
@@ -91,6 +93,13 @@ func (s *service) quote(ctx context.Context, env *command.Env, p QuoteParams) (Q
 		return res, nil
 	}
 	text := quoteMarkdown(pas, r.Display, r.OSIS, name(*meta), res.Attribution)
+	if p.Words != "" {
+		if !wordsIn(p.Words, pas) {
+			res.Reason = fmt.Sprintf("those words are not in %s's text of %s", name(*meta), r.Display)
+			return res, nil
+		}
+		text = wordsMarkdown(p.Words, r.Display, r.OSIS, name(*meta), res.Attribution)
+	}
 	if max := quoteLimit(lic); max > 0 && utf8.RuneCountInString(text) > max {
 		res.Reason = fmt.Sprintf("the licence of %s allows quoting about %d characters at a time; choose fewer verses", name(*meta), max)
 		return res, nil
@@ -160,6 +169,38 @@ func quoteMarkdown(p bible.Passage, display, osis, bibleName, credit string) str
 		fmt.Fprintf(&b, "**%s** %s", num, strings.Join(strings.Fields(v.Text), " "))
 	}
 	fmt.Fprintf(&b, "\n> — [%s](#passage/%s) (%s)", display, osis, bibleName)
+	if credit != "" {
+		b.WriteString(". " + credit)
+	}
+	b.WriteByte('\n')
+	return b.String()
+}
+
+// fold keeps only a text's letters and digits, in lower case, so words can be found in a passage
+// whatever its punctuation and spacing.
+func fold(s string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(s) {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+func wordsIn(words string, p bible.Passage) bool {
+	var all strings.Builder
+	for _, v := range p.Verses {
+		all.WriteString(fold(v.Text))
+	}
+	w := fold(words)
+	return w != "" && strings.Contains(all.String(), w)
+}
+
+// wordsMarkdown quotes some words of a passage the way quoteMarkdown quotes it all, without verse numbers.
+func wordsMarkdown(words, display, osis, bibleName, credit string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "> %s\n> — [%s](#passage/%s) (%s)", strings.Join(strings.Fields(words), " "), display, osis, bibleName)
 	if credit != "" {
 		b.WriteString(". " + credit)
 	}
