@@ -16,13 +16,16 @@ import { createHash } from "node:crypto";
 import { chmodSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const repo = resolve(here, "..", "..");
 export const shots = join(here, "shots");
+// Holds fake claude and codex commands (canned output), put first on the app's PATH.
+export const fakeCli = join(here, "fake-cli");
+const pathKey = Object.keys(process.env).find((k) => k.toLowerCase() === "path") ?? "PATH";
 
 // The library the tests copy. Override with XEGESIS_E2E_SOURCE.
 const SOURCE = process.env.XEGESIS_E2E_SOURCE ?? "C:\\Users\\perlj\\Documents\\Xegesis-scratch3";
@@ -196,6 +199,8 @@ export async function startApp({ build: doBuild = true, port } = {}) {
       cwd: run,
       env: {
         ...process.env,
+        // Fake claude and codex commands go first on PATH, so the real ones are never run.
+        [pathKey]: `${fakeCli}${delimiter}${process.env[pathKey] ?? ""}`,
         XEGESIS_LIBRARY: join(lib, "library.db"),
         WEBVIEW2_USER_DATA_FOLDER: profile,
         // Keys the tests save go to their own keychain entries, never the person's.

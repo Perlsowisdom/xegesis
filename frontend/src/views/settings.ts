@@ -6,7 +6,7 @@
 // Pages are addressed as #settings/<page>, so Help and the sidebar can link straight to one.
 
 import { Message, RunError, run } from "../api";
-import { AssistantConfig, LATER, LOCAL_CHOICES, ONLINE_CHOICES, providerLine } from "../assistantwords";
+import { AssistantConfig, CLIInfo, LOCAL_CHOICES, ONLINE_CHOICES, providerLine } from "../assistantwords";
 import { segmented, settingRow, tick, toggleSwitch } from "../controls";
 import { badge, button, clear, field, h } from "../dom";
 import { icon } from "../icons";
@@ -272,6 +272,7 @@ function modelPage(): PageView {
   const saved = h("p", { class: "msg ok", role: "status", "aria-live": "polite" });
   const details = h("div", { class: "assistant-details" });
   let cfg: AssistantConfig | null = null;
+  let tools: CLIInfo[] = []; // Claude Code and Codex, found or not
 
   function toggle(open: boolean) {
     chips.hidden = !open;
@@ -279,14 +280,27 @@ function modelPage(): PageView {
     if (open) chips.querySelector<HTMLElement>("[aria-pressed=true]")?.focus();
   }
 
-  const chip = (id: string, label: string) => {
-    const later = LATER[id];
-    return h("button", {
-      type: "button", class: "provider-chip", "aria-pressed": "false", "data-id": id, disabled: !!later,
-      title: later ? "Coming in T36b" : undefined, onclick: () => void pick(id),
-    }, label, later ? h("span", { class: "chip-later" }, " · coming in T36b") : null);
+  const openLink = (url: string) => {
+    const rt = (window as unknown as { runtime?: { BrowserOpenURL?: (u: string) => void } }).runtime;
+    if (rt?.BrowserOpenURL) rt.BrowserOpenURL(url);
+    else window.open(url, "_blank", "noopener");
   };
-  const labelOf = (id: string) => cfg?.presets.find((p) => p.id === id)?.label ?? LATER[id] ?? id;
+  const isTool = (id: string) => !!cfg?.presets.find((p) => p.id === id)?.cli;
+  const chip = (id: string, label: string) => {
+    if (!isTool(id)) {
+      return h("button", { type: "button", class: "provider-chip", "aria-pressed": "false", "data-id": id, onclick: () => void pick(id) }, label);
+    }
+    // A command-line tool is Ready when found on PATH; otherwise the chip is off, with a link to install it.
+    const t = tools.find((x) => x.id === id);
+    const ready = !!t?.found;
+    return h("span", { class: "tool-choice" },
+      h("button", {
+        type: "button", class: "provider-chip", "aria-pressed": "false", "data-id": id, "data-state": ready ? "ready" : "missing", disabled: !ready,
+        title: ready ? t!.path : `${label} was not found on this computer`, onclick: () => void pick(id),
+      }, label, h("span", { class: "chip-later" }, ready ? ` · Ready${t!.version ? ` · ${t!.version}` : ""}` : tools.length ? " · Not found" : " · checking…")),
+      !ready && t ? h("a", { class: "install-link", href: t.install_url, onclick: (e: Event) => { e.preventDefault(); openLink(t.install_url); } }, `Install ${label}`) : null);
+  };
+  const labelOf = (id: string) => cfg?.presets.find((p) => p.id === id)?.label ?? id;
 
   function renderChips() {
     clear(chips,
@@ -335,7 +349,7 @@ function modelPage(): PageView {
 
   const models = h("div", { class: "model-chips row wrap", role: "group", "aria-label": "Models" });
   async function loadModels() {
-    if (!cfg || cfg.provider === "off" || (cfg.needs_key && !cfg.key_saved)) {
+    if (!cfg || cfg.provider === "off" || isTool(cfg.provider) || (cfg.needs_key && !cfg.key_saved)) {
       clear(models, h("span", { class: "hint" }, cfg?.needs_key ? "Save the key to see the models." : ""));
       return;
     }
@@ -366,6 +380,7 @@ function modelPage(): PageView {
     for (const b of chips.querySelectorAll<HTMLElement>(".provider-chip")) b.setAttribute("aria-pressed", String(b.dataset.id === cfg.provider));
     if (cfg.provider === "off") return void clear(details);
     const c = cfg;
+    if (isTool(c.provider)) return renderTool(c);
     const addr = h("input", { type: "url", value: c.base_url ?? "", placeholder: "https://…/v1", "aria-label": "Address", spellcheck: "false" });
     const saveAddr = button("Save address", async () => {
       if (await set({ base_url: addr.value.trim() })) { msg.ok("Address saved."); render(); void loadModels(); }
@@ -393,12 +408,34 @@ function modelPage(): PageView {
       test.el);
   }
 
+  // A command-line tool needs no key and offers no model list: it uses the account and model set in
+  // the tool itself. The page says what that means for what is sent.
+  function renderTool(c: AssistantConfig) {
+    const t = tools.find((x) => x.id === c.provider);
+    const test = new Message();
+    clear(details,
+      h("p", { class: "hint" }, t?.found
+        ? `Runs ${c.label}${t.version ? ` ${t.version}` : ""} on this computer, signed in as you already are. It makes its own network calls to its own service, so what it reads from your library goes there. Personal copies of books are never given to it.`
+        : `${c.label} was not found on this computer.`),
+      h("div", { class: "row wrap test-row" }, button("Test connection", async () => {
+        test.info("Testing…");
+        const r = await test.attempt(() => run<{ ok: boolean; message: string }>("assistant.test"));
+        if (r) (r.ok ? test.ok(r.message) : test.error(new RunError({ code: "unavailable", message: r.message })));
+      })),
+      test.el);
+  }
+
   async function show() {
     cfg = (await msg.attempt(() => run<AssistantConfig>("assistant.config.get"))) ?? null;
     if (!cfg) return;
+    tools = [];
     renderChips();
     render();
     void loadModels();
+    // Looking for the tools runs each with --version; the chips fill in when that is done.
+    tools = await run<CLIInfo[]>("assistant.cli.detect").catch(() => []);
+    renderChips();
+    render();
   }
 
   const el = pageEl("Model", null,

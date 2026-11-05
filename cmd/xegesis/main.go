@@ -6,6 +6,7 @@
 //	xegesis run <id> [params]    run a command; params is JSON, - to read JSON from stdin, or key=value pairs
 //	xegesis serve                read one JSON request per line on stdin, write one response per line
 //	xegesis mcp                  serve the commands to an MCP client over stdio
+//	xegesis mcp-assistant        serve only the AI assistant's read-only tools over stdio
 package main
 
 import (
@@ -20,6 +21,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Perlsowisdom/xegesis/internal/assistant"
 	"github.com/Perlsowisdom/xegesis/internal/command"
 	"github.com/Perlsowisdom/xegesis/internal/command/all"
 	"github.com/Perlsowisdom/xegesis/internal/command/core"
@@ -28,7 +30,7 @@ import (
 	"github.com/Perlsowisdom/xegesis/internal/store"
 )
 
-const usage = "usage: xegesis [-library path] [-format auto|text|json] commands | help [id] | describe <id> | run <id> [params | key=value ...] | serve | mcp"
+const usage = "usage: xegesis [-library path] [-format auto|text|json] commands | help [id] | describe <id> | run <id> [params | key=value ...] | serve | mcp | mcp-assistant"
 
 func main() {
 	if err := run(os.Args[1:], os.Stdin, os.Stdout); err != nil {
@@ -105,6 +107,14 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		defer closeEnv()
 		s := &mcp.Server{Reg: reg, Env: env, Name: "xegesis", Version: core.Version}
 		return s.Serve(context.Background(), stdin, stdout)
+	case "mcp-assistant":
+		// Only the assistant's read-only tools, through the licence gate (docs/mcp.md).
+		env, closeEnv, err := openEnv(*lib)
+		if err != nil {
+			return err
+		}
+		defer closeEnv()
+		return assistant.ServeMCP(context.Background(), reg, env, core.Version, stdin, stdout)
 	}
 	return fmt.Errorf("unknown subcommand %q", args[0])
 }

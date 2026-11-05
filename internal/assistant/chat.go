@@ -154,7 +154,7 @@ func (s *service) chat(ctx context.Context, env *command.Env, p ChatParams) (Cha
 	if err != nil {
 		return ChatResult{}, err
 	}
-	if cur.model == "" {
+	if _, isAgent := cur.p.(Agent); !isAgent && cur.model == "" {
 		return ChatResult{}, command.Errorf("unavailable", "Choose a model in Settings → Assistant → Model.")
 	}
 	if !cur.conf.Confirmed {
@@ -209,6 +209,40 @@ func (s *service) chat(ctx context.Context, env *command.Env, p ChatParams) (Cha
 		if res.Reply != "" {
 			c.messages = append(c.messages, Message{Role: "assistant", Content: res.Reply})
 		}
+		emit(Event{Conversation: c.id, Type: "done"})
+		return res, nil
+	}
+	if ag, ok := cur.p.(Agent); ok {
+		history := append([]Message{}, c.messages[:start]...)
+		hooks := AgentHooks{
+			Text: func(t string) {
+				reply.WriteString(t)
+				emit(Event{Conversation: c.id, Type: "text", Text: t})
+			},
+			Tool: func(l Line) {
+				l.Label = plainName(l.Name) + "…"
+				emit(Event{Conversation: c.id, Type: "tool", Tool: &l})
+			},
+			ToolDone: func(l Line) {
+				line := &l
+				res.Tools = append(res.Tools, line)
+				c.entries = append(c.entries, Entry{Role: "tool", Tool: line})
+				emit(Event{Conversation: c.id, Type: "tool_done", Tool: line})
+			},
+		}
+		err := ag.Run(ctx, AgentRequest{Model: cur.model, Prompt: agentPrompt(history, question.Content)}, hooks)
+		if err != nil {
+			if ctx.Err() != nil {
+				return stopped()
+			}
+			finish()
+			c.messages = c.messages[:start]
+			perr := plainErr(err)
+			emit(Event{Conversation: c.id, Type: "error", Error: perr.Error()})
+			return res, perr
+		}
+		c.messages = append(c.messages, Message{Role: "assistant", Content: reply.String()})
+		finish()
 		emit(Event{Conversation: c.id, Type: "done"})
 		return res, nil
 	}
@@ -341,6 +375,7 @@ type Preview struct {
 	Endpoint string   `json:"endpoint" desc:"Where the request goes"`
 	Model    string   `json:"model"`
 	Local    bool     `json:"local"`
+	CLI      bool     `json:"cli,omitempty" desc:"A command-line tool that signs in and connects to its provider itself"`
 	Question string   `json:"question" desc:"The question as sent, with what is open"`
 	Tools    []string `json:"tools" desc:"The read-only tools the model may call"`
 	Body     string   `json:"body" desc:"The first request, exactly as sent, without the key"`
@@ -353,6 +388,15 @@ func (s *service) preview(ctx context.Context, env *command.Env, p PreviewParams
 	}
 	q := userText(ChatParams{Message: p.Message, Context: p.Context})
 	req := Request{Model: cur.model, Messages: []Message{{Role: "system", Content: SystemPrompt}, {Role: "user", Content: q}}, Tools: ToolDefs()}
+	if a, ok := cur.p.(*CLIAgent); ok {
+		out := Preview{Provider: cur.preset.Label, Endpoint: fmt.Sprintf("Runs %s on this computer. It signs in and connects to its provider itself; Xegesis does not see where.", a.Info.Path),
+			Model: cur.model, Question: q, CLI: true,
+			Body: "Command:\n" + a.Command(cur.model) + "\n\nSent to it:\n" + agentPrompt(nil, q)}
+		for _, t := range Tools() {
+			out.Tools = append(out.Tools, t.Def.Name)
+		}
+		return out, nil
+	}
 	body, _ := json.MarshalIndent(Body(req, true), "", "  ")
 	out := Preview{Provider: cur.preset.Label, Endpoint: strings.TrimRight(cur.addr, "/") + "/chat/completions", Model: cur.model,
 		Local: cur.local, Question: q, Body: string(body)}

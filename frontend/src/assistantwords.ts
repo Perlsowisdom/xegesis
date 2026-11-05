@@ -7,6 +7,17 @@ export interface Preset {
   base_url: string;
   local: boolean;
   needs_key: boolean;
+  cli?: boolean; // a command-line tool on this computer (Claude Code, Codex)
+}
+
+// A command-line tool, found or not (assistant.cli.detect).
+export interface CLIInfo {
+  id: string;
+  label: string;
+  found: boolean;
+  path?: string;
+  version?: string;
+  install_url: string;
 }
 
 export interface AssistantConfig {
@@ -41,11 +52,10 @@ export interface AssistantEvent {
 // The chips of Settings → Assistant → Model, in two groups.
 export const ONLINE_CHOICES = ["claude", "openai", "gemini", "openrouter"];
 export const LOCAL_CHOICES = ["claude-code", "codex", "local"];
-// Claude Code and Codex on this computer come with T36b.
-export const LATER: Record<string, string> = { "claude-code": "Claude Code", codex: "Codex" };
 
 export function providerLine(c: AssistantConfig): string {
   if (c.provider === "off" || !c.label) return "Off";
+  if (c.provider === "claude-code" || c.provider === "codex") return `${c.label}, signed in on this computer`;
   if (c.provider === "custom") return c.local ? "Custom, on this computer" : "Custom address";
   if (c.provider === "local") return c.local ? "Local model, on this computer" : "Local model, at another address";
   return `${c.label}, with your own key`;

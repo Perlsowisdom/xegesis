@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/debug"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -158,6 +159,12 @@ func setMemoryLimit() int64 {
 }
 
 func main() {
+	if i := slices.Index(os.Args, "mcp-assistant"); i > 0 {
+		// Claude Code and Codex start the app's executable like this to read the library
+		// (assistant.CLIAgent); no window opens.
+		serveAssistantMCP(os.Args[1:i])
+		return
+	}
 	setMemoryLimit()
 	lib := libraryPath()
 	s, err := store.Open(lib)
@@ -182,5 +189,23 @@ func main() {
 	})
 	if err != nil {
 		log.Fatal(err)
+	}
+}
+
+// serveAssistantMCP serves the assistant's read-only tools on standard input and output, for the
+// command-line tool the assistant started. flags may hold -library <path>.
+func serveAssistantMCP(flags []string) {
+	lib := libraryPath()
+	if i := slices.Index(flags, "-library"); i >= 0 && i+1 < len(flags) {
+		lib = flags[i+1]
+	}
+	s, err := store.Open(lib)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer s.Close()
+	reg := all.Registry(filepath.Dir(lib), secrets.OS())
+	if err := assistant.ServeMCP(context.Background(), reg, &command.Env{Store: s}, "app", os.Stdin, os.Stdout); err != nil {
+		log.Print(err)
 	}
 }

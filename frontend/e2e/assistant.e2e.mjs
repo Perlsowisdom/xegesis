@@ -125,8 +125,8 @@ export default [
       await page.evaluate(() => { location.hash = "#settings/model"; });
       const sec = page.locator(".settings-section:visible");
       await sec.locator(".provider-row button", { hasText: "Change" }).click();
-      await sec.locator(".provider-chip[data-id=claude-code]", { hasText: "coming in T36b" }).waitFor();
-      t.assert.ok(await sec.locator(".provider-chip[data-id=codex]").isDisabled());
+      // Claude Code and Codex are Ready here: the tests put fake ones first on PATH (fake-cli/).
+      await sec.locator(".provider-chip[data-id=claude-code][data-state=ready]").waitFor();
       await sec.locator(".provider-chip[data-id=openai]").click();
       await sec.locator(".provider-current", { hasText: "OpenAI, with your own key" }).waitFor();
       // The fake server stands in for OpenAI's address (More options).

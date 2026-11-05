@@ -91,7 +91,7 @@ export function chatPanel() {
     if (!cfg || cfg.provider === "off") return off();
     if (!el.contains(on)) clear(el, on);
     const p = head.querySelector<HTMLElement>(".chat-provider")!;
-    p.textContent = `${cfg.label}${cfg.model ? ` · ${cfg.model}` : ""}${cfg.local ? " · on this computer" : ""}`;
+    p.textContent = `${cfg.label}${cfg.model ? ` · ${cfg.model}` : ""}${cfg.local ? " · on this computer" : ""}${cfg.presets.find((x) => x.id === cfg!.provider)?.cli ? " · signed in on this computer" : ""}`;
     showContext();
   }
 
@@ -209,7 +209,7 @@ export function chatPanel() {
 
   // privacy shows, before the first message to a provider, what is sent and where.
   async function privacy(question: string): Promise<boolean> {
-    const pv = await msg.attempt(() => run<{ provider: string; endpoint: string; model: string; local: boolean; question: string; tools: string[]; body: string }>(
+    const pv = await msg.attempt(() => run<{ provider: string; endpoint: string; model: string; local: boolean; cli?: boolean; question: string; tools: string[]; body: string }>(
       "assistant.preview", { message: question, context: context() }));
     if (!pv) return false;
     return new Promise((done) => {
@@ -220,17 +220,18 @@ export function chatPanel() {
       };
       const panel = h("section", { class: "privacy-panel", role: "dialog", "aria-label": `What is sent to ${pv.provider}` },
         h("h3", {}, `Before your first message to ${pv.provider}`),
-        h("p", {}, pv.local ? "This model runs on this computer. Nothing leaves it." : "This is sent over the internet. The service's own terms apply to it."),
+        h("p", {}, pv.cli ? `${pv.provider} runs on this computer, but it signs in and connects to its own online service itself. Your question and what it reads are sent there, under that service's terms; Xegesis cannot see or change where.`
+          : pv.local ? "This model runs on this computer. Nothing leaves it." : "This is sent over the internet. The service's own terms apply to it."),
         h("dl", { class: "info" },
-          h("dt", {}, "Sent to"), h("dd", {}, h("code", {}, pv.endpoint)),
-          h("dt", {}, "Model"), h("dd", {}, pv.model),
+          h("dt", {}, pv.cli ? "Runs" : "Sent to"), h("dd", {}, h("code", {}, pv.endpoint)),
+          h("dt", {}, "Model"), h("dd", {}, pv.model || "The one set in the tool itself"),
           h("dt", {}, "Your question"), h("dd", {}, h("pre", { class: "privacy-question" }, pv.question)),
           h("dt", {}, "What it reads"), h("dd", {},
             "The assistant may read your library with ", String(pv.tools.length), " read-only tools. Their results are sent too: passage text, your notes, sermons and highlights, and book passages, within each work's quoting limit.",
             pv.local ? null : " Personal copies of books are never sent to an online service.",
             " Each one shows below as a line you can open to see exactly what was sent.")),
         h("details", {}, h("summary", {}, "Show the full request"), h("pre", { class: "privacy-body" }, pv.body)),
-        h("p", { class: "hint" }, "Your key is sent only to this address and is not shown here. You are asked once for each service."),
+        h("p", { class: "hint" }, pv.cli ? "Xegesis keeps no key for this tool. You are asked once for each tool." : "Your key is sent only to this address and is not shown here. You are asked once for each service."),
         h("div", { class: "row wrap" },
           button("Send", () => void finish(true), { class: "primary" }),
           button("Cancel", () => void finish(false))));

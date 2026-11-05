@@ -27,8 +27,19 @@ cancelling the context stops it. It also lists its models. Errors come back in p
   endpoint covers streaming text and tool calls, which is all the assistant uses. Missing compared with
   Anthropic's own API: prompt caching, extended-thinking output, citations and document blocks, so long
   chats cost more than they would natively. A native adapter can be added behind the same interface.
-- Claude Code and Codex (T36b) will be providers of their own that run the command-line tool with
-  Xegesis's MCP server in an assistant mode offering the same tools.
+- **Claude Code and Codex (T36b)** are providers of their own (`CLIAgent`) that run the command-line
+  tool found on PATH, non-interactively, once per question: `claude -p --output-format stream-json`
+  and `codex exec --json`, with the prompt on standard input and the chat so far in it (no tool-side
+  session, so nothing depends on the tool's resume options). Each is given Xegesis's MCP server in an
+  **assistant mode** (`mcp-assistant`, served by the app's own executable) that offers exactly
+  `assistant.Tools`, nothing else, through the licence gate; the tool's built-in file, shell and web
+  tools are disallowed. Its JSON lines become the same chat events: text, tool lines and drafts.
+  Stop cancels the run, which kills the whole process tree (`taskkill /T`, or the process group).
+  They are **online** for the gate: they send what they read to their provider, which Xegesis can
+  neither see nor limit, so personal copies of library books are withheld and quoting limits apply,
+  exactly as for an online key. The tools do their own sign-in and network calls; Xegesis keeps no key
+  for them, and the Model page and privacy panel say so. Detection (`assistant.cli.detect`) looks on
+  PATH and asks for `--version`; the chips show Ready or Not found with an install link.
 
 **Read-only tools.** The tools are defined once (`assistant.Tools`) so the MCP assistant mode can offer
 the same list: search the library, list Bibles, read a passage, read a section of a book, list and read

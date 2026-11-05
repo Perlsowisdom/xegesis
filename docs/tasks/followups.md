@@ -132,3 +132,13 @@ Design first: mock-up for approval, then build.
 - Bibles and reference works are shortened to their quoting limit for every provider; only personal copies of library books are withheld from online providers. A personal-copy Bible is therefore sent, shortened, to an online provider, as it may be quoted into a note. Confirm with the user that this is what "personal copies of books" meant.
 - The old local preference `xegesis.assistant.provider` (T34a's placeholder) is no longer read by Settings; `prefs.provider` in `state.ts` and `providerText` in `shellwords.ts` can go once nothing else uses them.
 - The licence gate limits each tool result on its own; a model that reads the same limited passage many times in one chat can receive more than one quoting limit in total, as several quotations in one sermon can (see After T19).
+
+## After T36b (5 November 2026)
+
+- The command lines for the real `claude` and `codex` (flags such as `--include-partial-messages`, `--allowedTools`, `--disallowedTools`, and Codex's `-c mcp_servers.xegesis.*` and `--sandbox read-only`) were written from the tools' documented JSON output and were never run against the real tools, as the task forbids. Try each once by hand and adjust `CLIAgent.Args` and `streamParser` in `internal/assistant/cli.go` if a flag or event name differs. Check in particular that Codex runs MCP tool calls in `exec` mode without asking.
+- The chat is sent to the tool afresh on every question (the chat so far is in the prompt) rather than resumed with the tool's own session; long chats cost more.
+- Tool lines from Claude Code and Codex use a label made from the call's arguments ("Read Romans 8 (KJV)"); the gate's own label and notice (for example "shortened to the licence limit") do not travel back through MCP. Putting them in the MCP result's structured content would let the chat show them.
+- No model chips for the two tools: they use the model set in the tool itself. A free-text model name could be passed with `--model` / `-m`.
+- Detection runs each tool with `--version` every time the Model page opens; cache it for a minute if a slow `claude` start-up shows.
+- The `mcp-assistant` mode starts the whole app executable without a window; check on macOS and Linux builds, where the Wails binary may need a display to start.
+- The Not found state is checked in e2e by hiding the fake `codex`; the install links open through `runtime.BrowserOpenURL`, which e2e does not click.
