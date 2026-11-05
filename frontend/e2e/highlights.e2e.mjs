@@ -224,7 +224,8 @@ export default [
       await readRom12(t, 7);
       const { a } = await highlightWords(t, [v(7), 1, 5], null, "green");
       const phrase = a.text.replace(/\s+/g, " ");
-      if (!(await page.locator("#rightbar").isVisible().catch(() => false))) await page.keyboard.press("Control+.");
+      const opened = !(await page.locator("#rightbar").isVisible().catch(() => false));
+      if (opened) await page.keyboard.press("Control+.");
       await page.locator("#rightbar [role=tab]", { hasText: "Highlights" }).click();
       const row = page.locator("#rightbar .hl-row", { hasText: "Romans 12:7" }).first();
       await row.waitFor({ timeout: 8000 });
@@ -235,6 +236,13 @@ export default [
       await work.waitFor({ timeout: 8000 });
       t.assert.equal((await work.locator(".hl-text").textContent()).trim(), `“${phrase}”`);
       await t.shot("hl-06b-my-work.png");
+      // Leave the sidebar as it was: open, it folds the note toolbar's Insert button away.
+      await page.evaluate(() => { location.hash = "#passage/Rom.12"; });
+      await page.waitForSelector(".doc-bible .vt[data-tb]", { timeout: 10000 });
+      if (opened && await page.locator("#rightbar").isVisible()) {
+        await page.keyboard.press("Control+.");
+        await page.locator("#rightbar").waitFor({ state: "hidden", timeout: 5000 });
+      }
     },
   },
   {

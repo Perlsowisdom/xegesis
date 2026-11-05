@@ -109,3 +109,11 @@ Design first: mock-up for approval, then build.
 
 - Book view clutter: a "View" fold-out above the text, a "Highlights and notes in this section" bar at the bottom, and a plain dropdown for chapters. Fold these into the Aa popover, the sidebar Highlights tool and the Contents popover.
 - Not tested yet: Go to page in PDF scroll, in-book links in scroll, and scroll mode in Study panes. EPUB chapters loaded while scrolling are never unloaded.
+
+## After T34f (4 November 2026)
+
+- Books (EPUB) already keep exact ranges (paragraph and offset); a new book highlight over an older one still stacks the two colours. Give `highlight.create` for books the same overlap splitting as Bible ranges.
+- A whole-verse highlight is never split by new words over it: the newer words are drawn over it (the old one becomes words around them on screen, and stays whole in the library). Picking verse numbers deletes ranged highlights wholly inside those verses but leaves ones that run past them.
+- Side by side, a whole-verse highlight is drawn on each Bible's cell rather than the whole row, and an empty cell is not coloured.
+- Ranged highlights moved by `highlight.update` have no interface yet (the command takes a range; the toolbar only recolours, underlines and removes).
+- Offsets count code points of the text as drawn from the Bible's markup. If a Bible module is reinstalled with different text, ranges in it may drift; they are not re-found by their words yet.
