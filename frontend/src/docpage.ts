@@ -193,9 +193,9 @@ export function verseRefPopover(anchor: HTMLElement, selected: string, insert: (
 
 let lastBible = "";
 
-// verseQuoteFor quotes verses through document.quote, so the Bible's licence decides.
-export async function verseQuoteFor(ref: string, module: string): Promise<{ md: string } | { reason: string }> {
-  const r = await run<{ allowed: boolean; reason?: string; quote?: string }>("document.quote", { ref, module, preview: true })
+// verseQuoteFor quotes verses through document.quote, so the Bible's licence decides; with words, only those words of them.
+export async function verseQuoteFor(ref: string, module: string, words = ""): Promise<{ md: string } | { reason: string }> {
+  const r = await run<{ allowed: boolean; reason?: string; quote?: string }>("document.quote", { ref, module, preview: true, ...(words ? { words } : {}) })
     .catch((err: Error) => ({ allowed: false, reason: err.message, quote: "" }));
   if (!r.allowed || !r.quote) return { reason: r.reason ?? "the licence does not allow it" };
   return { md: r.quote.trimEnd() };

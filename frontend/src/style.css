@@ -523,6 +523,9 @@ mark.hl { color: inherit; border-radius: 2px; }
 .hl[data-hl], mark.hl[data-mark] { cursor: pointer; border-radius: 3px; transition: filter .12s; }
 .hl[data-hl]:hover, mark.hl[data-mark]:hover { filter: brightness(1.06) saturate(1.15); }
 .hl-note { background: none; border-bottom: 2px dotted var(--accent); }
+/* Words highlighted in another Bible: the whole verse, faintly (bible.ts). */
+.hl.hl-faint { background: color-mix(in srgb, var(--hl) 14%, transparent); }
+.hl.hl-faint.hl-u { background: none; text-decoration-style: dotted; }
 .swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; border: 1px solid var(--line); flex: none; }
 .book-marks { list-style: none; padding: 0; margin: 6px 0; }
 .book-marks li { border-top: 1px solid var(--line); padding: 4px 0; }

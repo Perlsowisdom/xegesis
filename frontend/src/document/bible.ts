@@ -9,7 +9,7 @@ import { onBibles } from "../bibles";
 import { chip } from "../controls";
 import { button, clear, h } from "../dom";
 import {
-  Book, Column, Verse, alignColumns, highlightFor, markSegments, neighbourChapters, selectionRuns, verseParts, verseRangeText,
+  Book, Column, Verse, alignColumns, markSegments, neighbourChapters, selectionRuns, verseParts, verseRangeText,
 } from "../helpers";
 import { icon } from "../icons";
 import { addToList } from "../listpicker";
@@ -26,6 +26,7 @@ import { sidebar } from "../views/sidebar";
 import { attachContextMenu, selectedIn } from "./contextmenu";
 import { chapterGrid, contentsPopover } from "./contentspop";
 import { DocHost, DocView, bibleBooks, bibleModules } from "./view";
+import { NodeLike, QuotePart, VerseRange, cpLength, nodeAt, paintFor, partsOf, pointOf, tidyRange, verseTextOf } from "../verserange";
 
 interface Hit { id: number; module: string; ref: string; text: string; snippet?: string }
 
@@ -175,11 +176,13 @@ export function bibleDoc(host: DocHost): DocView {
 
   const lookUp = (t: string, word: Element | null, at: DOMRect) => void lookUpCard(t, word, at, { showWord: side.showWord, go: (r) => void go(r) });
   const marking = attachMarking(text, {
-    highlight: (s, r) => colour(styleOf(s), selectionRuns(shown, versesIn(r))),
+    highlight: (s, r) => colourWords(styleOf(s), r),
     restyle: async (id, style) => {
+      document.getSelection()?.removeAllRanges();
       if (await msg.attempt(() => run("highlight.update", { id, style })) !== undefined) await changed();
     },
     remove: async (id) => {
+      document.getSelection()?.removeAllRanges();
       if (await msg.attempt(() => run("highlight.delete", { id })) !== undefined) await changed();
     },
     note: (_t, r) => {
@@ -196,7 +199,9 @@ export function bibleDoc(host: DocHost): DocView {
       const v = target.closest<HTMLElement>("[data-hl]");
       if (!v || !text.contains(v) || target.closest(".vnum")) return null;
       const hl = highlights.find((x) => x.id === v.dataset.hl);
-      return hl ? { id: hl.id, style: hl.style, el: v } : null;
+      if (!hl) return null;
+      selectWhole(hl.id);
+      return { id: hl.id, style: hl.style, el: v, text: hl.text || undefined };
     },
   });
   // With "Show tagged words" on, a click on a tagged word looks it up too.
@@ -221,7 +226,7 @@ export function bibleDoc(host: DocHost): DocView {
       e.dataTransfer.setData("text/plain", v.ref);
       e.dataTransfer.effectAllowed = "copy";
     });
-    return h("span", { class: "verse", "data-verse": v.id, "data-base": base }, num, " ", content(v), " ");
+    return h("span", { class: "verse", "data-verse": v.id, "data-base": base }, num, " ", verseText(base, module, content(v)), " ");
   }
 
   function renderSingle(c: Column) {
@@ -235,6 +240,7 @@ export function bibleDoc(host: DocHost): DocView {
       chapterButton(),
       c.attribution ? h("footer", { class: "attribution" }, c.attribution) : null);
     paint();
+    paintMarks();
   }
 
   function renderParallel(columns: Column[]) {
@@ -247,12 +253,13 @@ export function bibleDoc(host: DocHost): DocView {
       h("tbody", {}, rows.map((r) =>
         h("tr", { "data-base": r.base },
           h("th", { scope: "row" }, verseButton(r.base)),
-          r.cells.map((v) => h("td", { lang: "" }, v ? content(v) : "")))))),
+          r.cells.map((v, i) => h("td", { lang: "" }, v ? verseText(r.base, columns[i].module, content(v)) : "")))))),
     chapterButton(),
     columns.some((c) => c.attribution)
       ? h("footer", { class: "attribution" }, columns.filter((c) => c.attribution).map((c) => h("p", {}, `${c.module}: ${c.attribution}`)))
       : null);
     paint();
+    paintMarks();
   }
 
   function verseButton(base: number) {
@@ -263,25 +270,92 @@ export function bibleDoc(host: DocHost): DocView {
     return b;
   }
 
-  // paint marks selected and highlighted verses; it runs after the text is drawn and on every change.
+  // verseText holds one verse's words in one Bible: highlights on exact words count characters in it.
+  function verseText(base: number, module: string, kids: Node[] | string) {
+    return h("span", { class: "vt", "data-tb": base, "data-module": module }, kids);
+  }
+
+  // paint marks the picked verses; it runs after the text is drawn and on every change.
   function paint() {
     for (const e of text.querySelectorAll<HTMLElement>("[data-base]")) {
-      const base = Number(e.dataset.base);
-      e.className = e.className.replace(/\bhl(-\w+)?\b|\bpicked\b/g, "").replace(/\s+/g, " ").trim();
-      const hl = highlightFor(highlights, base);
-      if (hl) {
-        e.classList.add(...hlClasses(hl.style));
-        e.dataset.hl = hl.id;
-      } else delete e.dataset.hl;
-      const on = selected.has(base);
-      if (on) e.classList.add("picked");
+      const on = selected.has(Number(e.dataset.base));
+      e.classList.toggle("picked", on);
       e.querySelector(".vnum")?.setAttribute("aria-pressed", String(on));
     }
   }
 
+  // paintMarks draws the highlights: on a whole verse (its cell, side by side), on exact words, or
+  // faintly on the whole verse for words highlighted in another Bible. It runs when the text is
+  // drawn and when the highlights change, never while text is being selected.
+  function paintMarks() {
+    for (const m of [...text.querySelectorAll("mark[data-hl]")]) m.replaceWith(...m.childNodes);
+    text.normalize();
+    for (const e of text.querySelectorAll<HTMLElement>("[data-hl], .hl")) {
+      e.classList.remove(...[...e.classList].filter((c) => c === "hl" || c.startsWith("hl-")));
+      delete e.dataset.hl;
+      if (e.classList.contains("vt")) e.removeAttribute("title");
+    }
+    for (const vt of text.querySelectorAll<HTMLElement>("[data-tb]")) {
+      const module = vt.dataset.module ?? "";
+      const p = paintFor(highlights, Number(vt.dataset.tb), cpLength(vt.textContent ?? ""), module);
+      const host = vt.closest<HTMLElement>(".verse, td") ?? vt;
+      if (p.whole) {
+        host.classList.add(...hlClasses(p.whole.style));
+        host.dataset.hl = p.whole.id;
+      }
+      if (p.faint) {
+        vt.classList.add(...hlClasses(p.faint.style), "hl-faint");
+        vt.dataset.hl = p.faint.id;
+        const where = modules.find((m) => m.id === p.faint!.module)?.abbreviation || p.faint.module;
+        vt.title = `Words highlighted in ${where}. In this Bible the whole verse is shown, faintly.`;
+      }
+      for (const s of p.segments) wrapWords(vt, s.start, s.end, hlClasses(s.hl.style), s.hl.id);
+    }
+  }
+
+  // wrapWords draws characters start..end of a verse's text as a highlight.
+  function wrapWords(vt: HTMLElement, start: number, end: number, cls: string[], id: string) {
+    const a = nodeAt(vt as unknown as NodeLike, start);
+    const b = nodeAt(vt as unknown as NodeLike, end);
+    if (!a || !b) return;
+    const r = document.createRange();
+    r.setStart(a.node as unknown as Text, a.offset);
+    r.setEnd(b.node as unknown as Text, b.offset);
+    if (r.collapsed) return;
+    const parts: [Text, number, number][] = [];
+    const w = document.createTreeWalker(vt, NodeFilter.SHOW_TEXT);
+    for (let n = w.nextNode() as Text | null; n; n = w.nextNode() as Text | null) {
+      if (!r.intersectsNode(n)) continue;
+      const s = n === r.startContainer ? r.startOffset : 0;
+      const e = n === r.endContainer ? r.endOffset : n.length;
+      if (s < e) parts.push([n, s, e]);
+    }
+    for (const [t, s, e] of parts) {
+      let mid = t;
+      if (s > 0) mid = t.splitText(s);
+      if (e - s < mid.length) mid.splitText(e - s);
+      const m = h("mark", { class: cls.join(" "), "data-hl": id });
+      mid.replaceWith(m);
+      m.append(mid);
+    }
+  }
+
+  // selectWhole selects all of a highlight's words, so a click on any part of it shows it whole.
+  function selectWhole(id: string) {
+    const els = [...text.querySelectorAll<HTMLElement>("[data-hl]")].filter((e) => e.dataset.hl === id)
+      .map((e) => (e.matches("mark, .vt") ? e : e.querySelector<HTMLElement>(".vt") ?? e));
+    const sel = document.getSelection();
+    if (!els.length || !sel) return;
+    const r = document.createRange();
+    r.setStartBefore(els[0]);
+    r.setEndAfter(els[els.length - 1]);
+    sel.removeAllRanges();
+    sel.addRange(r);
+  }
+
   async function loadHighlights() {
     highlights = parsed ? (await run<Highlight[]>("highlight.list", { ref: parsed.osis }).catch(() => [])) : [];
-    if (alive) paint();
+    if (alive) paintMarks();
   }
 
   // changed reloads the highlights after a change here, and tells the Highlights tool.
@@ -307,6 +381,38 @@ export function bibleDoc(host: DocHost): DocView {
       await changed();
       updateSelbar();
     }
+  }
+
+  // colourWords highlights exactly the selected words; a selection with no verse words in it (only
+  // verse numbers, say) highlights the verses it touches.
+  async function colourWords(style: string, r: Range) {
+    const w = wordsIn(r);
+    if (!w) return colour(style, selectionRuns(shown, versesIn(r)));
+    const ok = await msg.attempt(() => run("highlight.create", { range: w.range, module: w.module, parts: w.parts, style }));
+    if (ok === undefined) return;
+    document.getSelection()?.removeAllRanges();
+    await changed();
+  }
+
+  // wordsIn reads a text selection as a range of verse words in one Bible (the one it starts in).
+  function wordsIn(r: Range): { range: VerseRange; module: string; parts: QuotePart[] } | null {
+    const all = [...text.querySelectorAll<HTMLElement>("[data-tb]")].filter((vt) => r.intersectsNode(vt) && vt.textContent);
+    if (!all.length) return null;
+    const node = (n: Node) => n as unknown as NodeLike;
+    const vtOf = (n: Node) => verseTextOf(node(n)) as unknown as HTMLElement | null;
+    const startVt = vtOf(r.startContainer);
+    const module = (startVt && all.includes(startVt) ? startVt : all[0]).dataset.module ?? "";
+    const vts = all.filter((v) => (v.dataset.module ?? "") === module);
+    const first = vts[0];
+    const last = vts[vts.length - 1];
+    const start = startVt && vts.includes(startVt) ? pointOf(node(r.startContainer), r.startOffset) : { verse: Number(first.dataset.tb), offset: 0 };
+    const endVt = vtOf(r.endContainer);
+    const end = endVt && vts.includes(endVt) ? pointOf(node(r.endContainer), r.endOffset)
+      : { verse: Number(last.dataset.tb), offset: cpLength(last.textContent ?? "") };
+    if (!start || !end) return null;
+    const texts = vts.map((v) => ({ verse: Number(v.dataset.tb), text: v.textContent ?? "" }));
+    const range = tidyRange({ start, end }, texts.map((t) => ({ verse: t.verse, length: cpLength(t.text) })));
+    return range ? { range, module, parts: partsOf(range, texts) } : null;
   }
 
   // updateSelbar marks the picked verses and offers the marking toolbar over them.
@@ -392,7 +498,7 @@ export function bibleDoc(host: DocHost): DocView {
   attachContextMenu(text, {
     highlight: (style) => {
       const r = selectedIn(text);
-      if (r) return colour(style, selectionRuns(shown, versesIn(r)));
+      if (r) return colourWords(style, r);
     },
     list: () => {
       const r = selectedIn(text);

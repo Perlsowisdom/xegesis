@@ -27,9 +27,12 @@ async function currentBible(): Promise<string> {
 // part of the highlighted words to quote (T34f: highlights within verses).
 export async function highlightQuote(row: HighlightRow, range?: CharRange): Promise<{ md: string } | { reason: string }> {
   if (row.ref) {
-    const module = await currentBible();
+    // Exact words are quoted from the Bible they were highlighted in, when it is still installed.
+    const installed = row.range && row.module ? (await installedBibles()).some((m) => m.id === row.module) : false;
+    const module = installed ? row.module! : await currentBible();
     if (!module) return { reason: "Install a Bible first, from Library → Get Bibles" };
-    return verseQuoteFor(row.ref, module);
+    const words = installed ? highlightText(row, range) : "";
+    return verseQuoteFor(row.ref, module, words);
   }
   const text = highlightText(row, range);
   if (!text) return { reason: "this highlight kept no words" };
