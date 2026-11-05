@@ -39,6 +39,11 @@ export default [
       await vt.waitFor({ timeout: 10000 });
       t.assert.match(await vt.textContent(), /gave his one and only Son/);
       await t.shot("bb-02-sword-passage.png");
+      // Leave the library as found: the other checks read the Bibles they started with.
+      await page.locator(".bibles-btn:visible").first().click();
+      await page.locator(`.popover .chip-toggle:has(input[value="sworde2e"])`).click();
+      await page.keyboard.press("Escape");
+      await t.app.run("bible.remove", { module: "sworde2e" });
     },
   },
 ];
