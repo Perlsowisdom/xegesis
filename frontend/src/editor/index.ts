@@ -281,6 +281,11 @@ export function createEditor(host: HTMLElement, opts: EditorOptions = {}): RichE
       fn();
       return true;
     };
+    // Ctrl+End and Ctrl+Home go to the end or start of the text, also from inside a verse quote,
+    // where the browser would leave the caret.
+    if (!e.shiftKey && !e.altKey && (e.key === "End" || e.key === "Home")) {
+      return run(() => editor.update(() => (e.key === "End" ? $getRoot().selectEnd() : $getRoot().selectStart())));
+    }
     if (!e.shiftKey && !e.altKey && k === "k") return run(() => bar.askLink());
     if (e.shiftKey && !e.altKey && k === "k" && opts.onVerseRef) return run(() => runInsert("verseref", bar.insertButton()));
     if (!e.shiftKey && !e.altKey && k === "u") return run(() => editor.dispatchCommand(FORMAT_TEXT_COMMAND, "underline"));
@@ -401,7 +406,10 @@ export function createEditor(host: HTMLElement, opts: EditorOptions = {}): RichE
       const root = $getRoot();
       root.clear();
       fromBlocks(parseMarkdown(md)).forEach((n) => root.append(n));
-      if (!root.getFirstChild()) root.append($createParagraphNode());
+      // Text that ends with a block the caret cannot write in (a verse quote, a divider, a table)
+      // gets a line under it to go on writing, as after inserting one. An empty line is not saved.
+      const end = root.getLastChild();
+      if (!end || !$isElementNode(end) || $isTableNode(end)) root.append($createParagraphNode());
     }, { discrete: true, tag: "history-merge" });
     loading = false;
   }

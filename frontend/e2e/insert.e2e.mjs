@@ -207,6 +207,23 @@ export default [
     },
   },
   {
+    row: "A saved note that ends with a verse quote, a divider or a table opens with a line under it to write on (T19)",
+    shot: "in-07b-line-after.png",
+    async run(t) {
+      const quote = "> Love must be\n> — [Romans 12:9](#passage/Rom.12.9) (ENGNET)";
+      for (const [end, label] of [[quote, "verse quote"], ["---", "divider"], ["| A | B |\n| --- | --- |\n| 1 | 2 |", "table"]]) {
+        // Opening it adds nothing to the saved text.
+        await t.openNote(`Para.\n\n${end}`, `Ends with a ${label}, untouched`);
+        t.assert.equal(await t.saved(), `Para.\n\n${end}`, label);
+        await t.openNote(`Para.\n\n${end}`, `Ends with a ${label}`);
+        await t.focusEnd();
+        await t.type("Typed after.");
+        const body = await t.saved();
+        t.assert.ok(body.endsWith("\n\nTyped after."), `${label}: ${body}`);
+      }
+    },
+  },
+  {
     row: "Drag a verse from a Bible pane into a note: the verse is quoted",
     shot: "in-08-drag-verse.png",
     async run(t) {

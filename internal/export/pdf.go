@@ -472,7 +472,7 @@ func (l *layout) blocks(bs []Block) {
 	n := 0
 	for i := 0; i < len(bs); i++ {
 		b := bs[i]
-		if b.Kind != Numbered {
+		if b.Kind != Numbered && b.Kind != Bullet { // numbering goes on over sub-point bullets
 			n = 0
 		}
 		switch b.Kind {

@@ -16,6 +16,13 @@ export function untitled(kind: DocKind): string {
   return { sermon: "Untitled sermon", lesson: "Untitled lesson", study: "Untitled study" }[kind] ?? "Untitled";
 }
 
+// sermonAddress reads #sermons/<id>, the address that opens one document. A document just made
+// elsewhere (My work → New → Sermon) is opened with ?new, so its title starts empty and takes the keyboard.
+export function sermonAddress(hash: string): { id: string; fresh: boolean } | null {
+  const m = /^#sermons\/([^?]+)(\?new)?$/.exec(hash);
+  return m ? { id: decodeURIComponent(m[1]), fresh: !!m[2] } : null;
+}
+
 // docSummary is the line under a document's title in the list: kind, passage and length.
 export function docSummary(d: { kind: DocKind; passage?: { display: string }; points: Point[]; words: number }): string {
   const parts: string[] = [KIND_NAME[d.kind] ?? d.kind];

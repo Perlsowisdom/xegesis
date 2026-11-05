@@ -107,6 +107,13 @@ Design first: mock-up for approval, then build.
 - EPUB chapters loaded while scrolling are never unloaded.
 - Highlights in the sidebar for a book: notes are listed beside highlights but have no colour filter or search.
 
+## After T19 (5 November 2026)
+
+- Clicking on the words of a verse quote in a note or sermon puts the caret in them, where typing does nothing and says nothing. Ctrl+End now leaves the quote; a click should put the caret on the line after it instead.
+- A personal-copy Bible's limit is checked per quotation only (about 2,000 characters each), so several quotations in one sermon can add up past it, and exporting the sermon does not count them in `copy_log` (documents.md calls the per-quote limit an estimate).
+- ⋯ → "Notes on this passage" opens the Notes tool as it was left: if a note on another passage is still open there (Romans 8 while reading Romans 12), that note shows instead of the notes on this passage.
+- The interface tests stand in for the system print dialog and the save dialog (a test cannot answer them); printing and choosing where to save are still checked by hand.
+
 ## After T34f (4 November 2026)
 
 - Books (EPUB) already keep exact ranges (paragraph and offset); a new book highlight over an older one still stacks the two colours. Give `highlight.create` for books the same overlap splitting as Bible ranges.

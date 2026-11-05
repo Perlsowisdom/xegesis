@@ -418,6 +418,29 @@ func TestSermonExport(t *testing.T) {
 	}
 }
 
+// A sub-point between two main points does not start the numbering again (found by T19).
+func TestSermonOutlineNumbersGoOnAfterSubPoints(t *testing.T) {
+	e := setup(t)
+	var doc struct{ ID string }
+	e.must("document.create", map[string]any{"title": "Love in action", "points": []map[string]any{
+		{"h": "First point"}, {"h": "A sub-point", "level": 2}, {"h": "Second point"}}}, &doc)
+	src := []map[string]any{{"kind": "document", "id": doc.ID}}
+	if _, md := e.make("md", src, nil); !bytes.Contains(md, []byte("1. First point\n\n- A sub-point\n\n2. Second point")) {
+		t.Errorf("Markdown:\n%s", md)
+	}
+	if _, html := e.make("html", src, nil); !bytes.Contains(html, []byte(`<ol start="2"><li dir="auto">Second point</li></ol>`)) {
+		t.Errorf("HTML:\n%s", html)
+	}
+	_, docx := e.make("docx", src, nil)
+	if d := squash(checkDOCX(t, docx)); !strings.Contains(d, "1.Firstpoint•Asub-point2.Secondpoint") {
+		t.Errorf("Word numbers the second point 1 again: %s", d)
+	}
+	_, pdfData := e.make("pdf", src, nil)
+	if text := squash(pdfText(t, pdfData)); !strings.Contains(text, "2.Secondpoint") {
+		t.Errorf("PDF: %s", text)
+	}
+}
+
 func TestReports(t *testing.T) {
 	e := setup(t)
 	// The real report.passage, on the test library.
