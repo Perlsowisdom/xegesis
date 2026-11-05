@@ -16,6 +16,7 @@ import { parseMarkdown } from "./editor/markdown";
 import { icon } from "./icons";
 import { openPopover } from "./popover";
 import { openExport } from "./printexport";
+import { registerDoc } from "./activedoc";
 import { DocKind, KIND_NAME, migrateOutline, pointsOf, untitled } from "./sermonwords";
 import type { SermonDoc } from "./views/sermons";
 import { folderName, loadFolders, moveMenu, workChanged } from "./work";
@@ -234,7 +235,9 @@ export function sermonPage(o: SermonPageOptions): SermonPage {
       changed();
     }
     if (o.fresh) tbox.focus();
+    unregister = registerDoc({ kind: "sermon", el, id: () => d?.id ?? null, title: () => title || untitled(d?.kind ?? "sermon"), insert: (md) => editor?.insertMarkdown(md) });
   }
+  let unregister = () => {};
 
   const onUnload = () => void save();
   window.addEventListener("beforeunload", onUnload);
@@ -255,6 +258,7 @@ export function sermonPage(o: SermonPageOptions): SermonPage {
     flush: save,
     destroy() {
       alive = false;
+      unregister();
       window.removeEventListener("beforeunload", onUnload);
       void save().finally(() => {
         editor?.destroy();

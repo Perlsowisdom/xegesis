@@ -122,3 +122,13 @@ Design first: mock-up for approval, then build.
 - Ranged highlights moved by `highlight.update` have no interface yet (the command takes a range; the toolbar only recolours, underlines and removes).
 - Offsets count code points of the text as drawn from the Bible's markup. If a Bible module is reinstalled with different text, ranges in it may drift; they are not re-found by their words yet.
 
+## After T36a (5 November 2026)
+
+- Claude Code and Codex show as "coming in T36b" in Settings → Assistant → Model; the MCP assistant mode (read-only tools only) comes with them and should reuse `assistant.Tools`.
+- Claude goes through Anthropic's OpenAI-compatible endpoint: no prompt caching, extended thinking or citations (ADR 0011). A native adapter would make long chats cheaper.
+- Chats are kept for the session only and one at a time in the panel; there is no list of earlier chats to go back to (only "Save as note").
+- References become verse chips when a reply is finished (through `book.refs`); while it streams they show as plain text.
+- "Insert into note" inserts after the block with the caret of the note or sermon last typed in; it does not ask which when several are open side by side.
+- Bibles and reference works are shortened to their quoting limit for every provider; only personal copies of library books are withheld from online providers. A personal-copy Bible is therefore sent, shortened, to an online provider, as it may be quoted into a note. Confirm with the user that this is what "personal copies of books" meant.
+- The old local preference `xegesis.assistant.provider` (T34a's placeholder) is no longer read by Settings; `prefs.provider` in `state.ts` and `providerText` in `shellwords.ts` can go once nothing else uses them.
+- The licence gate limits each tool result on its own; a model that reads the same limited passage many times in one chat can receive more than one quoting limit in total, as several quotations in one sermon can (see After T19).

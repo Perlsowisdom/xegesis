@@ -19,6 +19,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"github.com/Perlsowisdom/xegesis/frontend"
+	"github.com/Perlsowisdom/xegesis/internal/assistant"
 	"github.com/Perlsowisdom/xegesis/internal/command"
 	"github.com/Perlsowisdom/xegesis/internal/command/all"
 	"github.com/Perlsowisdom/xegesis/internal/integrations/secrets"
@@ -42,7 +43,8 @@ type App struct {
 const rescanEvery = 10 * time.Minute
 
 func (a *App) startup(ctx context.Context) {
-	a.ctx = ctx
+	// The assistant streams its replies to the interface as events.
+	a.ctx = assistant.WithEmitter(ctx, func(name string, data any) { runtime.EventsEmit(ctx, name, data) })
 	bg, stop := context.WithCancel(context.Background())
 	a.bg, a.stop = bg, stop
 	a.every(bg, time.Hour, "backup.auto", nil)

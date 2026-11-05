@@ -170,6 +170,36 @@ kbd { font-family: inherit; font-size: .8rem; border: 1px solid var(--line); bor
 .rightbar .notes-panel { background: none; border: 0; padding: 0; }
 .chat-off ul { padding-left: 18px; }
 .chat-off li { margin: 4px 0; }
+/* The AI chat (views/chat.ts): questions, streamed replies, tool lines, draft cards, the privacy panel. */
+.chat-on { display: flex; flex-direction: column; gap: 8px; }
+.chat-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.chat-head .hint { margin: 0; }
+.chat-log { display: flex; flex-direction: column; gap: 10px; }
+.chat-q { align-self: flex-end; max-width: 90%; background: var(--fill-soft); color: var(--fill-soft-fg); border-radius: 12px 12px 4px 12px; padding: 6px 10px; white-space: pre-wrap; }
+.chat-a { display: flex; flex-direction: column; gap: 4px; }
+.chat-a[data-state="writing"] .chat-a-body:empty::after { content: "…"; color: var(--muted); }
+.chat-a .md p { margin: 4px 0; }
+.chat-a .md .ref-chip { text-decoration: none; }
+.tool-line { font-size: .8rem; color: var(--muted); border-left: 2px solid var(--line); padding-left: 8px; }
+.tool-line summary { cursor: pointer; }
+.tool-line[data-state="running"] summary { font-style: italic; }
+.tool-sent pre, .privacy-panel pre { white-space: pre-wrap; word-break: break-word; max-height: 16rem; overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font-size: .78rem; }
+.draft-card { border: 1px solid var(--chip-line); background: var(--panel); border-radius: 10px; padding: 8px 12px; }
+.draft-label { margin: 0 0 4px; font-size: .75rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.draft-actions { margin-top: 6px; }
+.privacy-panel { border: 1px solid var(--fill); background: var(--bg); border-radius: 10px; padding: 10px 12px; }
+.privacy-panel h3 { margin-top: 0; }
+.privacy-panel { min-width: 0; overflow-wrap: anywhere; }
+.privacy-panel dl.info { display: block; }
+.privacy-panel dt { font-weight: 600; color: var(--muted); font-size: .8rem; }
+.privacy-panel dd { margin: 0 0 8px; }
+.privacy-panel code { word-break: break-all; }
+.chat-compose { position: sticky; bottom: -24px; background: var(--bg); padding: 6px 0 4px; border-top: 1px solid var(--line); }
+.chat-context { margin: 0 0 4px; }
+.chat-context:empty { display: none; }
+.chat-row { gap: 6px; align-items: flex-end; }
+.chat-input { flex: 1; min-width: 0; resize: vertical; font: inherit; }
+.chat-stopped { margin: 0; }
 .compare-verse { border-top: 1px solid var(--line); padding: 6px 0; }
 .compare-verse h4 { margin: 2px 0; text-transform: none; letter-spacing: 0; }
 .compare-verse dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 10px; margin: 0; }
@@ -818,6 +848,15 @@ details.more summary { cursor: pointer; color: var(--accent); }
 .provider-chip:hover:not(:disabled) { color: var(--fg); }
 .provider-chip[aria-pressed="true"] { background: var(--fill-soft); border-color: var(--fill); color: var(--fill-soft-fg); }
 .privacy-list dd { margin-bottom: 8px; }
+.chip-later { font-size: .78rem; }
+.provider-chip:disabled { opacity: .7; cursor: default; }
+.assistant-details h3 { margin: 14px 0 6px; }
+.assistant-details input[type=url], .assistant-details input[type=text], .key-form input { min-width: 16rem; flex: 1 1 16rem; }
+.key-state { margin: 4px 0; }
+.model-chips { gap: 6px; margin-bottom: 6px; }
+.more-options { margin: 12px 0; }
+.more-options summary { cursor: pointer; color: var(--muted); }
+.test-row { margin-top: 12px; }
 
 /* Tabs that are not documents: notes, sermons, lists and the compact browsers (document/*.ts). */
 .doc-title { font-size: 1.1rem; font-weight: 600; flex: 1 1 12rem; }

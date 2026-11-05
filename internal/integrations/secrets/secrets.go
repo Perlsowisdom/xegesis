@@ -4,13 +4,18 @@ package secrets
 
 import (
 	"errors"
+	"os"
 	"sync"
 
 	"github.com/zalando/go-keyring"
 )
 
-// Service is the keychain service name all Xegesis secrets are filed under.
+// Service is the keychain service name all Xegesis secrets are filed under. The interface tests
+// set XEGESIS_KEYRING_SERVICE to file theirs under another name, apart from the person's own.
 const Service = "xegesis"
+
+// ServiceEnv names the environment variable that overrides Service.
+const ServiceEnv = "XEGESIS_KEYRING_SERVICE"
 
 // ErrNotFound means no secret is stored under that name.
 var ErrNotFound = errors.New("secrets: not found")
@@ -22,23 +27,28 @@ type Store interface {
 	Delete(name string) error
 }
 
-type osStore struct{}
+type osStore struct{ service string }
 
 // OS returns the operating system keychain.
-func OS() Store { return osStore{} }
+func OS() Store {
+	if s := os.Getenv(ServiceEnv); s != "" {
+		return osStore{s}
+	}
+	return osStore{Service}
+}
 
-func (osStore) Get(name string) (string, error) {
-	v, err := keyring.Get(Service, name)
+func (o osStore) Get(name string) (string, error) {
+	v, err := keyring.Get(o.service, name)
 	if errors.Is(err, keyring.ErrNotFound) {
 		return "", ErrNotFound
 	}
 	return v, err
 }
 
-func (osStore) Set(name, value string) error { return keyring.Set(Service, name, value) }
+func (o osStore) Set(name, value string) error { return keyring.Set(o.service, name, value) }
 
-func (osStore) Delete(name string) error {
-	err := keyring.Delete(Service, name)
+func (o osStore) Delete(name string) error {
+	err := keyring.Delete(o.service, name)
 	if errors.Is(err, keyring.ErrNotFound) {
 		return nil
 	}
