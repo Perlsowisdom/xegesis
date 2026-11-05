@@ -34,6 +34,18 @@ The others come from the user's requests.
   and `/link` still find their items (with `/quote` and `/link`, the verse text and the note link
   are second, after Quote and Link).
 
+## Tables (T34g)
+
+- The Table button opens a 10 × 10 grid: point at a square to choose rows by columns ("3 × 2"), click
+  to insert. `/table` inserts 3 × 3, `/table3x2` 3 rows by 2 columns (`x` or `×`; over 10 is capped).
+- Inside a cell every inline format, Markdown shortcut and verse chip works. Tab moves to the next cell
+  (after a typed reference, Tab first makes the chip); Tab in the last cell adds a row; Shift+Tab goes back.
+- Drag a column border to resize it. Right-click a cell (or press the Table button inside a table) to
+  add a row above or below, a column left or right, delete a row, a column or the table, or turn the
+  header row on and off.
+- Saved as a GitHub-style Markdown table. A comment line above keeps the column widths and a missing
+  header row: `<!-- table widths=120,200 header=no -->`. Tables export to HTML, Word and PDF.
+
 ## Headings and structure
 
 - The toolbar's heading button opens a choice of **Large, Medium and Small**, with Ctrl+Alt+1/2/3.

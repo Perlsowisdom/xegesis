@@ -260,7 +260,7 @@ export function registerTables(editor: LexicalEditor, content: HTMLElement, tabF
       cell = td.parentElement!.children[col - 1] as HTMLTableCellElement;
       col -= 1;
     } else if (r.right - e.clientX > 5) return null;
-    const key = editor.getEditorState().read(() => {
+    const key = editor.read(() => {
       const n = $getNearestNodeFromDOMNode(cell);
       return (n && $findTableNode(n)?.getKey()) ?? null;
     });
