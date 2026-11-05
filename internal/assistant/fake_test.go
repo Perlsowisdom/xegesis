@@ -14,10 +14,10 @@ import (
 // the request it got, and records every request.
 type fakeServer struct {
 	*httptest.Server
-	mu    sync.Mutex
+	mu     sync.Mutex
 	bodies []map[string]any
-	reply func(body map[string]any) step
-	block chan struct{} // when set, a reply waits on it after its first piece
+	reply  func(body map[string]any) step
+	block  chan struct{} // when set, a reply waits on it after its first piece
 }
 
 // step is one reply: text pieces, then tool calls (name, JSON arguments).
