@@ -9,8 +9,9 @@ import {
 } from "lexical";
 import { icon } from "../icons";
 import {
-  INK_COLOURS, INK_COLOUR_LABEL, INK_W, InkColour, InkDoc, InkStroke, InkTool, emptyInk, growTo, hits, inkOpacity, outlinePath,
+  INK_COLOURS, INK_COLOUR_LABEL, INK_W, InkColour, InkDoc, InkStroke, InkTool, emptyInk, growTo, hits, inkOpacity, outlinePath, strokeSize,
 } from "./ink";
+import { strokeOutline } from "./inkengine";
 import { $caretAfterBlock } from "./nodes";
 
 type SerializedInk = Spread<{ ink: InkDoc }, SerializedLexicalNode>;
@@ -93,8 +94,18 @@ let penAt = -Infinity;
 const palm = (e: PointerEvent) => e.pointerType === "touch" && performance.now() - penAt < PEN_PRESENCE_MS;
 
 const NS = "http://www.w3.org/2000/svg";
-const MIN_STEP = 0.8; // page units between points kept
+const MIN_STEP = 0.15; // page units between points kept: almost every point the pen reports
 const ERASE_REACH = 7;
+
+// What this webview can do for low-latency ink; read by the end-to-end test and nothing else.
+const caps = { desynchronized: false, delegated: false, predicted: false };
+if (typeof window !== "undefined") (window as unknown as { __xgInk: typeof caps }).__xgInk = caps;
+
+// The delegated ink trail (Chromium, so WebView2 on Windows): the system draws the pen tip itself.
+interface InkPresenter {
+  updateInkTrailStartPoint(e: PointerEvent, style: { color: string; diameter: number }): void;
+}
+const inkApi = () => (navigator as unknown as { ink?: { requestPresenter(o: { presentationArea: Element }): Promise<InkPresenter> } }).ink;
 
 // inkView is the read-only picture of a page of ink (saved reports, the chat).
 export function inkView(doc: InkDoc): HTMLElement {
@@ -134,7 +145,12 @@ class InkBlock {
   private page = document.createElementNS(NS, "svg");
   private undoBtn!: HTMLButtonElement;
   private redoBtn!: HTMLButtonElement;
-  private cur: { stroke: InkStroke; path: SVGPathElement; id: number } | null = null;
+  private cur: { stroke: InkStroke; id: number; tail: number[][]; frame: number } | null = null;
+  private canvas = document.createElement("canvas");
+  private ctx: CanvasRenderingContext2D | null = null;
+  private trail: InkPresenter | null = null;
+  private trailReady: Promise<InkPresenter | null> | null = null;
+  private colour = "";
   private erasing: { id: number; gone: Set<InkStroke>; last?: [number, number] } | null = null;
 
   constructor(private editor: LexicalEditor, private key: NodeKey, doc: InkDoc) {
@@ -142,7 +158,12 @@ class InkBlock {
     this.el = document.createElement("div");
     this.el.className = "ink-block";
     this.el.contentEditable = "false";
-    this.el.append(this.buildBar(), this.page);
+    const wrap = document.createElement("div");
+    wrap.className = "ink-wrap";
+    this.canvas.className = "ink-live";
+    this.canvas.setAttribute("aria-hidden", "true");
+    wrap.append(this.page, this.canvas);
+    this.el.append(this.buildBar(), wrap);
     this.page.setAttribute("class", "ink-page");
     this.page.setAttribute("role", "img");
     this.page.setAttribute("aria-label", "Handwriting area. Write or draw here with a pen, a mouse or a finger.");
@@ -187,7 +208,7 @@ class InkBlock {
 
   private point(e: PointerEvent): number[] {
     const [x, y] = this.at(e);
-    const pressure = e.pointerType === "pen" && e.pressure > 0 ? Math.max(1, Math.round(e.pressure * 100)) : 0;
+    const pressure = e.pointerType === "pen" && e.pressure > 0 ? Math.max(0.001, Math.round(e.pressure * 1000) / 1000) : 0;
     return [x, y, pressure];
   }
 
@@ -212,9 +233,9 @@ class InkBlock {
       return;
     }
     const stroke: InkStroke = { t: pen.tool, c: pen.colour, w: pen.width, p: [this.point(e)] };
-    const path = this.pathEl(stroke);
-    this.page.append(path);
-    this.cur = { stroke, path, id: e.pointerId };
+    this.cur = { stroke, id: e.pointerId, tail: [], frame: 0 };
+    this.colour = getComputedStyle(this.el).getPropertyValue(stroke.c === "ink" ? "--text" : `--hl-${stroke.c}`).trim() || "#2a2622";
+    this.startTrail(e, stroke);
     this.refreshLive();
   }
 
@@ -232,6 +253,10 @@ class InkBlock {
       const last = c.stroke.p[c.stroke.p.length - 1];
       if (Math.hypot(p[0] - last[0], p[1] - last[1]) >= MIN_STEP) c.stroke.p.push(p);
     }
+    const ahead = e.getPredictedEvents?.() ?? [];
+    caps.predicted ||= ahead.length > 0;
+    c.tail = ahead.map((ev) => this.point(ev));
+    if (this.trail) this.trail.updateInkTrailStartPoint(events.length ? events[events.length - 1] : e, this.trailStyle(c.stroke));
     const y = c.stroke.p[c.stroke.p.length - 1][1];
     const h = growTo(this.doc.h, y);
     if (h !== this.doc.h) {
@@ -242,8 +267,73 @@ class InkBlock {
     this.refreshLive();
   }
 
+  // The live stroke is drawn on a canvas (not held to the page's painting, for less delay), on one
+  // animation frame at most, and never touches the other strokes or the saved data.
   private refreshLive(): void {
-    if (this.cur) this.cur.path.setAttribute("d", outlinePath(this.cur.stroke));
+    const c = this.cur;
+    if (!c || c.frame) return;
+    c.frame = requestAnimationFrame(() => {
+      c.frame = 0;
+      if (this.cur === c) this.paintLive(c);
+    });
+  }
+
+  private paintLive(c: NonNullable<InkBlock["cur"]>): void {
+    const r = this.page.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const w = Math.max(1, Math.round(r.width * dpr)), h = Math.max(1, Math.round(r.height * dpr));
+    if (!this.ctx) {
+      this.ctx = this.canvas.getContext("2d", { desynchronized: true });
+      const attrs = this.ctx?.getContextAttributes?.() as { desynchronized?: boolean } | undefined;
+      caps.desynchronized = attrs?.desynchronized === true;
+    }
+    const g = this.ctx;
+    if (!g) return;
+    if (this.canvas.width !== w || this.canvas.height !== h) {
+      this.canvas.width = w;
+      this.canvas.height = h;
+    }
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.clearRect(0, 0, w, h);
+    const k = c.stroke;
+    const o = strokeOutline(c.tail.length ? [...k.p, ...c.tail] : k.p, strokeSize(k.t, k.w), k.t === "hl");
+    if (o.length < 3) return;
+    const sc = w / INK_W;
+    g.setTransform(sc, 0, 0, sc, 0, 0);
+    g.beginPath();
+    g.moveTo(o[0][0], o[0][1]);
+    for (let i = 1; i < o.length; i++) g.lineTo(o[i][0], o[i][1]);
+    g.closePath();
+    g.fillStyle = this.colour;
+    g.fill();
+  }
+
+  private clearLive(): void {
+    if (this.cur?.frame) cancelAnimationFrame(this.cur.frame);
+    this.ctx?.setTransform(1, 0, 0, 1, 0, 0);
+    this.ctx?.clearRect(0, 0, this.canvas.width, this.canvas.height);
+  }
+
+  private trailStyle(k: InkStroke): { color: string; diameter: number } {
+    const px = this.page.getBoundingClientRect().width / INK_W;
+    return { color: this.colour, diameter: Math.max(1, strokeSize(k.t, k.w) * 0.9 * px) };
+  }
+
+  // startTrail asks the system to draw the pen tip itself where it can (not the highlighter, which is see-through).
+  private startTrail(e: PointerEvent, k: InkStroke): void {
+    this.trail = null;
+    const api = inkApi();
+    if (!api || e.pointerType === "mouse" || k.t === "hl") return;
+    this.trailReady ??= api.requestPresenter({ presentationArea: this.page }).then((p) => {
+      caps.delegated = true;
+      return p;
+    }, () => null);
+    void this.trailReady.then((p) => {
+      if (p && this.cur?.stroke === k) {
+        this.trail = p;
+        p.updateInkTrailStartPoint(e, this.trailStyle(k));
+      }
+    });
   }
 
   private up(e: PointerEvent): void {
@@ -255,8 +345,9 @@ class InkBlock {
     }
     const c = this.cur;
     if (!c || c.id !== e.pointerId) return;
+    this.clearLive();
     this.cur = null;
-    pathCache.delete(c.stroke); // drawn while it grew; the finished shape is made fresh
+    this.trail = null;
     this.commit({ h: this.doc.h, s: [...this.doc.s, c.stroke] });
   }
 
@@ -265,8 +356,9 @@ class InkBlock {
       this.erasing = null;
       this.draw();
     } else if (this.cur?.id === e.pointerId) {
-      this.cur.path.remove();
+      this.clearLive();
       this.cur = null;
+      this.trail = null;
     }
   }
 

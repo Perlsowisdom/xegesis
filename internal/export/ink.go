@@ -10,7 +10,7 @@ import (
 // Handwriting in a note is a fenced block of vector strokes (frontend/src/editor/ink.ts):
 //
 //	```ink
-//	{"v":1,"h":260,"s":[{"t":"pen","c":"ink","w":2,"p":[[12.5,30,0],[14,33.5,61]]}]}
+//	{"v":2,"h":260,"s":[{"t":"pen","c":"ink","w":2,"p":[[12.53,30,0],[14.01,33.5,0.612]]}]}
 //	```
 //
 // The page is inkW units wide whatever its size on paper. HTML and PDF draw the strokes; Word has
@@ -28,7 +28,7 @@ type InkStroke struct {
 	Tool   string // "pen" or "hl" (highlighter)
 	Colour string
 	Width  int
-	Points [][3]float64 // x, y, pressure (0 when the device gave none)
+	Points [][3]float64 // x, y, pressure 0 to 1 (0 when the device gave none)
 }
 
 var inkHex = map[string]string{
@@ -40,21 +40,6 @@ func (k InkStroke) size() float64 {
 		return []float64{14, 24, 40}[k.Width-1]
 	}
 	return []float64{2.5, 5, 10}[k.Width-1]
-}
-
-// meanWidth is the stroke's width in page units: its size, thinned a little by light pressure.
-func (k InkStroke) meanWidth() float64 {
-	sum, n := 0.0, 0
-	for _, p := range k.Points {
-		if p[2] > 0 {
-			sum += p[2] / 100
-			n++
-		}
-	}
-	if n == 0 || k.Tool == "hl" {
-		return k.size()
-	}
-	return k.size() * (0.6 + 0.8*sum/float64(n))
 }
 
 func (k InkStroke) opacity() float64 {
@@ -83,13 +68,18 @@ func parseInk(lines []string) *Ink {
 	var raw struct {
 		H *float64 `json:"h"`
 	}
-	if json.Unmarshal([]byte(lines[1]), &j) != nil || json.Unmarshal([]byte(lines[1]), &raw) != nil || raw.H == nil || j.V != 1 {
+	if json.Unmarshal([]byte(lines[1]), &j) != nil || json.Unmarshal([]byte(lines[1]), &raw) != nil || raw.H == nil || (j.V != 1 && j.V != 2) {
 		return nil
 	}
 	ink := &Ink{Raw: strings.Join(lines, "\n"), H: math.Min(8000, math.Max(200, *raw.H))}
 	for _, s := range j.S {
 		if (s.T != "pen" && s.T != "hl") || inkHex[s.C] == "" || s.W < 1 || s.W > 3 {
 			return nil
+		}
+		if j.V == 1 { // the first format wrote pressure 0 to 100
+			for i := range s.P {
+				s.P[i][2] /= 100
+			}
 		}
 		ink.Strokes = append(ink.Strokes, InkStroke{Tool: s.T, Colour: s.C, Width: s.W, Points: s.P})
 	}
@@ -104,21 +94,10 @@ func (n *Ink) svg() string {
 		col := inkHex[k.Colour]
 		op := ""
 		if k.opacity() < 1 {
-			op = fmt.Sprintf(` stroke-opacity="%g" fill-opacity="%g"`, k.opacity(), k.opacity())
+			op = fmt.Sprintf(` fill-opacity="%g"`, k.opacity())
 		}
-		switch len(k.Points) {
-		case 0:
-		case 1:
-			fmt.Fprintf(&b, `<circle cx="%g" cy="%g" r="%.2f" fill="%s"%s/>`, k.Points[0][0], k.Points[0][1], k.meanWidth()/2, col, op)
-		default:
-			var pts strings.Builder
-			for i, p := range k.Points {
-				if i > 0 {
-					pts.WriteByte(' ')
-				}
-				fmt.Fprintf(&pts, "%g,%g", p[0], p[1])
-			}
-			fmt.Fprintf(&b, `<polyline points="%s" fill="none" stroke="%s" stroke-width="%.2f" stroke-linecap="round" stroke-linejoin="round"%s/>`, pts.String(), col, k.meanWidth(), op)
+		if d := k.path(); d != "" {
+			fmt.Fprintf(&b, `<path d="%s" fill="%s"%s/>`, d, col, op)
 		}
 	}
 	b.WriteString(`</svg>`)

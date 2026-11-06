@@ -2,6 +2,7 @@ package export
 
 import (
 	"bytes"
+	"math"
 	"reflect"
 	"strings"
 	"testing"
@@ -269,14 +270,37 @@ func TestHandwritingExports(t *testing.T) {
 		t.Errorf("Markdown lost the strokes: %q", out)
 	}
 	h := HTML(d)
-	if !strings.Contains(h, `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 300"`) || !strings.Contains(h, "<polyline") || !strings.Contains(h, "<circle") || !strings.Contains(h, "#4f7fbf") {
+	if !strings.Contains(h, `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 300"`) || !strings.Contains(h, "<path d=\"M") || strings.Contains(h, "<polyline") || !strings.Contains(h, "#4f7fbf") {
 		t.Errorf("HTML has no drawing: %q", h)
 	}
 	pdf, _, err := PDF(d)
 	if err == nil && !bytes.Contains(pdf, []byte("%PDF")) {
 		t.Errorf("PDF is not a PDF")
 	}
-	if parseInk([]string{"```ink", "{nope", "```"}) != nil || parseInk([]string{"```ink", `{"v":2,"h":300,"s":[]}`, "```"}) != nil {
+	if parseInk([]string{"```ink", "{nope", "```"}) != nil || parseInk([]string{"```ink", `{"v":3,"h":300,"s":[]}`, "```"}) != nil {
 		t.Error("damaged ink is read as ink")
+	}
+}
+
+func TestInkFormats(t *testing.T) {
+	v1 := parseInk([]string{"```ink", `{"v":1,"h":300,"s":[{"t":"pen","c":"ink","w":2,"p":[[1.5,2,61]]}]}`, "```"})
+	v2 := parseInk([]string{"```ink", `{"v":2,"h":300,"s":[{"t":"pen","c":"ink","w":2,"p":[[1.55,2.25,0.612]]}]}`, "```"})
+	if v1 == nil || v2 == nil || v1.Strokes[0].Points[0][2] != 0.61 || v2.Strokes[0].Points[0][2] != 0.612 {
+		t.Fatalf("v1 = %+v, v2 = %+v", v1, v2)
+	}
+}
+
+// The numbers come from the screen's engine (frontend/src/editor/inkengine.ts) for the same stroke.
+func TestInkOutlineMatchesScreen(t *testing.T) {
+	k := InkStroke{Tool: "pen", Colour: "ink", Width: 2, Points: [][3]float64{{10, 20, 0.2}, {40, 25, 0.5}, {70, 10, 0.9}, {100, 40, 0.6}}}
+	o := k.outline()
+	minX, maxX, minY, maxY := 1e9, -1e9, 1e9, -1e9
+	for _, p := range o {
+		minX, maxX = math.Min(minX, p[0]), math.Max(maxX, p[0])
+		minY, maxY = math.Min(minY, p[1]), math.Max(maxY, p[1])
+	}
+	near := func(a, b float64) bool { return math.Abs(a-b) < 0.002 }
+	if len(o) != 104 || !near(minX, 8.527) || !near(maxX, 102.341) || !near(minY, 7.361) || !near(maxY, 42.341) {
+		t.Errorf("outline = %d points, x %.3f..%.3f, y %.3f..%.3f", len(o), minX, maxX, minY, maxY)
 	}
 }

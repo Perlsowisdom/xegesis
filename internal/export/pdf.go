@@ -94,10 +94,10 @@ type rule struct {
 	rgb                   [3]float64
 }
 
+// pdfStroke is the filled outline of a stroke of handwriting.
 type pdfStroke struct {
-	pts   [][2]float64
-	width float64
-	rgb   [3]float64
+	pts [][2]float64
+	rgb [3]float64
 }
 
 type pdfPage struct {
@@ -726,13 +726,12 @@ func pageContent(p *pdfPage, names map[*ttfFont]string) []byte {
 	for _, r := range p.rules {
 		fmt.Fprintf(&b, "%.3f %.3f %.3f RG %.2f w %.2f %.2f m %.2f %.2f l S\n", r.rgb[0], r.rgb[1], r.rgb[2], r.width, r.x1, r.y1, r.x2, r.y2)
 	}
-	b.WriteString("1 J 1 j\n")
 	for _, s := range p.strokes {
-		fmt.Fprintf(&b, "%.3f %.3f %.3f RG %.2f w %.2f %.2f m", s.rgb[0], s.rgb[1], s.rgb[2], s.width, s.pts[0][0], s.pts[0][1])
+		fmt.Fprintf(&b, "%.3f %.3f %.3f rg %.2f %.2f m", s.rgb[0], s.rgb[1], s.rgb[2], s.pts[0][0], s.pts[0][1])
 		for _, q := range s.pts[1:] {
 			fmt.Fprintf(&b, " %.2f %.2f l", q[0], q[1])
 		}
-		b.WriteString(" S\n")
+		b.WriteString(" h f\n")
 	}
 	b.WriteString("BT\n")
 	for _, r := range p.runs {
@@ -823,15 +822,12 @@ func (l *layout) ink(n *Ink) {
 	top := l.y
 	x0 := l.ml + (w-inkW*scale)/2
 	for _, k := range n.Strokes {
-		if len(k.Points) == 0 {
+		s := pdfStroke{rgb: k.rgb()}
+		for _, q := range k.outline() {
+			s.pts = append(s.pts, [2]float64{x0 + q[0]*scale, top - q[1]*scale})
+		}
+		if len(s.pts) < 3 {
 			continue
-		}
-		s := pdfStroke{width: k.meanWidth() * scale, rgb: k.rgb()}
-		for _, p := range k.Points {
-			s.pts = append(s.pts, [2]float64{x0 + p[0]*scale, top - p[1]*scale})
-		}
-		if len(s.pts) == 1 { // a dot is a stroke of no length with round ends
-			s.pts = append(s.pts, s.pts[0])
 		}
 		l.cur.strokes = append(l.cur.strokes, s)
 	}
