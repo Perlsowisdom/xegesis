@@ -115,7 +115,7 @@ const first = [
       const make = (format) => t.app.run("export.make", { sources: [{ kind: "note", id }], format, path: join(dir, `ink.${format}`), replace: true });
       const html = readFileSync((await make("html")).path, "utf8");
       t.assert.match(html, /<svg [^>]*viewBox="0 0 1000 \d+"/);
-      t.assert.ok(html.includes("<polyline"), "strokes drawn in the HTML");
+      t.assert.ok(/<path d="M[\d.,L-]+Z" fill="#/.test(html) && !html.includes("<polyline"), "strokes drawn as outlines in the HTML");
       const md = readFileSync((await make("md")).path, "utf8");
       t.assert.ok(md.includes(body.split("\n\n")[1]), "the stroke data is kept in Markdown");
       const pdfPath = (await make("pdf")).path;
@@ -130,7 +130,7 @@ const first = [
           c = inflateSync(pdf.subarray(at + 7, end - 1)).toString("latin1");
         } catch { /* not a compressed stream */ }
         if (c.includes("BT")) seen.push(c.slice(0, 300));
-        drawn = /1 J 1 j\n[\d. ]+ RG [\d.]+ w [\d. ]+ m [\d. l]+ S/.test(c);
+        drawn = /[\d. ]+ rg [\d. ]+ m [\d. l]+ h f/.test(c);
       }
       t.assert.ok(drawn, "strokes drawn in the PDF: " + JSON.stringify(seen));
       // The Print or save preview shows the drawing too.
