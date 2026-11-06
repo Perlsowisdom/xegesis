@@ -195,3 +195,4 @@ Design first: mock-up for approval, then build.
 - Highlighter strokes in PDF are blended with white, not transparent, so they hide whatever is under them.
 - e2e: the pen, touch and palm checks send synthetic pointer events (the harness has no pen); the
   mouse checks use real `page.mouse` input.
+- e2e flakes seen in the T37 full run (pass alone): "EPUB opens in Read mode, scrolls" (book.e2e.mjs) and M2 step 5 "add to a list" (which then fails step 10).
