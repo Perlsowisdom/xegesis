@@ -520,6 +520,9 @@ func listSermons(ctx context.Context, d *Deps, raw json.RawMessage) (Result, err
 		Passage *struct {
 			Display string `json:"display"`
 		} `json:"passage"`
+		Passages []struct {
+			Display string `json:"display"`
+		} `json:"passages"`
 	}
 	p := map[string]any{"limit": 30}
 	if a.Query != "" {
@@ -535,9 +538,7 @@ func listSermons(ctx context.Context, d *Deps, raw json.RawMessage) (Result, err
 	rows := make([]row, len(docs))
 	for i, x := range docs {
 		rows[i] = row{ID: x.ID, Kind: x.Kind, Title: x.Title}
-		if x.Passage != nil {
-			rows[i].Passage = x.Passage.Display
-		}
+		rows[i].Passage = passagesText(x.Passages, x.Passage)
 	}
 	return Result{Content: toJSON(rows), Label: fmt.Sprintf("Listed your sermons and studies: %d", len(rows))}, nil
 }
@@ -556,14 +557,17 @@ func readSermon(ctx context.Context, d *Deps, raw json.RawMessage) (Result, erro
 		Passage *struct {
 			Display string `json:"display"`
 		} `json:"passage"`
+		Passages []struct {
+			Display string `json:"display"`
+		} `json:"passages"`
 	}
 	if err := d.Run(ctx, "document.get", map[string]any{"id": a.ID}, &doc); err != nil {
 		return Result{}, err
 	}
 	body, short := Budget(doc.Body, maxResult)
 	head := fmt.Sprintf("%s: %s", doc.Kind, doc.Title)
-	if doc.Passage != nil {
-		head += " (" + doc.Passage.Display + ")"
+	if p := passagesText(doc.Passages, doc.Passage); p != "" {
+		head += " (" + p + ")"
 	}
 	label := fmt.Sprintf("Read your %s %q", doc.Kind, doc.Title)
 	if short {
@@ -875,4 +879,20 @@ func lookUpWord(ctx context.Context, d *Deps, raw json.RawMessage) (Result, erro
 	}
 	content, _ := Budget(b.String(), maxResult)
 	return Result{Content: content, Label: label}, nil
+}
+
+// passagesText lists a document's passages, such as "Matthew 14:22-33; Psalms 84".
+func passagesText(list []struct {
+	Display string `json:"display"`
+}, first *struct {
+	Display string `json:"display"`
+}) string {
+	var out []string
+	for _, r := range list {
+		out = append(out, r.Display)
+	}
+	if len(out) == 0 && first != nil {
+		out = append(out, first.Display)
+	}
+	return strings.Join(out, "; ")
 }

@@ -8,7 +8,7 @@ import { epub, pdf } from "./fixtures.mjs";
 const EPUB_TITLE = "E2E Test Book";
 
 // addBooks puts the fixtures in a folder beside the copied library and adds that folder.
-async function addBooks(t) {
+export async function addBooks(t) {
   if (t.app.books) return t.app.books;
   const dir = join(dirname(t.app.library), "books");
   mkdirSync(dir, { recursive: true });
@@ -31,7 +31,7 @@ async function addBooks(t) {
 }
 
 // openFromLibrary finds a book in the Library and presses its Read or Open in Study button.
-async function openFromLibrary(t, title, button) {
+export async function openFromLibrary(t, title, button) {
   const { page } = t;
   await page.evaluate(() => { location.hash = "#library"; });
   const q = page.locator("input.work-search:visible").first();
@@ -44,7 +44,7 @@ async function openFromLibrary(t, title, button) {
 }
 
 // closeBooks closes the test books' tabs and goes back to Study mode, so later checks start clean.
-async function closeBooks(t) {
+export async function closeBooks(t) {
   const { page } = t;
   await page.evaluate(() => { location.hash = "#reader"; localStorage.removeItem("xegesis.book.layout"); });
   await page.waitForTimeout(200);
@@ -104,7 +104,7 @@ async function chooseLayout(t, which) {
   await page.waitForTimeout(200);
 }
 
-const place = (t) => ({ innerText: () => t.page.evaluate(() => [...document.querySelectorAll(".book-where")].map((e) => e.textContent).join(" | ")) });
+const place = (t) => ({ innerText: () => t.page.evaluate(() => [...document.querySelectorAll(".book-where")].map((e) => `${e.querySelector(".book-unit").textContent} ${e.querySelector("input").value} ${e.querySelector(".book-of").textContent}`).join(" | ")) });
 
 const checks = [
   {
@@ -175,8 +175,12 @@ const checks = [
     async run(t) {
       const { page } = t;
       await addBooks(t);
-      const tabs = () => page.evaluate(() => JSON.parse(localStorage.getItem("xegesis.grid") || "{}").columns
-        .flatMap((c) => c.panes.flatMap((p) => p.tabs)).filter((x) => x.kind === "book" && x.title === "E2E Test Book").length);
+      const tabs = () => page.evaluate(() => {
+        const g = JSON.parse(localStorage.getItem("xegesis.grid") || "{}");
+        const leaves = (n) => (n?.kids ? n.kids.flatMap(leaves) : n?.tabs ? [n] : []);
+        const ps = g.root ? leaves(g.root) : (g.columns ?? []).flatMap((c) => c.panes);
+        return ps.flatMap((p) => p.tabs).filter((x) => x.kind === "book" && x.title === "E2E Test Book").length;
+      });
       await openFromLibrary(t, EPUB_TITLE, "Read");
       await visibleBook(t).locator(".book-text p", { hasText: "The first words" }).waitFor();
       const before = await tabs();
@@ -339,7 +343,7 @@ const checks = [
       t.assert.equal(await pane.locator(".book-sec[data-sec='2']").count(), 1, "chapter 2 loaded below chapter 1");
       await body.evaluate((e) => { const s = e.querySelector(".book-sec[data-sec='2']"); e.scrollTop += s.getBoundingClientRect().top - e.getBoundingClientRect().top + 60; });
       await page.waitForTimeout(600);
-      t.assert.ok(/Section 2 of/.test(await pane.locator(".book-where").innerText().catch(() => "")) || /Section 2 of/.test(await place(t).innerText()), "the place follows");
+      t.assert.ok(/Section 2 of/.test(await pane.locator(".book-where").evaluate((e) => `${e.querySelector(".book-unit").textContent} ${e.querySelector("input").value} ${e.querySelector(".book-of").textContent}`).catch(() => "")) || /Section 2 of/.test(await place(t).innerText()), "the place follows");
       await t.shot();
     },
   },

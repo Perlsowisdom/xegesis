@@ -4,7 +4,9 @@
 // leaving it empty makes nothing. Changes save on their own after a pause.
 
 import { Message, Note, Ref, run } from "./api";
-import { clear, h } from "./dom";
+import { button, clear, h } from "./dom";
+import { openPopover } from "./popover";
+import { navigate } from "./state";
 import {
   actionsMenu, docChip, pageHead, quotePopover, refPopover, saveIndicator, tagAdder, titleBox, verseRefPopover,
 } from "./docpage";
@@ -30,6 +32,8 @@ export interface NotePageOptions {
   onSaved?(n: Note): void;
   // Called when the note goes to the bin.
   onDeleted?(): void;
+  // Called when the note was turned into a sermon, Bible study or lesson; the default opens it in My work.
+  onTurned?(d: { id: string; kind: string; title: string }): void;
   // More menu entries this place offers, such as "Open in a tab".
   more?: [string, () => void][];
   // The first crumb, e.g. a link back to the list.
@@ -161,11 +165,33 @@ export function notePage(o: NotePageOptions): NotePage {
     actionsMenu(b, "Note actions", [
       ...(o.more ?? []).map(([l, fn]): [string, () => void] => [l, fn]),
       ["Move to folder…", () => void moveTo(b)],
+      ["Turn into…", () => setTimeout(() => turnMenu(b), 0)],
       ["Print or export…", () => { if (n) openExport({ title: noteName(n), sources: [{ kind: "note", id: n.id }] }); else msg.info("Write something first."); }],
       ["History", () => { if (n) void drawer.open(n); else msg.info("A new note has no history yet."); }],
       "-",
       ["Delete", () => void remove(), "danger"],
     ]);
+  }
+
+  // turnMenu offers Sermon, Bible study and Lesson; the choice is one command.
+  function turnMenu(anchor: HTMLElement) {
+    if (!note && !dirty) { msg.info("Write something first."); return; }
+    const kinds: [string, string][] = [["sermon", "Sermon"], ["study", "Bible study"], ["lesson", "Lesson"]];
+    openPopover(anchor, h("div", { class: "menu-list turn-menu" }, h("p", { class: "pop-title" }, "Turn into"),
+      kinds.map(([k, label]) => button(label, () => void turn(k)))), { label: "Turn into", menu: true });
+  }
+
+  async function turn(kind: string) {
+    await save();
+    if (!note) return;
+    const id = note.id;
+    const d = await msg.attempt(() => run<{ id: string; kind: string; title: string }>("note.turn_into", { id, kind }));
+    if (!d) return;
+    clearTimeout(timer);
+    dirty = false;
+    workChanged();
+    if (o.onTurned) o.onTurned(d);
+    else navigate(`sermons/${d.id}`);
   }
 
   async function remove() {

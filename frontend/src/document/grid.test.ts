@@ -1,40 +1,31 @@
 import { describe, expect, it } from "vitest";
 import {
-  Grid, MAX_COLUMNS, MIN_SIZE, TabSpec, activeTab, applyPreset, canDrop, closePane, closeTab, dropTab, emptyGrid, equalise,
-  findPane, findTab, insertTab, moveTab, openBookTab, openTab, paneRef, panes, resizeBetween, resizeColumns, restore, selectTab, serialise,
-  setLinked, setRef, shape, updateTab,
+  Grid, GridNode, MAX_PANES, MAX_SIBLINGS, MIN_SIZE, Pane, Split, TabSpec, activeTab, applyPreset, canDrop, closePane, closeTab, dropTab, emptyGrid, equalise,
+  findPane, findTab, insertTab, moveTab, openBookTab, openTab, paneRef, panes, resizeBetween, resizeSplit, restore, selectTab, serialise,
+  isSplit, setLinked, setRef, shape, updateTab,
 } from "./grid";
 
 const bible: TabSpec = { kind: "bible", modules: ["KJV"] };
 const book = (n: number): TabSpec => ({ kind: "book", itemId: `b${n}`, title: `Book ${n}` });
 
-// grid builds a grid from a list of columns, each a list of panes, each a list of tab titles.
+// grid builds a grid from a list of columns, each a list of panes, each a list of tab titles (the
+// layout an older save held, so it also tests opening those).
 function grid(layout: string[][][]): Grid {
-  let g = emptyGrid("John 1");
-  layout.forEach((col, ci) => {
-    col.forEach((pane, pi) => {
-      pane.forEach((title, ti) => {
-        if (ci === 0 && pi === 0 && ti === 0) {
-          g = openTab(g, { kind: "book", title });
-          return;
-        }
-        const last = panes(g)[panes(g).length - 1];
-        if (ti === 0) {
-          const zone = pi === 0 ? "right" : "bottom";
-          const target = pi === 0 ? g.columns[g.columns.length - 1].panes[0].id : last.id;
-          g = insertTab(g, { kind: "book", title }, target, zone)!;
-        } else {
-          g = openTab(g, { kind: "book", title }, last.id);
-        }
-      });
-    });
-  });
-  return g;
+  const columns = layout.map((col) => ({ panes: col.map((pane) => ({ tabs: pane.map((title) => ({ kind: "book", title })) })) }));
+  return restore({ columns, passage: "John 1" });
+}
+
+// columnsOf reads a grid made of columns back as the same list of columns of panes.
+function columnsOf(g: Grid): { size: number; panes: { size: number; tabs: { title?: string; kind: string }[] }[] }[] {
+  const r = g.root;
+  if (!r) return [];
+  const col = (n: GridNode) => (isSplit(n) ? { size: n.size, panes: n.kids as Pane[] } : { size: n.size, panes: [n] });
+  return (isSplit(r) && r.dir === "h" ? r.kids.map(col) : [col(r)]).map((c) => ({ size: c.size, panes: c.panes }));
 }
 
 // titles shows a grid as the same nesting of tab titles.
 function titles(g: Grid): string[][][] {
-  return g.columns.map((c) => c.panes.map((p) => p.tabs.map((t) => t.title ?? t.kind)));
+  return columnsOf(g).map((c) => c.panes.map((p) => p.tabs.map((t) => t.title ?? t.kind)));
 }
 
 function tabId(g: Grid, title: string): string {
@@ -49,7 +40,7 @@ function paneOf(g: Grid, title: string): string {
 describe("opening and closing", () => {
   it("makes the first pane when the grid is empty", () => {
     const g = openTab(emptyGrid("Rom 8"), bible);
-    expect(g.columns).toHaveLength(1);
+    expect(g.root).toBe(panes(g)[0]);
     const p = panes(g)[0];
     expect(g.selected).toBe(p.id);
     expect(activeTab(p)?.kind).toBe("bible");
@@ -90,9 +81,9 @@ describe("opening and closing", () => {
     expect(titles(g)).toEqual([[["A"]], [["C"]]]);
     g = closeTab(g, tabId(g, "C"));
     expect(titles(g)).toEqual([[["A"]]]);
-    expect(g.columns[0].size).toBeCloseTo(1);
+    expect(columnsOf(g)[0].size).toBeCloseTo(1);
     g = closeTab(g, tabId(g, "A"));
-    expect(g.columns).toEqual([]);
+    expect(g.root).toBeNull();
     expect(g.selected).toBe("");
   });
 
@@ -107,7 +98,7 @@ describe("opening and closing", () => {
     let g = grid([[["A"], ["B"], ["C"]]]);
     g = equalise(g);
     g = closeTab(g, tabId(g, "B"));
-    expect(g.columns[0].panes.map((p) => p.size)).toEqual([2 / 3, 1 / 3]);
+    expect(columnsOf(g)[0].panes.map((p) => p.size)).toEqual([2 / 3, 1 / 3]);
   });
 
   it("does not change the grid it was given", () => {
@@ -148,20 +139,60 @@ describe("drop rules", () => {
   it("halves the space of the pane or column it splits", () => {
     const g = equalise(grid([[["A", "B"]], [["C"]]]));
     const n = dropTab(g, tabId(g, "B"), paneOf(g, "C"), "right")!;
-    expect(n.columns.map((c) => c.size)).toEqual([0.5, 0.25, 0.25]);
+    expect(columnsOf(n).map((c) => c.size)).toEqual([0.5, 0.25, 0.25]);
     const m = dropTab(g, tabId(g, "B"), paneOf(g, "C"), "bottom")!;
-    expect(m.columns[1].panes.map((p) => p.size)).toEqual([0.5, 0.5]);
+    expect(columnsOf(m)[1].panes.map((p) => p.size)).toEqual([0.5, 0.5]);
   });
 
-  it("refuses a fourth column or a fourth pane in a column", () => {
+  it("refuses a fourth pane in a row or a column", () => {
     const wide = grid([[["A", "D"]], [["B"]], [["C"]]]);
-    expect(wide.columns).toHaveLength(MAX_COLUMNS);
+    expect(columnsOf(wide)).toHaveLength(MAX_SIBLINGS);
     expect(dropTab(wide, tabId(wide, "D"), paneOf(wide, "B"), "right")).toBeNull();
     expect(canDrop(wide, tabId(wide, "D"), paneOf(wide, "B"), "left")).toBe(false);
     expect(canDrop(wide, tabId(wide, "D"), paneOf(wide, "B"), "bottom")).toBe(true);
     const tall = grid([[["A", "D"], ["B"], ["C"]]]);
     expect(dropTab(tall, tabId(tall, "D"), paneOf(tall, "B"), "top")).toBeNull();
-    expect(canDrop(tall, tabId(tall, "D"), paneOf(tall, "B"), "right")).toBe(true);
+  });
+
+  it("allows at most 9 panes", () => {
+    const full = applyPreset(emptyGrid(), 3, 3, () => bible);
+    expect(panes(full)).toHaveLength(MAX_PANES);
+    const first = panes(full)[0];
+    expect(insertTab(full, { kind: "library" }, first.id, "right")).toBeNull();
+    expect(insertTab(full, { kind: "library" }, first.id, "center")).not.toBeNull();
+  });
+
+  it("splits one pane of a column side by side, leaving the rest of the column alone", () => {
+    // Two tabs next to each other above one wide tab.
+    const g = grid([[["A", "B"], ["W"]]]);
+    const n = dropTab(g, tabId(g, "B"), paneOf(g, "A"), "right")!;
+    expect(n.root && isSplit(n.root) && n.root.dir).toBe("v");
+    const top = (n.root as Split).kids[0] as Split;
+    expect(top.dir).toBe("h");
+    expect(top.kids.map((k) => (k as Pane).tabs[0].title)).toEqual(["A", "B"]);
+    expect(((n.root as Split).kids[1] as Pane).tabs[0].title).toBe("W");
+    expect(top.kids.map((k) => k.size)).toEqual([0.5, 0.5]);
+    expect((n.root as Split).kids.map((k) => k.size)).toEqual([0.5, 0.5]);
+  });
+
+  it("splits a pane below inside a row, and nests", () => {
+    let g = grid([[["A", "B", "C"]]]);
+    g = dropTab(g, tabId(g, "B"), paneOf(g, "A"), "right")!;
+    g = dropTab(g, tabId(g, "C"), paneOf(g, "B"), "bottom")!;
+    expect(panes(g)).toHaveLength(3);
+    const root = g.root as Split;
+    expect(root.dir).toBe("h");
+    expect((root.kids[1] as Split).dir).toBe("v");
+  });
+
+  it("closing a pane collapses a split left with one child", () => {
+    let g = grid([[["A", "B"], ["W"]]]);
+    g = dropTab(g, tabId(g, "B"), paneOf(g, "A"), "right")!;
+    g = closeTab(g, tabId(g, "B"));
+    expect(titles(g)).toEqual([[["A"], ["W"]]]);
+    g = closeTab(g, tabId(g, "W"));
+    expect(g.root).toBe(panes(g)[0]);
+    expect(g.root!.size).toBe(1);
   });
 
   it("allows a split that frees the space it needs", () => {
@@ -238,7 +269,7 @@ describe("presets", () => {
   it("makes equal sizes and keeps within 3 × 3", () => {
     const n = applyPreset(emptyGrid(), 5, 4, def);
     expect(shape(n)).toEqual([3, 3]);
-    expect(n.columns.map((c) => c.size)).toEqual([1 / 3, 1 / 3, 1 / 3]);
+    expect(columnsOf(n).map((c) => c.size)).toEqual([1 / 3, 1 / 3, 1 / 3]);
     expect(panes(n)).toHaveLength(9);
     expect(n.selected).toBe(panes(n)[0].id);
   });
@@ -261,9 +292,9 @@ describe("resizing", () => {
 
   it("resizes columns and evens them out again", () => {
     let g = equalise(grid([[["A"]], [["B"]]]));
-    g = resizeColumns(g, 0, 0.2);
-    expect(g.columns[0].size).toBeCloseTo(0.7);
-    expect(equalise(g).columns.map((c) => c.size)).toEqual([0.5, 0.5]);
+    g = resizeSplit(g, (g.root as Split).id, 0, 0.2);
+    expect(columnsOf(g)[0].size).toBeCloseTo(0.7);
+    expect(columnsOf(equalise(g)).map((c) => c.size)).toEqual([0.5, 0.5]);
   });
 });
 
@@ -282,9 +313,10 @@ describe("saving", () => {
   });
 
   it("survives damaged saves", () => {
-    expect(restore("{not json").columns).toEqual([]);
-    expect(restore(null).columns).toEqual([]);
-    expect(restore({ columns: [{ panes: [{ tabs: [{ kind: "virus" }] }] }] }).columns).toEqual([]);
+    expect(restore("{not json").root).toBeNull();
+    expect(restore(null).root).toBeNull();
+    expect(restore({ columns: [{ panes: [{ tabs: [{ kind: "virus" }] }] }] }).root).toBeNull();
+    expect(restore({ root: { kids: [{ kids: [] }] } }).root).toBeNull();
     const g = restore({ columns: [{ panes: [{ tabs: [{ kind: "bible", id: "x" }, { kind: "book", id: "x" }], active: "zzz", size: -3 }] }] });
     const p = panes(g)[0];
     expect(p.tabs.map((t) => t.kind)).toEqual(["bible", "book"]);
@@ -298,7 +330,30 @@ describe("saving", () => {
     const col = (n: number) => ({ panes: Array.from({ length: n }, (_, i) => ({ tabs: [{ kind: "book", title: `x${i}` }] })) });
     const g = restore({ columns: [col(5), col(1), col(1), col(1)] });
     expect(shape(g)).toEqual([3, 3]);
-    expect(g.columns[0].panes[2].tabs).toHaveLength(3);
-    expect(g.columns[2].panes[0].tabs).toHaveLength(2);
+    expect(columnsOf(g)[0].panes[2].tabs).toHaveLength(3);
+    expect(columnsOf(g)[2].panes[0].tabs).toHaveLength(2);
+  });
+
+  it("opens layouts saved before splits, and keeps the new ones", () => {
+    const old = { v: 1, columns: [{ id: "c1", size: 0.6, panes: [{ id: "p1", size: 0.5, tabs: [{ id: "t1", kind: "bible" }] }, { id: "p2", size: 0.5, tabs: [{ id: "t2", kind: "book" }] }] },
+      { id: "c2", size: 0.4, panes: [{ id: "p3", size: 1, tabs: [{ id: "t3", kind: "list" }] }] }], selected: "p2", passage: "John 3", seq: 9 };
+    const g = restore(old);
+    expect(titles(g)).toEqual([[["bible"], ["book"]], [["list"]]]);
+    expect(columnsOf(g).map((c) => c.size)).toEqual([0.6, 0.4]);
+    expect(g.selected).toBe("p2");
+    expect(g.passage).toBe("John 3");
+    const nested = dropTab(g, "t2", "p1", "right")!;
+    expect(restore(serialise(nested))).toEqual(nested);
+  });
+
+  it("applies the limits to a saved tree, and is not fooled by deep nesting", () => {
+    const leaf = (n: number) => ({ tabs: [{ kind: "book", title: `x${n}` }] });
+    const g = restore({ root: { kids: [leaf(1), leaf(2), leaf(3), leaf(4)], dir: "h" } });
+    expect(panes(g)).toHaveLength(3);
+    expect(panes(g)[2].tabs).toHaveLength(2);
+    let deep: unknown = leaf(0);
+    for (let i = 0; i < 50; i++) deep = { dir: i % 2 ? "h" : "v", kids: [deep, leaf(i)] };
+    expect(() => restore({ root: deep })).not.toThrow();
+    expect(panes(restore({ root: deep })).length).toBeLessThanOrEqual(MAX_PANES);
   });
 });

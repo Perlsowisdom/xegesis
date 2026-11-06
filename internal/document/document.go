@@ -36,6 +36,8 @@ func Register(r *command.Registry) {
 		command.Define("document.get", "Show one sermon, lesson or study with its outline and text.", false, s.get),
 		command.Define("document.list", "List sermons, lessons and studies, most recently changed first.", false, s.list),
 		command.Define("document.update", "Change a document's title, kind, main passage, outline, text, date preached or theme.", true, s.update),
+		command.Define("note.turn_into", "Turn a note into a sermon, Bible study or lesson in one step. The text, verses, tags, folder and links come "+
+			"with it; the note waits in the bin, with its earlier versions, until restored.", true, s.turnInto),
 		command.Define("document.delete", "Delete a document. It stays in document.deleted until restored.", true, s.delete),
 		command.Define("document.restore", "Bring back a deleted document.", true, s.restore),
 		command.Define("document.deleted", "List deleted documents, most recently deleted first.", false, s.deleted),
@@ -60,8 +62,22 @@ type Point struct {
 
 // outline is how outline_json is stored. Older rows may hold just the points as an array.
 type outline struct {
-	Passage string  `json:"passage,omitempty"`
-	Points  []Point `json:"points"`
+	Passage  string   `json:"passage,omitempty"`  // the first passage, kept for older readers
+	Passages []string `json:"passages,omitempty"` // every passage, in order
+	Points   []Point  `json:"points"`
+	Tags     []string `json:"tags,omitempty"`      // kept from the note this was turned from
+	FromNote string   `json:"from_note,omitempty"` // that note's id; it waits in the bin
+}
+
+// all lists the outline's passages; a row from before several passages holds just Passage.
+func (o outline) all() []string {
+	if len(o.Passages) > 0 {
+		return o.Passages
+	}
+	if o.Passage != "" {
+		return []string{o.Passage}
+	}
+	return nil
 }
 
 func parseOutline(raw sql.NullString) outline {
@@ -82,19 +98,22 @@ func parseOutline(raw sql.NullString) outline {
 
 // Document is a sermon, lesson or study as callers see it.
 type Document struct {
-	ID         string          `json:"id"`
-	Kind       string          `json:"kind" enum:"sermon,lesson,study"`
-	Title      string          `json:"title"`
-	Passage    *core.RefResult `json:"passage,omitempty" desc:"The main passage"`
-	Points     []Point         `json:"points" desc:"The outline, in order"`
-	Body       string          `json:"body" desc:"The full text, in Markdown"`
-	Words      int             `json:"words" desc:"Words in the text"`
-	PreachedOn string          `json:"preached_on,omitempty" desc:"When it was preached or taught, as YYYY-MM-DD"`
-	Theme      string          `json:"theme,omitempty" desc:"Its theme or topic, in a few words"`
-	FolderID   string          `json:"folder_id,omitempty" desc:"The folder it is filed in (folder.list)"`
-	CreatedAt  int64           `json:"created_at"`
-	UpdatedAt  int64           `json:"updated_at"`
-	DeletedAt  int64           `json:"deleted_at,omitempty"`
+	ID         string           `json:"id"`
+	Kind       string           `json:"kind" enum:"sermon,lesson,study"`
+	Title      string           `json:"title"`
+	Passage    *core.RefResult  `json:"passage,omitempty" desc:"The main passage (the first of passages)"`
+	Passages   []core.RefResult `json:"passages,omitempty" desc:"All the sermon's passages, in order"`
+	Tags       []string         `json:"tags,omitempty" desc:"Tags kept from the note this was turned from"`
+	FromNote   string           `json:"from_note,omitempty" desc:"The note this was turned from; it waits in the bin"`
+	Points     []Point          `json:"points" desc:"The outline, in order"`
+	Body       string           `json:"body" desc:"The full text, in Markdown"`
+	Words      int              `json:"words" desc:"Words in the text"`
+	PreachedOn string           `json:"preached_on,omitempty" desc:"When it was preached or taught, as YYYY-MM-DD"`
+	Theme      string           `json:"theme,omitempty" desc:"Its theme or topic, in a few words"`
+	FolderID   string           `json:"folder_id,omitempty" desc:"The folder it is filed in (folder.list)"`
+	CreatedAt  int64            `json:"created_at"`
+	UpdatedAt  int64            `json:"updated_at"`
+	DeletedAt  int64            `json:"deleted_at,omitempty"`
 }
 
 func refOf(s string) (*core.RefResult, error) {
@@ -133,12 +152,22 @@ func cleanKind(k string) (string, error) {
 }
 
 // cleanOutline checks the main passage and points and returns outline_json.
-func cleanOutline(passage string, points []Point) (string, error) {
-	o := outline{Points: []Point{}}
-	if r, err := refOf(passage); err != nil {
-		return "", err
-	} else if r != nil {
-		o.Passage = r.Display
+func cleanOutline(passages []string, points []Point, keep outline) (string, error) {
+	o := outline{Points: []Point{}, Tags: keep.Tags, FromNote: keep.FromNote}
+	if len(passages) > maxPassages {
+		return "", command.Errorf("bad_params", "a document can have up to %d passages", maxPassages)
+	}
+	for _, x := range passages {
+		r, err := refOf(x)
+		if err != nil {
+			return "", err
+		}
+		if r != nil {
+			o.Passages = append(o.Passages, r.Display)
+		}
+	}
+	if len(o.Passages) > 0 {
+		o.Passage = o.Passages[0]
 	}
 	if len(points) > maxPoints {
 		return "", command.Errorf("bad_params", "an outline can have up to %d points", maxPoints)
@@ -181,7 +210,15 @@ func scan(rows *sql.Rows) (Document, error) {
 	}
 	o := parseOutline(raw)
 	d.Points = o.Points
-	d.Passage, _ = refOf(o.Passage)
+	for _, x := range o.all() {
+		if r, _ := refOf(x); r != nil {
+			d.Passages = append(d.Passages, *r)
+		}
+	}
+	if len(d.Passages) > 0 {
+		d.Passage = &d.Passages[0]
+	}
+	d.Tags, d.FromNote = o.Tags, o.FromNote
 	d.Words = words(d.Body)
 	return d, nil
 }
@@ -224,11 +261,12 @@ func needStore(env *command.Env) error {
 // Commands -----------------------------------------------------------------------------------------
 
 type CreateParams struct {
-	Kind    string  `json:"kind,omitempty" enum:"sermon,lesson,study" desc:"Default sermon"`
-	Title   string  `json:"title,omitempty" desc:"Default \"Untitled\" with the kind"`
-	Passage string  `json:"passage,omitempty" desc:"The main passage, e.g. \"Rom 8:28-39\""`
-	Points  []Point `json:"points,omitempty" desc:"The outline"`
-	Body    string  `json:"body,omitempty" desc:"The full text, in Markdown"`
+	Kind     string   `json:"kind,omitempty" enum:"sermon,lesson,study" desc:"Default sermon"`
+	Title    string   `json:"title,omitempty" desc:"Default \"Untitled\" with the kind"`
+	Passage  string   `json:"passage,omitempty" desc:"The main passage, e.g. \"Rom 8:28-39\""`
+	Passages []string `json:"passages,omitempty" desc:"Several passages, in order (instead of passage)"`
+	Points   []Point  `json:"points,omitempty" desc:"The outline"`
+	Body     string   `json:"body,omitempty" desc:"The full text, in Markdown"`
 	// Details a sermon list shows.
 	PreachedOn string `json:"preached_on,omitempty" desc:"When it was preached or taught, as YYYY-MM-DD"`
 	Theme      string `json:"theme,omitempty" desc:"Its theme or topic, in a few words"`
@@ -236,6 +274,8 @@ type CreateParams struct {
 }
 
 const maxTheme = 200
+
+const maxPassages = 20
 
 // cleanDate checks a YYYY-MM-DD date; "" means none.
 func cleanDate(s string) (any, error) {
@@ -277,7 +317,11 @@ func (s *service) create(ctx context.Context, env *command.Env, p CreateParams) 
 	if title == "" {
 		title = untitled(kind)
 	}
-	ol, err := cleanOutline(p.Passage, p.Points)
+	passages := p.Passages
+	if passages == nil {
+		passages = []string{p.Passage}
+	}
+	ol, err := cleanOutline(passages, p.Points, outline{})
 	if err != nil {
 		return Document{}, err
 	}
@@ -384,8 +428,10 @@ func (s *service) list(ctx context.Context, env *command.Env, p ListParams) ([]D
 // touches reports whether a document's main passage or any point's verses overlap r.
 func touches(d Document, r verse.Range) bool {
 	over := func(x *core.RefResult) bool { return x != nil && x.Start <= r.End && x.End >= r.Start }
-	if over(d.Passage) {
-		return true
+	for i := range d.Passages {
+		if over(&d.Passages[i]) {
+			return true
+		}
 	}
 	for _, p := range d.Points {
 		if x, err := refOf(p.Ref); err == nil && over(x) {
@@ -396,12 +442,13 @@ func touches(d Document, r verse.Range) bool {
 }
 
 type UpdateParams struct {
-	ID      string   `json:"id" required:"true"`
-	Kind    *string  `json:"kind,omitempty" enum:"sermon,lesson,study" desc:"Omit to keep"`
-	Title   *string  `json:"title,omitempty" desc:"Omit to keep"`
-	Passage *string  `json:"passage,omitempty" desc:"The main passage; \"\" to clear; omit to keep"`
-	Points  *[]Point `json:"points,omitempty" desc:"The whole outline; omit to keep"`
-	Body    *string  `json:"body,omitempty" desc:"The full text in Markdown; omit to keep"`
+	ID       string    `json:"id" required:"true"`
+	Kind     *string   `json:"kind,omitempty" enum:"sermon,lesson,study" desc:"Omit to keep"`
+	Title    *string   `json:"title,omitempty" desc:"Omit to keep"`
+	Passage  *string   `json:"passage,omitempty" desc:"The main passage; \"\" to clear; omit to keep"`
+	Passages *[]string `json:"passages,omitempty" desc:"All the passages, in order (instead of passage); [] to clear; omit to keep"`
+	Points   *[]Point  `json:"points,omitempty" desc:"The whole outline; omit to keep"`
+	Body     *string   `json:"body,omitempty" desc:"The full text in Markdown; omit to keep"`
 	// A sermon's details.
 	PreachedOn *string `json:"preached_on,omitempty" desc:"When it was preached, as YYYY-MM-DD; \"\" to clear; omit to keep"`
 	Theme      *string `json:"theme,omitempty" desc:"Its theme or topic; \"\" to clear; omit to keep"`
@@ -478,17 +525,20 @@ func (s *service) update(ctx context.Context, env *command.Env, p UpdateParams) 
 			}
 			fields["title"] = title
 		}
-		if p.Passage != nil || p.Points != nil {
+		if p.Passage != nil || p.Passages != nil || p.Points != nil {
 			raw, _ := cur["outline_json"].(string)
 			old := parseOutline(sql.NullString{String: raw, Valid: raw != ""})
-			passage, points := old.Passage, old.Points
+			passages, points := old.all(), old.Points
 			if p.Passage != nil {
-				passage = *p.Passage
+				passages = []string{*p.Passage}
+			}
+			if p.Passages != nil {
+				passages = *p.Passages
 			}
 			if p.Points != nil {
 				points = *p.Points
 			}
-			ol, err := cleanOutline(passage, points)
+			ol, err := cleanOutline(passages, points, old)
 			if err != nil {
 				return err
 			}

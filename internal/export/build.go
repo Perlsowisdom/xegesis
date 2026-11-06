@@ -687,8 +687,15 @@ func (bd *builder) document(src Source) ([]draft, error) {
 		return nil, err
 	}
 	sub := []string{map[string]string{"sermon": "Sermon", "lesson": "Lesson", "study": "Bible study"}[doc.Kind]}
-	if doc.Passage != nil {
-		sub = append(sub, doc.Passage.Display)
+	var shown []string
+	for _, r := range doc.Passages {
+		shown = append(shown, r.Display)
+	}
+	if len(shown) == 0 && doc.Passage != nil {
+		shown = append(shown, doc.Passage.Display)
+	}
+	if len(shown) > 0 {
+		sub = append(sub, strings.Join(shown, "; "))
 	}
 	d := draft{piece: Piece{Title: doc.Title, Subtitle: strings.Join(sub, " · ")}}
 	if len(doc.Points) > 0 {

@@ -165,3 +165,13 @@ Design first: mock-up for approval, then build.
 - A SWORD `.zip` installed with `bible.install` takes its licence from the module's `.conf`: public
   domain, Creative Commons and freely distributable stay as they say; copyrighted modules, and any
   that state nothing clear, are a personal copy that keeps the credit line.
+
+## After T38b
+- Study grid: at most 3 siblings per split and 9 panes; a drop that would break either is refused
+  (use Move to... from the tab menu). Splits sit as a tree; "Equal sizes" evens every split.
+- e2e: the `book.e2e.mjs` grid reader now understands the tree format as well as old column saves;
+  `openNoteInStudy` goes back to the My work list first when an earlier check left a note open.
+- Screenshots are git-ignored (`frontend/e2e/shots/`), so they are local evidence only.
+- e2e: "Highlights in verses: clicking a highlight selects all of it..." failed in two full runs (a
+  highlight box was null after recolouring) but passes alone and after every file that runs before it;
+  looks like a timing flake in the highlights check, not grid-related. Worth a wait-for-mark there.

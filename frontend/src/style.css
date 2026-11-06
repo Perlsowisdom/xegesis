@@ -365,7 +365,7 @@ td.actions button { margin: 0 2px 2px 0; }
 /* Study grid (document/studygrid.ts): columns of panes, each with one slim bar of tabs and tools. */
 .view.reader { display: flex; flex-direction: column; height: 100%; max-width: none; padding-bottom: 8px; box-sizing: border-box; }
 .study-grid { flex: 1; min-height: 0; display: flex; }
-.grid-col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; }
+
 .grid-pane { flex: 1 1 0; min-height: 0; min-width: 0; display: flex; flex-direction: column; position: relative;
   border: 1px solid var(--line); border-radius: 8px; background: var(--bg); overflow: hidden; container: pane / inline-size; }
 .grid-pane.selected { border-color: var(--accent); }
@@ -377,15 +377,15 @@ td.actions button { margin: 0 2px 2px 0; }
 .grid-tabstrip { display: flex; align-items: center; flex: 1 1 8rem; min-width: 2.75rem; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
 .grid-tabstrip::-webkit-scrollbar { display: none; }
 .grid-tabs { display: flex; min-width: 0; }
-.grid-tab { display: inline-flex; align-items: center; border-radius: 6px; max-width: 12rem; flex: none; }
+.grid-tab { display: inline-flex; align-items: center; border-radius: 6px; max-width: 12rem; flex: 0 0 auto; min-width: 0; }
 .grid-tab.on { background: var(--bg); box-shadow: 0 1px 2px rgb(0 0 0 / .1); }
 .grid-tab-btn { border: 0; background: none; padding: 3px 4px 3px 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  font-size: .85rem; color: var(--muted); max-width: 10rem; cursor: pointer; }
+  font-size: .85rem; color: var(--muted); max-width: 10rem; min-width: 0; cursor: pointer; }
 .grid-tab.on .grid-tab-btn { color: var(--fg); font-weight: 600; }
 .grid-tab-close { border: 0; background: none; padding: 2px 4px; color: var(--muted); opacity: .55; cursor: pointer; display: inline-flex; }
 .grid-tab-close .icon { width: 13px; height: 13px; }
 .grid-tab:hover .grid-tab-close, .grid-tab.on .grid-tab-close { opacity: 1; }
-.grid-plus { flex: none; position: sticky; right: 0; background: var(--panel); }
+.grid-plus { flex: none; }
 .grid-plus .icon, .grid-link .icon { width: 17px; height: 17px; }
 .grid-link[aria-pressed="true"] { color: var(--accent); }
 .grid-place { flex: 0 2 11rem; min-width: 5.5rem; display: flex; }
@@ -504,7 +504,9 @@ dl.info dd { margin: 0; }
 
 /* Book pane */
 .book-nav { margin: 4px 0; }
-.book-where { margin: 0; white-space: nowrap; }
+.book-where { margin: 0; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
+.book-where-input { width: 4.2em; min-width: 0; padding: 2px 6px; height: 26px; text-align: center; font-size: .85rem; }
+.book-where-input:focus { width: 9em; text-align: left; }
 .book-actions { margin: 4px 0; font-size: .9rem; }
 .book-actions .hint { margin: 0; }
 .doc-book select { width: auto; max-width: 100%; }
@@ -589,7 +591,7 @@ mark.hl { color: inherit; border-radius: 2px; }
 @media (max-width: 820px) {
   .panes, .panes.commands { grid-template-columns: minmax(0, 1fr); }
   .study-grid { flex-direction: column; overflow: auto; }
-  .grid-col { flex: none !important; }
+  .grid-split { flex: none !important; flex-direction: column; }
   .grid-pane { flex: none !important; height: 70vh; }
   .grid-gutter { display: none; }
   .pane.detail { position: static; max-height: none; }
@@ -1259,6 +1261,12 @@ input.tag-box[type=text] { height: 28px; width: 9rem; border-radius: 999px; padd
 
 /* Properties: a two-column list of label and chip, under a sermon's title. */
 .page-props { display: grid; grid-template-columns: 110px minmax(0, 1fr); row-gap: 6px; align-items: center; margin: 0 0 20px; font-size: .88rem; }
+.props-fold { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; border: 0; background: none; padding: 2px 4px 2px 0; margin: 0 0 4px; color: var(--muted); font-size: .85rem; cursor: pointer; max-width: 100%; }
+.props-fold:hover { color: var(--fg); }
+.props-arrow .icon { width: 16px; height: 16px; transition: transform .12s; }
+.props-fold[aria-expanded="false"] .props-arrow .icon { transform: rotate(-90deg); }
+.props-chip { background: var(--well); border-radius: 999px; padding: 1px 9px; color: var(--fg); }
+.props-host .page-props[hidden] { display: none; }
 .page-props > dt { color: var(--muted); }
 .page-props > dd { margin: 0; display: flex; align-items: center; gap: 6px; min-width: 0; }
 .doc-page.compact .page-props { grid-template-columns: 84px minmax(0, 1fr); }
@@ -1651,3 +1659,7 @@ button.danger-link { color: var(--bad); margin-top: 8px; display: block; }
 .bible-book:hover { border-color: var(--fill); }
 .bible-book:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .book-tag { padding: 0 6px; border: 1px solid var(--line); border-radius: 6px; color: var(--muted, var(--fg)); font-size: .75rem; }
+.passage-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+/* A split in the study grid: its children sit side by side ("h") or one above the other ("v"). */
+.grid-split { flex: 1 1 0; min-width: 0; min-height: 0; display: flex; }
+.grid-split[data-dir="v"] { flex-direction: column; }

@@ -15,6 +15,7 @@ export interface DocHost {
   go(ref: string): void; // move this pane, and the panes linked to it
   update(patch: Partial<TabSpec>): void; // remember the view's state in its tab
   open(spec: TabSpec): void; // open another tab in this pane
+  replace(spec: TabSpec): void; // show something else in this tab, as a note that became a sermon
   mode(): "read" | "study";
 }
 
