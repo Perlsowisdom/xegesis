@@ -11,8 +11,8 @@ import { firstLine } from "./workwords";
 
 // Where a note is attached, in words.
 export function placeOf(n: Note): string {
+  if (n.item_id) return `${n.ref?.display ? n.ref.display + " " : ""}${n.item_title ? `in ${n.item_title}` : "in a book"}`.replace(/^in/, "In");
   if (n.ref?.display) return n.ref.display;
-  if (n.item_id) return n.item_title ? `In ${n.item_title}` : "In a book";
   return "";
 }
 

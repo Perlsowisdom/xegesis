@@ -141,6 +141,9 @@ func (s *service) highlightCreate(ctx context.Context, env *command.Env, p Highl
 		}
 		raw, _ := json.Marshal(p.Locator)
 		anchor["item_id"], anchor["locator_json"] = p.ItemID, string(raw)
+		if vr, ok := s.bookVerses(ctx, env, p.ItemID, *p.Locator); ok {
+			anchor["verse_start"], anchor["verse_end"], anchor["versification"] = int64(vr.Start), int64(vr.End), string(verse.English)
+		}
 		if sp, ok := p.Locator.span(); ok {
 			newSpan = sp
 			if bookCuts, err = bookOverlapping(ctx, env.Store, p.ItemID, p.Locator.Section, sp); err != nil {
@@ -183,7 +186,7 @@ type HighlightListParams struct {
 	Section int    `json:"section,omitempty" desc:"With item_id, only this section or PDF page"`
 	Ref     string `json:"ref,omitempty" desc:"Only highlights on verses overlapping this reference"`
 	Book    string `json:"book,omitempty" desc:"Only highlights in this book of the Bible, e.g. \"John\""`
-	On      string `json:"on,omitempty" enum:"verses,books" desc:"Only highlights on Bible verses, or only in library books"`
+	On      string `json:"on,omitempty" enum:"verses,books" desc:"Only highlights made on Bible verses, or only those made in library books (a Bible-type book's also have verses)"`
 	Colour  string `json:"colour,omitempty" enum:"yellow,green,blue,pink,purple" desc:"Only highlights of this colour, underlined or not"`
 	Module  string `json:"module,omitempty" desc:"A Bible (bible.modules) to give Bible highlights' text from"`
 	Query   string `json:"query,omitempty" desc:"Only highlights whose text, place or book title has all these words"`
@@ -222,7 +225,7 @@ func (s *service) highlightList(ctx context.Context, env *command.Env, p Highlig
 	}
 	switch p.On {
 	case "verses":
-		where += ` AND a.verse_start IS NOT NULL`
+		where += ` AND a.verse_start IS NOT NULL AND a.item_id IS NULL`
 	case "books":
 		where += ` AND a.item_id IS NOT NULL`
 	}

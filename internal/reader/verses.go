@@ -111,17 +111,23 @@ var inlineStart = map[string]bool{"span": true, "b": true, "strong": true, "smal
 // pickVerse finds verse v among the marks that lie in paragraphs [from, to). Marks are accepted
 // in order as a run of rising numbers starting at 1 or 2, so footnote numbers and stray digits are
 // passed over. to == 0 means to the end of the section.
-func pickVerse(marks []verseMark, from, to, v int) (verseMark, bool) {
+func acceptedMarks(marks []verseMark, from, to int) []verseMark {
+	var out []verseMark
 	last := 0
 	for _, m := range marks {
 		if m.Para < from || to > 0 && m.Para >= to {
 			continue
 		}
-		ok := m.N > last && (m.Strong || (last == 0 && m.N <= 2) || (last > 0 && m.N <= last+3))
-		if !ok {
-			continue
+		if m.N > last && (m.Strong || (last == 0 && m.N <= 2) || (last > 0 && m.N <= last+3)) {
+			last = m.N
+			out = append(out, m)
 		}
-		last = m.N
+	}
+	return out
+}
+
+func pickVerse(marks []verseMark, from, to, v int) (verseMark, bool) {
+	for _, m := range acceptedMarks(marks, from, to) {
 		if m.N == v {
 			return m, true
 		}
@@ -153,17 +159,15 @@ func renderedSection(f book, n int) (rendered, bool) {
 	return rendered{}, false
 }
 
-// verseAt finds where verse v starts in the chapter that entries[i] places. It gives up, so the
-// chapter opens instead, when the chapter's bounds in its section cannot be told.
-func verseAt(r rendered, entries []MapEntry, i, v int) (verseMark, bool) {
+// chapterBounds gives the paragraphs [from, to) that entries[i] covers in its section; ok is false
+// when they cannot be told (another chapter shares the section without a findable anchor).
+func chapterBounds(r rendered, entries []MapEntry, i int) (from, to int, ok bool) {
 	e := entries[i]
-	from := 0
 	if e.Anchor != "" {
 		if from = r.ids[e.Anchor]; from == 0 {
-			return verseMark{}, false
+			return 0, 0, false
 		}
 	}
-	to := 0
 	for j, o := range entries {
 		if j == i || o.Section != e.Section || o.Chapter == 0 && o.Book == e.Book && o.Anchor == "" {
 			continue
@@ -171,10 +175,18 @@ func verseAt(r rendered, entries []MapEntry, i, v int) (verseMark, bool) {
 		p := r.ids[o.Anchor]
 		switch {
 		case o.Anchor == "" || p == 0:
-			return verseMark{}, false
+			return 0, 0, false
 		case p > from && (to == 0 || p < to):
 			to = p
 		}
+	}
+	return from, to, true
+}
+
+func verseAt(r rendered, entries []MapEntry, i, v int) (verseMark, bool) {
+	from, to, ok := chapterBounds(r, entries, i)
+	if !ok {
+		return verseMark{}, false
 	}
 	return pickVerse(r.marks, from, to, v)
 }

@@ -136,11 +136,13 @@ export function pdf(lines = ["Page one: grace and peace.", "Page two: faith, hop
 
 // bibleEpub is a Bible text as a book: Genesis, then the Psalms with each psalm under its own
 // heading in one chapter file, and contents entries for books and chapters.
-export function bibleEpub(title = "E2E Hebrew Bible") {
+// With verses, every line starts with a superscript verse number (the first line of a psalm is verse 1).
+export function bibleEpub(title = "E2E Hebrew Bible", verses = false) {
   const page = (body) => `<?xml version="1.0" encoding="UTF-8"?>
 <html xmlns="http://www.w3.org/1999/xhtml"><head><title>t</title></head><body>${body}</body></html>`;
-  const filler = (n) => Array.from({ length: n }, (_, i) => `<p>Verse line ${i + 1}: a long line of translated text that fills the page.</p>`).join("\n");
-  const psalm = (n, first) => `<h3 id="ps${n}">Psalm ${n}</h3><p>${first}</p>${filler(30)}`;
+  const sup = (n) => (verses ? `<sup>${n}</sup>` : "");
+  const filler = (n) => Array.from({ length: n }, (_, i) => `<p>${sup(i + 2)}Verse line ${i + 1}: a long line of translated text that fills the page.</p>`).join("\n");
+  const psalm = (n, first) => `<h3 id="ps${n}">Psalm ${n}</h3><p>${sup(1)}${first}</p>${filler(30)}`;
   return zip([
     ["mimetype", "application/epub+zip"],
     ["META-INF/container.xml", `<?xml version="1.0"?>

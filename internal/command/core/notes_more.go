@@ -204,7 +204,7 @@ func noteSearch(ctx context.Context, env *command.Env, p NoteSearchParams) ([]No
 	}
 	switch p.On {
 	case "verses":
-		q += ` AND a.verse_start IS NOT NULL`
+		q += ` AND a.verse_start IS NOT NULL AND a.item_id IS NULL`
 	case "books":
 		q += ` AND a.item_id IS NOT NULL`
 	case "nothing":
@@ -244,6 +244,7 @@ func noteMove(ctx context.Context, env *command.Env, p NoteMoveParams) (Note, er
 	}
 	var r *verse.Range
 	var locator string
+	var link *verse.Range
 	switch {
 	case p.Ref != "":
 		parsed, err := verse.Parse(p.Ref)
@@ -256,6 +257,7 @@ func noteMove(ctx context.Context, env *command.Env, p NoteMoveParams) (Note, er
 		if locator, err = bookAnchor(ctx, env, "note.move", p.ItemID, p.Locator); err != nil {
 			return Note{}, err
 		}
+		link = linkBook(ctx, env, p.ItemID, locator)
 	}
 	err := env.Store.Write(ctx, "note.move", func(tx *store.Tx) error {
 		cur, err := liveNote(tx, p.ID)
@@ -264,7 +266,7 @@ func noteMove(ctx context.Context, env *command.Env, p NoteMoveParams) (Note, er
 		}
 		var anchor any
 		if !p.Free {
-			aid, err := newAnchor(tx, r, p.ItemID, locator)
+			aid, err := newAnchor(tx, r, p.ItemID, locator, link)
 			if err != nil {
 				return err
 			}
