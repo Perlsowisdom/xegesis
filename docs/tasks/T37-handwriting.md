@@ -61,3 +61,43 @@ Describe the feature in Xegesis's own words. Do not reuse their screen names or 
 5. Ink on PDF pages stays aligned at every zoom, and is stored as annotations through commands.
 6. Unit tests cover the stroke data format and the Markdown round trip. `npm run build`, `npm test`
    and `go test ./...` pass.
+
+## Stage 1b: handwriting that feels like a pen (user feedback, 6 November 2026)
+
+The user asked why we use perfect-freehand, since it "doesn't seem like the best version for
+handwriting, particularly when writing cursive with a pen". What stage 1 does that hurts cursive:
+- `streamline: 0.45` and `smoothing: 0.6` make the line lag behind the pen and round off loops and
+  sharp turns;
+- pressure is rounded to whole numbers from 1 to 100, and points closer than 0.8 page units are
+  dropped;
+- the whole SVG path is rebuilt on every pointer move, so long strokes get slower, and there is no
+  low-latency drawing.
+
+The user chose **our own stroke engine**, written for this project:
+1. **Shape.** Use a smooth curve through the actual pen points: centripetal Catmull-Rom or a
+   similar spline, turned into cubic Béziers. The width comes from real pen pressure, with a light
+   pressure curve, or from speed for a mouse or finger.
+   - No streamline lag. At most a tiny smoothing of the newest point.
+   - Sharp turns stay sharp.
+   - Keep the full precision of points and pressure: store at least two decimals for x and y, and
+     pressure from 0 to 1 to three decimals. Read the old stage 1 format too.
+2. **Feel.**
+   - While the pen is down, draw the live stroke on a canvas with `getContext('2d', {desynchronized: true})`.
+   - Use `getCoalescedEvents()`, and `getPredictedEvents()` for a short predicted tail.
+   - Where available (WebView2 on Windows), use the delegated ink trail
+     (`navigator.ink.requestPresenter()`), so Windows draws the tip straight from the pen.
+   - On pen-up, commit the stroke to the SVG and saved data.
+   - Never rebuild every stroke while writing.
+3. **Exports** (HTML, PDF) draw the same variable-width outline as the screen, not a polyline with
+   one average width.
+4. **Remove `perfect-freehand`** from `package.json` once nothing uses it.
+
+Tests:
+- vitest for the spline and width maths:
+  - a tight loop keeps its shape;
+  - a sharp corner is not rounded beyond a set tolerance;
+  - the old format still loads.
+- e2e: synthetic pen strokes with varying pressure, including a cursive-like loop, compared against
+  the input points within a tolerance. Take a screenshot.
+- Real pen feel can't be tested automatically. The report must say so, and the user will try it with
+  a pen.
