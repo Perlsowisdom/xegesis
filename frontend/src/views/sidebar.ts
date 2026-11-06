@@ -242,6 +242,11 @@ function makeSidebar() {
     open,
     toggle: () => setOpen(!prefs.sidebar.open),
     isOpen: () => prefs.sidebar.open,
+    // notesHere shows the notes on the passage being read, not a note left open in the tool.
+    notesHere() {
+      open("notes");
+      void notes.showList();
+    },
     showWord(w: WordInfo) {
       open("word");
       void word.showWord(w);

@@ -78,7 +78,7 @@ export function readerView() {
   const moreBtn: HTMLButtonElement = iconButton("more", "More", () => togglePopover(moreBtn, () => h("div", { class: "menu-list" },
     button("Passage report", () => state.parsed && openReport("passage", state.parsed.osis),
       { title: "Everything your library holds about this passage, in one place" }),
-    button("Notes on this passage", () => side.open("notes")),
+    button("Notes on this passage", () => side.notesHere()),
     button("Print or save…", () => grid.selectedView()?.menu?.print?.(), { title: "Print, or save as PDF, Word, a web page or Markdown" }),
     button("Reading plans", () => navigate("plans"))), { label: "More", side: "below", menu: true }),
   { "aria-haspopup": "menu", "aria-expanded": "false" });
