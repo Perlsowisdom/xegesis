@@ -175,3 +175,4 @@ Design first: mock-up for approval, then build.
 - e2e: "Highlights in verses: clicking a highlight selects all of it..." failed in two full runs (a
   highlight box was null after recolouring) but passes alone and after every file that runs before it;
   looks like a timing flake in the highlights check, not grid-related. Worth a wait-for-mark there.
+- Read mode book toolbar: a stray "+" shows before the section arrows, and the section field is very wide (seen in fu-03-book-overlap.png). Hide "+" outside Study and size the field to its number.
