@@ -365,7 +365,7 @@ td.actions button { margin: 0 2px 2px 0; }
 /* Study grid (document/studygrid.ts): columns of panes, each with one slim bar of tabs and tools. */
 .view.reader { display: flex; flex-direction: column; height: 100%; max-width: none; padding-bottom: 8px; box-sizing: border-box; }
 .study-grid { flex: 1; min-height: 0; display: flex; }
-.grid-col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; }
+
 .grid-pane { flex: 1 1 0; min-height: 0; min-width: 0; display: flex; flex-direction: column; position: relative;
   border: 1px solid var(--line); border-radius: 8px; background: var(--bg); overflow: hidden; container: pane / inline-size; }
 .grid-pane.selected { border-color: var(--accent); }
@@ -591,7 +591,7 @@ mark.hl { color: inherit; border-radius: 2px; }
 @media (max-width: 820px) {
   .panes, .panes.commands { grid-template-columns: minmax(0, 1fr); }
   .study-grid { flex-direction: column; overflow: auto; }
-  .grid-col { flex: none !important; }
+  .grid-split { flex: none !important; flex-direction: column; }
   .grid-pane { flex: none !important; height: 70vh; }
   .grid-gutter { display: none; }
   .pane.detail { position: static; max-height: none; }
@@ -1660,3 +1660,6 @@ button.danger-link { color: var(--bad); margin-top: 8px; display: block; }
 .bible-book:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .book-tag { padding: 0 6px; border: 1px solid var(--line); border-radius: 6px; color: var(--muted, var(--fg)); font-size: .75rem; }
 .passage-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+/* A split in the study grid: its children sit side by side ("h") or one above the other ("v"). */
+.grid-split { flex: 1 1 0; min-width: 0; min-height: 0; display: flex; }
+.grid-split[data-dir="v"] { flex-direction: column; }

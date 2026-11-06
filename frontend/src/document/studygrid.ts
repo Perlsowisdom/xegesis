@@ -12,8 +12,8 @@ import { icon } from "../icons";
 import { closePopover, openPopover, togglePopover } from "../popover";
 import { loadPref, navigate, onPassage, savePref, setPassage, state } from "../state";
 import {
-  Grid, MAX_COLUMNS, MAX_PANES, MoveTarget, Pane, Tab, TabSpec, Zone, activeTab, applyPreset, closePane, closeTab, dropTab,
-  equalise, findPane, findTab, insertTab, moveTab, openBookTab, openTab, paneRef, panes, resizeColumns, resizePanes, restore,
+  Grid, MAX_PANES, MoveTarget, GridNode, PRESET_COLUMNS, PRESET_ROWS, MAX_SIBLINGS, Split, isSplit, Pane, Tab, TabSpec, Zone, activeTab, applyPreset, closePane, closeTab, dropTab,
+  equalise, findPane, findSplit, findTab, insertTab, moveTab, openBookTab, openTab, paneRef, panes, resizeSplit, restore,
   selectPane, selectTab, setLinked, setRef, shape, updateTab,
 } from "./grid";
 import { DRAG_TYPE, dragging, setDragging } from "./drag";
@@ -66,7 +66,7 @@ export function studyGrid(o: StudyGridOptions) {
 
   const el = h("div", { class: "study-grid", role: "region", "aria-label": "Study grid" });
   const uis = new Map<string, PaneUI>();
-  const colEls = new Map<string, HTMLElement>();
+  const splitEls = new Map<string, HTMLElement>(); // a split's element is kept, so redraws do not reset panes' scroll
   const mounted = new Map<string, Mounted>();
   let syncing = false;
   let rendering = false;
@@ -158,8 +158,7 @@ export function studyGrid(o: StudyGridOptions) {
     }
     // Which tabs are on screen: each pane's current tab, or in Read mode the selected pane's only.
     const visible = new Map<string, Pane>();
-    const cols = read ? [{ id: "read", panes: [sel], size: 1 }] : g.columns;
-    for (const c of cols) for (const p of c.panes) visible.set(activeTab(p)!.id, p);
+    for (const p of read ? [sel] : panes(g)) visible.set(activeTab(p)!.id, p);
     for (const [id, m] of mounted) {
       const p = visible.get(id);
       if (!p || p.id !== m.paneId) {
@@ -169,25 +168,28 @@ export function studyGrid(o: StudyGridOptions) {
     }
     for (const [id] of uis) if (!findPane(g, id)) uis.delete(id);
 
-    const colNodes: Node[] = [];
-    cols.forEach((c, ci) => {
-      let cel = colEls.get(c.id);
-      if (!cel) {
-        cel = h("div", { class: "grid-col" });
-        colEls.set(c.id, cel);
+    // The grid is a tree: a split lays its children out side by side or one above the other.
+    const used = new Set<string>();
+    const nodeEl = (n: GridNode): HTMLElement => {
+      if (!isSplit(n)) return drawPane(n, sel.id === n.id);
+      used.add(n.id);
+      let se = splitEls.get(n.id);
+      if (!se) {
+        se = h("div", { class: "grid-split" });
+        splitEls.set(n.id, se);
       }
-      cel.style.flexGrow = String(c.size);
-      const kids: Node[] = [];
-      c.panes.forEach((p, pi) => {
-        if (pi > 0) kids.push(gutter("row", ci, pi - 1));
-        kids.push(drawPane(p, sel.id === p.id, ci, pi));
+      se.dataset.dir = n.dir;
+      se.style.flexGrow = String(n.size);
+      const kids: HTMLElement[] = [];
+      n.kids.forEach((k, i) => {
+        if (i > 0) kids.push(gutter(n, i - 1));
+        kids.push(nodeEl(k));
       });
-      setChildren(cel, kids);
-      if (ci > 0) colNodes.push(gutter("col", ci - 1, 0));
-      colNodes.push(cel);
-    });
-    for (const id of [...colEls.keys()]) if (!cols.some((c) => c.id === id)) colEls.delete(id); // Read mode's column is not in the grid: keep it, or every redraw would re-attach the pane and reset its scroll
-    setChildren(el, colNodes);
+      setChildren(se, kids);
+      return se;
+    };
+    setChildren(el, [read ? drawPane(sel, true) : nodeEl(g.root!)]);
+    for (const id of [...splitEls.keys()]) if (!used.has(id)) splitEls.delete(id);
     for (const m of mounted.values()) {
       const p = findPane(g, m.paneId)?.pane;
       if (p) m.view.refChanged?.(paneRef(g, p));
@@ -196,7 +198,7 @@ export function studyGrid(o: StudyGridOptions) {
     document.dispatchEvent(new Event("xegesis:pane-changed"));
   }
 
-  function drawPane(p: Pane, selected: boolean, ci: number, pi: number): HTMLElement {
+  function drawPane(p: Pane, selected: boolean): HTMLElement {
     let ui = uis.get(p.id);
     if (!ui) {
       ui = paneUI(p.id);
@@ -206,8 +208,6 @@ export function studyGrid(o: StudyGridOptions) {
     ui.el.classList.toggle("selected", selected);
     ui.el.style.flexGrow = String(p.size);
     ui.el.setAttribute("aria-label", `Pane ${paneNumber(p.id)}: ${tabLabel(tab)}`);
-    ui.el.dataset.col = String(ci);
-    ui.el.dataset.row = String(pi);
 
     clear(ui.tabs, p.tabs.map((t) => tabButton(p, t)));
     const strip = ui.tabs.parentElement!;
@@ -417,7 +417,7 @@ export function studyGrid(o: StudyGridOptions) {
       if (!first) for (const r of pills.querySelectorAll<HTMLInputElement>("input")) r.checked = false;
       clear(radios, h("legend", {}, "Where"), pills);
       go.disabled = !first;
-      note.textContent = first ? "" : `There is no room there: the grid holds at most ${MAX_COLUMNS} columns of ${MAX_PANES} panes.`;
+      note.textContent = first ? "" : `There is no room there: the grid holds at most ${MAX_PANES} panes, and ${MAX_SIBLINGS} in one row or column.`;
     }
     target.addEventListener("change", refresh);
     refresh();
@@ -443,8 +443,8 @@ export function studyGrid(o: StudyGridOptions) {
       caption.textContent = `${c} ${c === 1 ? "column" : "columns"} of ${r} ${r === 1 ? "pane" : "panes"}`;
     };
     const chooser = h("div", { class: "preset-grid", role: "group", "aria-label": "Columns and panes" });
-    for (let r = 1; r <= MAX_PANES; r++) {
-      for (let c = 1; c <= MAX_COLUMNS; c++) {
+    for (let r = 1; r <= PRESET_ROWS; r++) {
+      for (let c = 1; c <= PRESET_COLUMNS; c++) {
         const b = h("button", { type: "button", class: "preset-cell", "data-c": c, "data-r": r, "aria-label": `${c} × ${r}`,
           "aria-pressed": String(c === cols && r === rows), title: `${c} × ${r}` });
         b.addEventListener("mouseenter", () => mark(c, r));
@@ -467,23 +467,29 @@ export function studyGrid(o: StudyGridOptions) {
 
   // Resizing -------------------------------------------------------------------------------------------
 
-  function gutter(kind: "col" | "row", col: number, i: number): HTMLElement {
-    const label = kind === "col" ? `Resize columns ${col + 1} and ${col + 2}` : `Resize panes ${i + 1} and ${i + 2} in column ${col + 1}`;
+  // gutter is the divider after child i of a split: dragging it moves space between the two beside it.
+  function gutter(sp: Split, i: number): HTMLElement {
+    const kind = sp.dir === "h" ? "col" : "row";
+    const label = sp.dir === "h" ? `Resize the panes beside each other, ${i + 1} and ${i + 2}, in split ${sp.id}` : `Resize the panes above each other, ${i + 1} and ${i + 2}, in split ${sp.id}`;
     const gt = h("div", { class: `grid-gutter ${kind}`, role: "separator", tabindex: "0", "aria-label": label,
       "aria-orientation": kind === "col" ? "vertical" : "horizontal", title: "Drag to resize. Arrow keys work too." });
-    const apply = (base: Grid, delta: number) => kind === "col" ? resizeColumns(base, col, delta) : resizePanes(base, col, i, delta);
+    const apply = (base: Grid, delta: number) => resizeSplit(base, sp.id, i, delta);
     gt.addEventListener("pointerdown", (e) => {
       e.preventDefault();
       gt.setPointerCapture(e.pointerId);
       const start = g;
-      const total = kind === "col" ? el.clientWidth : (colEls.get(g.columns[col].id)?.clientHeight ?? 1);
+      const holder = splitEls.get(sp.id) ?? el;
+      const total = kind === "col" ? holder.clientWidth : holder.clientHeight;
       const from = kind === "col" ? e.clientX : e.clientY;
       let last = start;
       const move = (ev: PointerEvent) => {
         last = apply(start, ((kind === "col" ? ev.clientX : ev.clientY) - from) / Math.max(1, total));
         // Draw sizes as the pointer moves; save once it is let go.
-        if (kind === "col") last.columns.forEach((c) => { const ce = colEls.get(c.id); if (ce) ce.style.flexGrow = String(c.size); });
-        else last.columns[col].panes.forEach((p) => { const pe = uis.get(p.id)?.el; if (pe) pe.style.flexGrow = String(p.size); });
+        const now = findSplit(last, sp.id);
+        for (const k of now?.kids ?? []) {
+          const ke = isSplit(k) ? splitEls.get(k.id) : uis.get(k.id)?.el;
+          if (ke) ke.style.flexGrow = String(k.size);
+        }
       };
       const up = () => {
         gt.removeEventListener("pointermove", move);
@@ -534,7 +540,7 @@ export function studyGrid(o: StudyGridOptions) {
     if (!sel) return setGrid(openTab({ ...g, passage: state.ref }, { kind: "bible" }));
     let n = setRef(g, sel.id, state.ref);
     // Make sure something shows the passage.
-    const shown = n.columns.some((c) => c.panes.some((p) => followsPassage(activeTab(p)!) && (p.linked || p.id === sel.id)));
+    const shown = panes(n).some((p) => followsPassage(activeTab(p)!) && (p.linked || p.id === sel.id));
     if (!shown) n = openTab(n, { kind: "bible" }, sel.id);
     setGrid(n);
   });

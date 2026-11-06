@@ -208,4 +208,37 @@ export default [
       await app.run("note.delete", { id: n.id });
     },
   },
+  {
+    row: "T38b 2: dropping a tab on a pane's edge splits that pane (side by side, or above/below), so two panes sit side by side above one wide pane",
+    shot: "t38b-02-splits.png",
+    async run(t) {
+      const { page, app } = t;
+      const names = ["Split alpha", "Split beta", "Split gamma"];
+      const ids = [];
+      for (const title of names) {
+        const n = await app.run("note.create", { title, body: "x" });
+        ids.push(n.id);
+        await openNoteInStudy(t, n.id, title);
+      }
+      const tab = (name) => page.locator(".grid-pane:visible .grid-tab-btn", { hasText: name }).first();
+      const paneOf = (name) => page.locator(".grid-pane:visible", { has: page.locator(".grid-tab-btn", { hasText: name }) }).first();
+      const box = (name) => paneOf(name).evaluate((e) => { const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
+      // gamma onto the bottom edge of alpha's pane: a pane below
+      let b = await box("Split alpha");
+      await tab("Split gamma").dragTo(paneOf("Split alpha"), { targetPosition: { x: b.w / 2, y: b.h - 12 } });
+      await page.waitForTimeout(400);
+      const g1 = await box("Split gamma");
+      const a1 = await box("Split alpha");
+      t.assert.ok(g1.y > a1.y + a1.h - 4 && Math.abs(g1.w - a1.w) < 4, "gamma is a pane below alpha, as wide");
+      // beta onto the right edge of alpha's (top) pane: beside alpha, gamma stays wide below
+      b = await box("Split alpha");
+      await tab("Split beta").dragTo(paneOf("Split alpha"), { targetPosition: { x: b.w - 12, y: b.h / 2 } });
+      await page.waitForTimeout(400);
+      const a = await box("Split alpha"), be = await box("Split beta"), g = await box("Split gamma");
+      t.assert.ok(Math.abs(a.y - be.y) < 3 && be.x > a.x + a.w - 4, "alpha and beta are side by side");
+      t.assert.ok(g.y > a.y + a.h - 4 && Math.abs(g.x - a.x) < 3 && Math.abs(g.w - (be.x + be.w - a.x)) < 4, "gamma is one wide pane below both");
+      await t.shot();
+      for (const id of ids) await app.run("note.delete", { id });
+    },
+  },
 ];

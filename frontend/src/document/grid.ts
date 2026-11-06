@@ -1,11 +1,15 @@
-// The study grid's layout model: columns hold panes, panes hold tabs. Up to MAX_COLUMNS columns with
-// up to MAX_PANES panes in each. Pure data and functions, no DOM, so it is unit-tested
-// (grid.test.ts); document/studygrid.ts draws it. Every function returns a new grid and leaves the
-// one it was given alone.
+// The study grid's layout model: a tree of splits. A leaf is a pane (it holds tabs); a split lays its
+// children side by side ("h") or one above the other ("v"). At most MAX_PANES panes in all, and at
+// most MAX_SIBLINGS in one split, so the old 3 × 3 grid still fits and nothing gets crowded. Pure data
+// and functions, no DOM, so it is unit-tested (grid.test.ts); document/studygrid.ts draws it. Every
+// function returns a new grid and leaves the one it was given alone.
 
-export const MAX_COLUMNS = 3;
-export const MAX_PANES = 3;
-// MIN_SIZE is the smallest share of the width (or of a column's height) a pane may be resized to.
+export const MAX_PANES = 9;
+export const MAX_SIBLINGS = 3;
+// The presets are up to PRESET_COLUMNS columns of up to PRESET_ROWS panes.
+export const PRESET_COLUMNS = 3;
+export const PRESET_ROWS = 3;
+// MIN_SIZE is the smallest share of its split a child may be resized to.
 export const MIN_SIZE = 0.12;
 
 export type TabKind = "bible" | "commentary" | "book" | "note" | "sermon" | "list" | "library" | "work";
@@ -37,14 +41,23 @@ export interface Pane {
   size: number;
 }
 
-export interface Column {
+// A Split lays out its children: "h" side by side, "v" one above the other. size is its share of its
+// parent split; the shares of a split's children add up to 1.
+export interface Split {
   id: string;
-  panes: Pane[];
+  dir: "h" | "v";
+  kids: GridNode[];
   size: number;
 }
 
+export type GridNode = Pane | Split;
+
+export function isSplit(n: GridNode): n is Split {
+  return "kids" in n;
+}
+
 export interface Grid {
-  columns: Column[];
+  root: GridNode | null;
   selected: string; // the highlighted pane, where + and the sidebar act
   passage: string; // the passage linked panes follow
   seq: number;
@@ -53,7 +66,7 @@ export interface Grid {
 export type Zone = "center" | "left" | "right" | "top" | "bottom";
 
 export function emptyGrid(passage = ""): Grid {
-  return { columns: [], selected: "", passage, seq: 0 };
+  return { root: null, selected: "", passage, seq: 0 };
 }
 
 function clone(g: Grid): Grid {
@@ -72,16 +85,62 @@ function newPane(g: Grid, tabs: TabSpec[] | Tab[], size = 1): Pane {
 
 // Finding --------------------------------------------------------------------------------------------
 
-export function panes(g: Grid): Pane[] {
-  return g.columns.flatMap((c) => c.panes);
+function leaves(n: GridNode | null): Pane[] {
+  if (!n) return [];
+  return isSplit(n) ? n.kids.flatMap(leaves) : [n];
 }
 
-export function findPane(g: Grid, paneId: string): { col: number; row: number; pane: Pane } | null {
-  for (let col = 0; col < g.columns.length; col++) {
-    const row = g.columns[col].panes.findIndex((p) => p.id === paneId);
-    if (row >= 0) return { col, row, pane: g.columns[col].panes[row] };
+export function panes(g: Grid): Pane[] {
+  return leaves(g.root);
+}
+
+// findPane gives a pane with the split it sits in (null when it is the whole grid) and its place there.
+export function findPane(g: Grid, paneId: string): { parent: Split | null; index: number; pane: Pane } | null {
+  const walk = (n: GridNode, parent: Split | null, index: number): { parent: Split | null; index: number; pane: Pane } | null => {
+    if (!isSplit(n)) return n.id === paneId ? { parent, index, pane: n } : null;
+    for (let i = 0; i < n.kids.length; i++) {
+      const f = walk(n.kids[i], n, i);
+      if (f) return f;
+    }
+    return null;
+  };
+  return g.root ? walk(g.root, null, 0) : null;
+}
+
+// findSplit finds a split by id.
+export function findSplit(g: Grid, id: string): Split | null {
+  const walk = (n: GridNode): Split | null => {
+    if (!isSplit(n)) return null;
+    if (n.id === id) return n;
+    for (const k of n.kids) {
+      const f = walk(k);
+      if (f) return f;
+    }
+    return null;
+  };
+  return g.root ? walk(g.root) : null;
+}
+
+// tidy keeps the tree in its simplest form: a split with one child is replaced by it, a split inside
+// a split of the same direction is merged into it, and every split's shares add up to 1.
+function tidy(n: GridNode): GridNode {
+  if (!isSplit(n)) return n;
+  const kids: GridNode[] = [];
+  for (const raw of n.kids) {
+    const k = tidy(raw);
+    if (isSplit(k) && k.dir === n.dir) {
+      for (const kk of k.kids) kids.push({ ...kk, size: kk.size * k.size });
+    } else kids.push(k);
   }
-  return null;
+  if (kids.length === 1) return { ...kids[0], size: n.size };
+  const sizes = normalise(kids.map((k) => k.size));
+  kids.forEach((k, i) => (k.size = sizes[i]));
+  return { ...n, kids };
+}
+
+function tidyGrid(g: Grid) {
+  g.root = g.root ? tidy(g.root) : null;
+  if (g.root && !isSplit(g.root)) g.root.size = 1;
 }
 
 export function findTab(g: Grid, tabId: string): { pane: Pane; index: number; tab: Tab } | null {
@@ -114,7 +173,7 @@ export function openTab(g: Grid, spec: TabSpec, paneId = g.selected): Grid {
   let target = findPane(n, paneId)?.pane ?? selectedPane(n);
   if (!target) {
     target = newPane(n, []);
-    n.columns.push({ id: nextId(n, "c"), panes: [target], size: 1 });
+    n.root = target;
   }
   const tab = { ...spec, id: nextId(n, "t") } as Tab;
   target.tabs.push(tab);
@@ -158,17 +217,15 @@ export function updateTab(g: Grid, tabId: string, patch: Partial<TabSpec>): Grid
   return n;
 }
 
-// removeTab takes a tab out of its pane; an empty pane closes, and an empty column with it.
+// removeTab takes a tab out of its pane; an empty pane closes, and a split left with one child goes.
 function removeTab(g: Grid, tabId: string): Tab | null {
-  for (const c of g.columns) {
-    for (const p of c.panes) {
-      const i = p.tabs.findIndex((t) => t.id === tabId);
-      if (i < 0) continue;
-      const [tab] = p.tabs.splice(i, 1);
-      if (p.active === tabId) p.active = (p.tabs[i] ?? p.tabs[i - 1])?.id ?? "";
-      if (p.tabs.length === 0) removePane(g, p.id);
-      return tab;
-    }
+  for (const p of panes(g)) {
+    const i = p.tabs.findIndex((t) => t.id === tabId);
+    if (i < 0) continue;
+    const [tab] = p.tabs.splice(i, 1);
+    if (p.active === tabId) p.active = (p.tabs[i] ?? p.tabs[i - 1])?.id ?? "";
+    if (p.tabs.length === 0) removePane(g, p.id);
+    return tab;
   }
   return null;
 }
@@ -176,20 +233,18 @@ function removeTab(g: Grid, tabId: string): Tab | null {
 function removePane(g: Grid, paneId: string) {
   const f = findPane(g, paneId);
   if (!f) return;
-  const col = g.columns[f.col];
-  col.panes.splice(f.row, 1);
+  if (!f.parent) {
+    g.root = null;
+    g.selected = "";
+    return;
+  }
+  const kids = f.parent.kids;
+  kids.splice(f.index, 1);
   // The space goes to the neighbour, so the other panes keep their sizes.
-  const heir = col.panes[f.row - 1] ?? col.panes[f.row];
-  if (heir) heir.size += f.pane.size;
-  if (col.panes.length === 0) {
-    g.columns.splice(f.col, 1);
-    const cheir = g.columns[f.col - 1] ?? g.columns[f.col];
-    if (cheir) cheir.size += col.size;
-  }
-  if (g.selected === paneId) {
-    const near = g.columns[Math.min(f.col, g.columns.length - 1)]?.panes[0];
-    g.selected = (heir ?? near ?? panes(g)[0])?.id ?? "";
-  }
+  const heir = kids[f.index - 1] ?? kids[f.index];
+  heir.size += f.pane.size;
+  tidyGrid(g);
+  if (g.selected === paneId) g.selected = leaves(heir)[0]?.id ?? panes(g)[0]?.id ?? "";
 }
 
 export function closeTab(g: Grid, tabId: string): Grid {
@@ -230,37 +285,35 @@ export function setRef(g: Grid, paneId: string, ref: string): Grid {
 
 // Drag and drop --------------------------------------------------------------------------------------
 
-// place puts a tab into the grid at a pane's middle or edge. It returns false when the grid is full
-// in that direction.
+// place puts a tab into the grid at a pane's middle or edge: the pane is split side by side (left,
+// right) or one above the other (top, bottom). It returns false when the grid is full that way.
 function place(g: Grid, tab: Tab, targetId: string, zone: Zone): boolean {
   const f = findPane(g, targetId);
   if (!f) return false;
-  const col = g.columns[f.col];
   if (zone === "center") {
     f.pane.tabs.push(tab);
     f.pane.active = tab.id;
     g.selected = f.pane.id;
     return true;
   }
-  if (zone === "left" || zone === "right") {
-    if (g.columns.length >= MAX_COLUMNS) return false;
-    const size = col.size / 2;
-    col.size = size;
-    const p = newPane(g, []);
-    p.tabs.push(tab);
-    p.active = tab.id;
-    const c: Column = { id: nextId(g, "c"), panes: [p], size };
-    g.columns.splice(zone === "left" ? f.col : f.col + 1, 0, c);
-    g.selected = p.id;
-    return true;
-  }
-  if (col.panes.length >= MAX_PANES) return false;
+  if (panes(g).length >= MAX_PANES) return false;
+  const dir = zone === "left" || zone === "right" ? "h" : "v";
+  const before = zone === "left" || zone === "top";
   const size = f.pane.size / 2;
-  f.pane.size = size;
   const p = newPane(g, [], size);
   p.tabs.push(tab);
   p.active = tab.id;
-  col.panes.splice(zone === "top" ? f.row : f.row + 1, 0, p);
+  if (f.parent && f.parent.dir === dir) {
+    if (f.parent.kids.length >= MAX_SIBLINGS) return false;
+    f.pane.size = size;
+    f.parent.kids.splice(before ? f.index : f.index + 1, 0, p);
+  } else {
+    const old: Pane = { ...f.pane, size: 0.5 };
+    p.size = 0.5;
+    const s: Split = { id: nextId(g, "s"), dir, kids: before ? [p, old] : [old, p], size: f.pane.size };
+    if (f.parent) f.parent.kids[f.index] = s;
+    else g.root = s;
+  }
   g.selected = p.id;
   return true;
 }
@@ -304,8 +357,8 @@ export function moveTab(g: Grid, tabId: string, targetId: string, where: MoveTar
 // several tabs are split before new panes get a default tab, and panes beyond the layout are merged
 // into its last pane.
 export function applyPreset(g: Grid, cols: number, rows: number, makeTab: () => TabSpec): Grid {
-  cols = Math.min(MAX_COLUMNS, Math.max(1, Math.round(cols)));
-  rows = Math.min(MAX_PANES, Math.max(1, Math.round(rows)));
+  cols = Math.min(PRESET_COLUMNS, Math.max(1, Math.round(cols)));
+  rows = Math.min(PRESET_ROWS, Math.max(1, Math.round(rows)));
   const want = cols * rows;
   const n = clone(g);
   const list = panes(n);
@@ -330,29 +383,39 @@ export function applyPreset(g: Grid, cols: number, rows: number, makeTab: () => 
     for (const extra of list.splice(want)) last.tabs.push(...extra.tabs);
     if (list.every((p) => p.id !== n.selected)) n.selected = last.id;
   }
-  n.columns = [];
+  const columns: GridNode[] = [];
   for (let c = 0; c < cols; c++) {
     const ps = list.slice(c * rows, c * rows + rows);
     ps.forEach((p) => (p.size = 1 / rows));
-    n.columns.push({ id: nextId(n, "c"), panes: ps, size: 1 / cols });
+    columns.push(ps.length === 1 ? { ...ps[0], size: 1 / cols } : { id: nextId(n, "s"), dir: "v", kids: ps, size: 1 / cols });
   }
+  n.root = columns.length === 1 ? { ...columns[0], size: 1 } : { id: nextId(n, "s"), dir: "h", kids: columns, size: 1 };
+  tidyGrid(n);
   if (!findPane(n, n.selected)) n.selected = list[0].id;
   return n;
 }
 
-// equalise makes every column the same width and every pane in a column the same height.
+// equalise makes every split's children the same size.
 export function equalise(g: Grid): Grid {
   const n = clone(g);
-  for (const c of n.columns) {
-    c.size = 1 / n.columns.length;
-    for (const p of c.panes) p.size = 1 / c.panes.length;
-  }
+  const walk = (x: GridNode) => {
+    if (!isSplit(x)) return;
+    x.kids.forEach((k) => { k.size = 1 / x.kids.length; walk(k); });
+  };
+  if (n.root) walk(n.root);
   return n;
 }
 
-// shape is [columns, most panes in a column], to mark the current preset.
+// shape is [columns, most panes in a column] when the layout is one the presets make (a row of
+// columns, each a stack of panes), to mark the current preset; [0, 0] for any other layout.
 export function shape(g: Grid): [number, number] {
-  return [g.columns.length, Math.max(0, ...g.columns.map((c) => c.panes.length))];
+  const r = g.root;
+  if (!r) return [0, 0];
+  if (!isSplit(r)) return [1, 1];
+  const stack = (k: GridNode) => (!isSplit(k) ? 1 : k.dir === "v" && k.kids.every((x) => !isSplit(x)) ? k.kids.length : 0);
+  if (r.dir === "v") return r.kids.every((k) => !isSplit(k)) ? [1, r.kids.length] : [0, 0];
+  const rows = r.kids.map(stack);
+  return rows.every((x) => x > 0) ? [r.kids.length, Math.max(...rows)] : [0, 0];
 }
 
 // Resizing -------------------------------------------------------------------------------------------
@@ -375,32 +438,27 @@ function normalise(sizes: number[]): number[] {
   return ok.map((s) => s / sum);
 }
 
-export function resizeColumns(g: Grid, i: number, delta: number): Grid {
+// resizeSplit moves the divider after child i of a split by delta (a share of the split).
+export function resizeSplit(g: Grid, splitId: string, i: number, delta: number): Grid {
   const n = clone(g);
-  const sizes = resizeBetween(n.columns.map((c) => c.size), i, delta);
-  n.columns.forEach((c, j) => (c.size = sizes[j]));
-  return n;
-}
-
-export function resizePanes(g: Grid, col: number, i: number, delta: number): Grid {
-  const n = clone(g);
-  const c = n.columns[col];
-  if (!c) return g;
-  const sizes = resizeBetween(c.panes.map((p) => p.size), i, delta);
-  c.panes.forEach((p, j) => (p.size = sizes[j]));
+  const s = findSplit(n, splitId);
+  if (!s) return g;
+  const sizes = resizeBetween(s.kids.map((k) => k.size), i, delta);
+  s.kids.forEach((k, j) => (k.size = sizes[j]));
   return n;
 }
 
 // Saving ---------------------------------------------------------------------------------------------
 
-const VERSION = 1;
+const VERSION = 2;
 
 export function serialise(g: Grid): string {
   return JSON.stringify({ v: VERSION, ...g });
 }
 
-// restore reads a saved grid. Anything damaged or unknown is dropped, the 3 × 3 limit is applied, ids
+// restore reads a saved grid. Anything damaged or unknown is dropped, the pane limits are applied, ids
 // are made unique, and sizes are made to add up. It never throws: a bad save gives an empty grid.
+// Layouts saved before splits (columns of panes) open as a row of columns.
 export function restore(saved: unknown): Grid {
   let o: unknown = saved;
   if (typeof saved === "string") {
@@ -411,55 +469,76 @@ export function restore(saved: unknown): Grid {
     }
   }
   if (!o || typeof o !== "object") return emptyGrid();
-  const s = o as Partial<Grid> & { v?: number };
+  const s = o as { root?: unknown; columns?: unknown; passage?: unknown; seq?: unknown; selected?: unknown };
   const g = emptyGrid(typeof s.passage === "string" ? s.passage : "");
   const seen = new Set<string>();
-  const cols: Column[] = [];
-  for (const c of Array.isArray(s.columns) ? s.columns : []) {
-    const ps: Pane[] = [];
-    for (const p of Array.isArray(c?.panes) ? c.panes : []) {
-      const tabs: Tab[] = [];
-      for (const t of Array.isArray(p?.tabs) ? p.tabs : []) {
-        if (!t || typeof t !== "object" || !TAB_KINDS.includes(t.kind)) continue;
-        const id = typeof t.id === "string" && !seen.has(t.id) ? t.id : "";
-        const tab = { ...tidyTab(t), id: id || nextId(g, "t") } as Tab;
-        seen.add(tab.id);
-        tabs.push(tab);
-      }
-      if (tabs.length === 0) continue;
-      const pid = typeof p.id === "string" && !seen.has(p.id) ? p.id : nextId(g, "p");
-      seen.add(pid);
-      const active = tabs.some((t) => t.id === p.active) ? p.active : tabs[0].id;
-      ps.push({ id: pid, tabs, active, linked: p.linked !== false, ref: typeof p.ref === "string" ? p.ref : "", size: num(p.size) });
+  const fresh = (id: unknown, prefix: string) => {
+    const v = typeof id === "string" && id && !seen.has(id) ? id : nextId(g, prefix);
+    seen.add(v);
+    return v;
+  };
+  const pane = (p: Partial<Pane> | null | undefined): Pane | null => {
+    const tabs: Tab[] = [];
+    for (const t of Array.isArray(p?.tabs) ? p!.tabs : []) {
+      if (!t || typeof t !== "object" || !TAB_KINDS.includes(t.kind)) continue;
+      const tab = { ...tidyTab(t), id: fresh(t.id, "t") } as Tab;
+      tabs.push(tab);
     }
-    if (ps.length === 0) continue;
-    const cid = typeof c.id === "string" && !seen.has(c.id) ? c.id : nextId(g, "c");
-    seen.add(cid);
-    cols.push({ id: cid, panes: ps, size: num(c.size) });
+    if (tabs.length === 0) return null;
+    const active = tabs.some((t) => t.id === p!.active) ? p!.active! : tabs[0].id;
+    return { id: fresh(p!.id, "p"), tabs, active, linked: p!.linked !== false, ref: typeof p!.ref === "string" ? p!.ref : "", size: num(p!.size) };
+  };
+  const node = (raw: unknown, depth: number): GridNode | null => {
+    if (!raw || typeof raw !== "object" || depth > 12) return null;
+    const r = raw as { kids?: unknown; dir?: unknown; id?: unknown; size?: unknown };
+    if (!Array.isArray(r.kids)) return pane(raw as Partial<Pane>);
+    const kids = r.kids.map((k) => node(k, depth + 1)).filter((k): k is GridNode => !!k);
+    if (kids.length === 0) return null;
+    return { id: fresh(r.id, "s"), dir: r.dir === "v" ? "v" : "h", kids, size: num(r.size) };
+  };
+  let root: GridNode | null = null;
+  if (s.root) root = node(s.root, 0);
+  else if (Array.isArray(s.columns)) {
+    // From before splits: a row of columns, each a stack of panes.
+    const cols = (s.columns as { id?: unknown; panes?: unknown[]; size?: unknown }[]).map((c) =>
+      node({ id: c?.id, dir: "v", size: c?.size, kids: Array.isArray(c?.panes) ? c.panes : [] }, 1)).filter((c): c is GridNode => !!c);
+    if (cols.length) root = { id: fresh(undefined, "s"), dir: "h", kids: cols, size: 1 };
   }
-  // Too many panes in a column, or too many columns, are merged into the last one allowed.
-  for (const c of cols) {
-    if (c.panes.length > MAX_PANES) {
-      const last = c.panes[MAX_PANES - 1];
-      for (const extra of c.panes.splice(MAX_PANES)) last.tabs.push(...extra.tabs);
-    }
+  g.root = root;
+  if (g.root) {
+    limit(g);
+    tidyGrid(g);
   }
-  if (cols.length > MAX_COLUMNS) {
-    const last = cols[MAX_COLUMNS - 1];
-    const lastPane = last.panes[last.panes.length - 1];
-    for (const extra of cols.splice(MAX_COLUMNS)) for (const p of extra.panes) lastPane.tabs.push(...p.tabs);
-  }
-  const csizes = normalise(cols.map((c) => c.size));
-  cols.forEach((c, i) => {
-    c.size = csizes[i];
-    const ps = normalise(c.panes.map((p) => p.size));
-    c.panes.forEach((p, j) => (p.size = ps[j]));
-  });
-  g.columns = cols;
   const max = [...seen].map((id) => Number(id.replace(/^\D+/, ""))).filter(Number.isFinite);
   g.seq = Math.max(num(s.seq, 0), 0, ...max);
   g.selected = typeof s.selected === "string" && findPane(g, s.selected) ? s.selected : panes(g)[0]?.id ?? "";
   return g;
+}
+
+// limit applies the pane limits to a saved grid: a split keeps its first MAX_SIBLINGS children and
+// the grid its first MAX_PANES panes; the tabs of what is left out go into the last pane kept.
+function limit(g: Grid) {
+  const spill: Tab[] = [];
+  const cutKids = (n: GridNode) => {
+    if (!isSplit(n)) return;
+    const extra = n.kids.splice(MAX_SIBLINGS).flatMap(leaves).flatMap((p) => p.tabs);
+    if (extra.length) (l => l[l.length - 1])(leaves(n.kids[n.kids.length - 1])).tabs.push(...extra);
+    n.kids.forEach(cutKids);
+  };
+  const without = (n: GridNode, id: string): GridNode | null => {
+    if (!isSplit(n)) return n.id === id ? null : n;
+    n.kids = n.kids.map((k) => without(k, id)).filter((k): k is GridNode => !!k);
+    return n.kids.length ? n : null;
+  };
+  cutKids(g.root!);
+  let all = leaves(g.root);
+  while (all.length > MAX_PANES) {
+    const last = all[all.length - 1];
+    spill.push(...last.tabs);
+    g.root = without(g.root!, last.id);
+    all = leaves(g.root);
+  }
+  all[all.length - 1]?.tabs.push(...spill);
 }
 
 function num(v: unknown, fallback = 0): number {
