@@ -1,4 +1,4 @@
-// T38c: a book typed Bible opens at the verse when its text has verse numbers, and a highlight made
+// T38c (runs after bibles.e2e: the Search view it opens keeps a form that file reads): a book typed Bible opens at the verse when its text has verse numbers, and a highlight made
 // in it is linked to the verses, so the Bible's Highlights tool lists it.
 
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -124,12 +124,25 @@ export default [
       const chip = page.locator(".module-picker .chip-toggle", { hasText: TITLE });
       await chip.waitFor({ timeout: 8000 });
       t.assert.ok((await chip.textContent()).includes("book"), await chip.textContent());
+      // Only the book: an earlier check's SWORD module is listed but cannot be searched.
+      for (const c of await page.locator(".module-picker .chip-toggle").all()) {
+        if (!(await c.textContent()).includes(TITLE)) await c.click();
+      }
       await page.locator("#search-q").fill("translated");
       await page.locator('.view button[type=submit]', { hasText: "Search" }).first().click();
       const hit = page.locator(".results li", { hasText: TITLE }).first();
       await hit.waitFor({ timeout: 10000 });
       t.assert.equal((await hit.locator(".badge").first().textContent()).trim(), "book");
       await t.shot();
+    },
+  },
+  {
+    row: "Leave the library as it was: the verse Bible book is no longer typed Bible",
+    shot: "bk3v-05-after.png",
+    async run(t) {
+      const r = await t.app.run("library.items", { text: TITLE, limit: 5 });
+      await t.app.run("facet.set", { item_ids: [r.items[0].id], type: "Commentary (whole Bible)" });
+      await t.page.evaluate(() => { location.hash = "#reader"; });
     },
   },
 ];

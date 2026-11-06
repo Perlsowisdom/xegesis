@@ -186,6 +186,8 @@ marked "book"; quoting follows the book's licence (`book.verse_text`, then `book
   those. A linked book highlight shows in the Highlights tool and reports as "Title · Psalms 84:3".
 - Quotations from a book give plain words (no bold verse numbers) with a link to the passage and the book's credit.
 - Reading a Bible-type book in side-by-side columns with the installed Bibles is still not done.
+- Search: with every Bible chip checked, a listed but unsearchable module (after the e2e SWORD install, "sworde2e") makes bible.search fail with not_found and hides the book hits too. Seen only in the e2e library; worth a look.
+- e2e: bibles2.e2e.mjs is named to run after bibles.e2e, whose `form.card .hint` selector finds the Search view's form once it has been opened.
 
 ## After T38b
 - Study grid: at most 3 siblings per split and 9 panes; a drop that would break either is refused
