@@ -1681,6 +1681,8 @@ button.danger-link { color: var(--bad); margin-top: 8px; display: block; }
 .ink-width { width: 16px; border-radius: 3px; background: currentColor; }
 .ink-width-1 { height: 2px; } .ink-width-2 { height: 4px; } .ink-width-3 { height: 7px; }
 .ink-page { display: block; width: 100%; touch-action: none; cursor: crosshair; user-select: none; -webkit-user-select: none; outline-offset: -2px; }
+.ink-wrap { position: relative; }
+.ink-live { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .ink-still .ink-page { cursor: default; }
 .ink-page .ink-erased { opacity: .15; }
 @media (hover: none) { .ink-btn { min-width: 36px; height: 36px; } }

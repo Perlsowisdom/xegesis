@@ -91,7 +91,7 @@ const first = [
       await addInk(t);
       await stroke(t, wave(0.2));
       const saved = await t.saved();
-      t.assert.ok(saved.startsWith('Intro line\n\n```ink\n{"v":1,"h":'), saved.slice(0, 60));
+      t.assert.ok(saved.startsWith('Intro line\n\n```ink\n{"v":2,"h":'), saved.slice(0, 60));
       const id = t.id;
       shared.note = { id, body: saved };
       await t.app.restart();
@@ -239,7 +239,7 @@ const first = [
       const [d] = await savedInk(t);
       t.assert.equal(d.s.length, 2, "two pen strokes saved");
       const pr = d.s[0].p.map((p) => p[2]);
-      t.assert.ok(pr[0] >= 1 && pr[pr.length - 1] > pr[0] + 30, "pressure rises along the stroke: " + pr);
+      t.assert.ok(pr[0] > 0 && pr[pr.length - 1] > pr[0] + 0.3, "pressure rises along the stroke: " + pr);
       // A palm (touch) while a pen has just been used draws nothing.
       await pen(t, line(0.45), { type: "touch", id: 9 });
       t.assert.equal(await count(t), 2, "touch ignored");
@@ -292,7 +292,7 @@ const more = [
       await tool(t, "Pen");
       await stroke(t, wave(0.3));
       const d = await (async () => { await t.page.waitForTimeout(500); return t.saved(); })();
-      t.assert.match(d, /^Sermon intro\n\n```ink\n\{"v":1,/);
+      t.assert.match(d, /^Sermon intro\n\n```ink\n\{"v":2,/);
       t.assert.ok(d.includes('"p":[['));
       await t.shot();
     },
