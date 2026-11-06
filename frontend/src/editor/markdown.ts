@@ -7,7 +7,10 @@
 // **bold**, *italic*, <u>underline</u>, `code`, [text](url)); anything else stays literal text, so a note written by hand
 // is not rewritten. A quote whose last line is a credit ("> — [Rom 8:28](#passage/…) (KJV)…", as
 // document.quote writes it) is a verse quotation, kept line for line.
+// An ink block is a fenced ```ink block of one line of JSON (ink.ts).
 // This file has no dependency on the editor, so it is tested on its own.
+
+import { InkDoc, parseInk, serializeInk } from "./ink";
 
 export interface Span {
   text: string;
@@ -26,6 +29,7 @@ export type Block =
   // A check list ("- [ ] " and "- [x] ") has checked, one flag per item.
   | { type: "list"; ordered: boolean; items: Span[][]; checked?: boolean[] }
   | { type: "divider" }
+  | { type: "ink"; ink: InkDoc }
   // lines are the quotation's lines without their "> " (a bare ">" is ""); the last is the credit.
   | { type: "versequote"; lines: string[] }
   // A table: rows of cells of spans. header: the first row is a header row. widths: each column's
@@ -97,6 +101,8 @@ function parseBlock(src: string): Block {
   if (lines.length > 1 && lines.every((l) => l === ">" || l.startsWith("> ")) && /^> — \S/.test(lines[lines.length - 1])) {
     return { type: "versequote", lines: lines.map((l) => l.slice(2)) };
   }
+  const ink = lines.length === 3 ? parseInk(lines) : null;
+  if (ink) return { type: "ink", ink };
   const table = parseTable(lines);
   if (table) return table;
   if (lines.every((l) => /^- \[[ x]\] \S/.test(l))) {
@@ -267,6 +273,8 @@ function writeBlock(b: Block): string {
       return b.items.map((it, i) => `${b.ordered ? `${i + 1}. ` : "- "}${writeInline(it)}`).join("\n");
     case "divider":
       return "---";
+    case "ink":
+      return serializeInk(b.ink);
     case "versequote":
       return b.lines.map((l) => (l ? `> ${l}` : ">")).join("\n");
     case "table":

@@ -1,7 +1,7 @@
 // T34g sections 4 and 5: every Markdown format is a toolbar button (with ⋯ More when the row does not
 // fit), and the / menu lists every format and insert alphabetically.
 
-const TOOLS = ["bold", "italic", "underline", "code", "|", "heading", "|", "bullets", "numbers", "checks", "|", "quote", "divider", "link", "table", "insert"];
+const TOOLS = ["bold", "italic", "underline", "code", "|", "heading", "|", "bullets", "numbers", "checks", "|", "quote", "divider", "ink", "link", "table", "insert"];
 
 // selectWord selects the last word typed, with the keyboard.
 async function selectBack(t, n) {

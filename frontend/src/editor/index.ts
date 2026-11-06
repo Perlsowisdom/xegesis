@@ -76,6 +76,7 @@ import {
   RefChipNode, VerseQuoteNode, chipKind,
 } from "./nodes";
 import { refCandidates } from "./refwords";
+import { $createInkNode, $isInkNode, InkNode, insertInk } from "./inknode";
 import { SLASH_ITEMS, SlashId, filterSlash, slashQuery, tableSize } from "./slashwords";
 import { inTable, insertTable, registerTables, tableMenu, tablePicker } from "./table";
 import { structure } from "./structure";
@@ -138,7 +139,7 @@ const MOD = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl+";
 export function createEditor(host: HTMLElement, opts: EditorOptions = {}): RichEditor {
   const editor = createLexical({
     namespace: "xegesis-notes",
-    nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, LinkNode, DividerNode, VerseQuoteNode, RefChipNode, TableNode, TableRowNode, TableCellNode,
+    nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, LinkNode, DividerNode, InkNode, VerseQuoteNode, RefChipNode, TableNode, TableRowNode, TableCellNode,
       ...(opts.nodes ?? [])],
     theme: {
       text: { underline: "rt-u", bold: "rt-b", italic: "rt-i", code: "rt-code" }, link: "rt-link",
@@ -678,6 +679,8 @@ export function fromBlocks(blocks: Block[]): LexicalNode[] {
       }
       case "divider":
         return $createDividerNode();
+      case "ink":
+        return $createInkNode(b.ink);
       case "versequote":
         return $createVerseQuoteNode(b.lines);
       case "table": {
@@ -719,6 +722,7 @@ export function toBlocks(nodes: LexicalNode[]): Block[] {
     if ($isHeadingNode(n)) return { type: "heading", level: Number(n.getTag().slice(1)), spans: inline(n) };
     if ($isQuoteNode(n)) return { type: "quote", spans: inline(n) };
     if ($isDividerNode(n)) return { type: "divider" };
+    if ($isInkNode(n)) return { type: "ink", ink: n.getInk() };
     if ($isVerseQuoteNode(n)) return { type: "versequote", lines: n.getLines() };
     if ($isTableNode(n)) return tableBlock(n);
     if ($isListNode(n)) {
@@ -853,6 +857,7 @@ function toolbar(doc: Document, editor: LexicalEditor, opts: EditorOptions, vari
     "|",
     { id: "quote", label: "Quote", keys: `${MOD}Shift+9`, icon: "quote", run: () => toggleQuote(), active: isQuote },
     { id: "divider", label: "Divider", icon: "divider", run: () => insertDivider(editor) },
+    { id: "ink", label: "Handwriting", icon: "pen", run: () => insertInk(editor, topBlock) },
     { id: "link", label: "Link", keys: `${MOD}K`, icon: "link", menu: true, run: (a) => askLink(a), active: () => { const u = linkUrl(); return !!u && !u.startsWith("#"); } },
     { id: "table", label: "Table", icon: "table", menu: true, run: (a) => askTable(a) },
     ...(insertsOf(opts).length ? [{ id: "insert", label: "Insert a verse, a highlight or a link to a note", icon: "book-plus", cls: "t-insert", menu: true, run: (a: HTMLElement) => askInsert(a) } as Tool] : []),
@@ -1306,6 +1311,9 @@ function slashMenu(doc: Document, editor: LexicalEditor, content: HTMLElement, o
         break;
       case "divider":
         insertDivider(editor);
+        break;
+      case "ink":
+        insertInk(editor, topBlock);
         break;
       case "verseref":
       case "versequote":

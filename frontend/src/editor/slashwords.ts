@@ -4,7 +4,7 @@
 // every format and insert, in alphabetical order.
 
 export type SlashId =
-  | "bullets" | "checks" | "code" | "divider" | "h1" | "h2" | "h3" | "highlight" | "link" | "notelink" | "numbers" | "quote"
+  | "bullets" | "checks" | "code" | "divider" | "h1" | "h2" | "h3" | "highlight" | "ink" | "link" | "notelink" | "numbers" | "quote"
   | "table" | "verseref" | "versequote";
 
 export interface SlashItem {
@@ -23,6 +23,7 @@ const ITEMS: SlashItem[] = [
   { id: "checks", label: "Checkbox list", hint: "Things to tick off", icon: "☐", also: ["todo", "task", "check", "list"] },
   { id: "code", label: "Code", hint: "Words in a fixed-width face", icon: "<>", also: ["monospace", "inline"] },
   { id: "divider", label: "Divider", hint: "A line across the page", icon: "—", also: ["line", "rule", "separator"] },
+  { id: "ink", label: "Handwriting", hint: "Write or draw with a pen, a mouse or a finger", icon: "✎", also: ["ink", "draw", "sketch", "pen", "write", "scribble"] },
   { id: "h1", label: "Heading large", hint: "A main section title", icon: "H1", also: ["title", "section", "point", "big"] },
   { id: "h2", label: "Heading medium", hint: "A section title", icon: "H2", also: ["title", "section", "point", "subheading"] },
   { id: "h3", label: "Heading small", hint: "A small section title", icon: "H3", also: ["title", "section", "point", "subheading"] },
