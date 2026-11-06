@@ -61,7 +61,7 @@ export async function pen(t, pts, o = {}) {
 
 export const line = (y, from = 0.1, to = 0.9, n = 10) => Array.from({ length: n }, (_, i) => [from + ((to - from) * i) / (n - 1), y]);
 
-export default [
+const first = [
   {
     row: "/handwriting puts an ink block in a note, and a mouse draws strokes in it",
     shot: "ink-01-draw.png",
@@ -210,6 +210,21 @@ export default [
     },
   },
   {
+    row: "A finger draws in the block when no pen has been used",
+    shot: "ink-06a-finger.png",
+    async run(t) {
+      await fresh(t);
+      await addInk(t);
+      await tool(t, "Pen");
+      await tool(t, "Black");
+      await pen(t, line(0.3).map(([x, y]) => [x, y, 0]), { type: "touch", id: 11 });
+      t.assert.equal(await count(t), 1, "a touch stroke is drawn");
+      const [d] = await savedInk(t);
+      t.assert.equal(d.s[0].p.every((p) => p[2] === 0), true, "no pressure is invented for a finger");
+      await t.shot();
+    },
+  },
+  {
     row: "A pen's pressure is kept, its eraser end erases, and palm touches are ignored while a pen is in use",
     shot: "ink-06-pen.png",
     async run(t) {
@@ -235,3 +250,76 @@ export default [
     },
   },
 ];
+
+const more = [
+  {
+    row: "New > Handwritten note makes an ink-only note that opens as a study-grid tab",
+    shot: "ink-07-new-handwritten.png",
+    async run(t) {
+      const { page } = t;
+      await page.evaluate(() => { location.hash = "#notes"; });
+      const back = page.locator(".view:not(.reader) .note-page button", { hasText: "My work" }).first();
+      if (await back.isVisible().catch(() => false)) await back.click();
+      if (!(await page.locator(".new-btn:visible").count())) await page.locator("a, button", { hasText: /^All notes/ }).first().click();
+      await page.locator(".new-btn:visible").waitFor({ timeout: 15000 });
+      await page.locator(".new-btn:visible").click();
+      await page.locator(".popover .menu-list button", { hasText: "Handwritten note" }).click();
+      await t.current(".note-page");
+      const inGrid = await page.locator(`${t.root}`).evaluate((el) => !el.closest(".work-view"));
+      t.assert.ok(inGrid, "the note opened in the study grid, not in My work");
+      await page.waitForSelector(`${t.root} .ink-block`);
+      t.assert.equal(await page.locator(`${t.root} .ink-block`).count(), 1);
+      await tool(t, "Pen");
+      await tool(t, "Black");
+      await stroke(t, wave(0.3));
+      const notes = await t.app.run("note.list", { limit: 20 });
+      const mine = notes.find((n) => n.body.startsWith("```ink"));
+      t.assert.ok(mine, "an ink-only note exists");
+      t.id = mine.id;
+      const body = (await savedInk(t))[0];
+      t.assert.ok(body.s.length === 1, "one stroke saved");
+      t.assert.equal((await t.app.run("note.get", { id: mine.id })).body.replace(/```ink\n[^\n]*\n```/g, "").trim(), "", "the body is only ink");
+      await t.shot();
+    },
+  },
+  {
+    row: "Sermons hold ink blocks too",
+    shot: "ink-08-sermon.png",
+    async run(t) {
+      await t.openSermon("Sermon intro", "Ink sermon");
+      await t.focusEnd();
+      await addInk(t);
+      await tool(t, "Pen");
+      await stroke(t, wave(0.3));
+      const d = await (async () => { await t.page.waitForTimeout(500); return t.saved(); })();
+      t.assert.match(d, /^Sermon intro\n\n```ink\n\{"v":1,/);
+      t.assert.ok(d.includes('"p":[['));
+      await t.shot();
+    },
+  },
+  {
+    row: "Ink works at phone width: strokes follow the page width and stay inside the note",
+    shot: "ink-09-phone.png",
+    async run(t) {
+      await fresh(t);
+      await addInk(t);
+      await tool(t, "Pen");
+      await t.page.setViewportSize({ width: 390, height: 800 });
+      await t.page.waitForTimeout(400);
+      await t.page.locator(`${t.root} .ink-page`).evaluate((el) => el.scrollIntoView({ block: "start" }));
+      await t.page.waitForTimeout(200);
+      const box = await t.page.locator(`${t.root} .ink-page`).boundingBox();
+      t.assert.ok(box.width <= 390 && box.width > 200, "the page fits the phone: " + box.width);
+      await stroke(t, line(0.3));
+      const [d] = await savedInk(t);
+      const xs = d.s[0].p.map((p) => p[0]);
+      t.assert.ok(Math.min(...xs) > 90 && Math.max(...xs) < 910, "x is in page units whatever the width: " + xs[0] + ".." + xs[xs.length - 1]);
+      const bar = await t.page.locator(`${t.root} .ink-bar`).boundingBox();
+      t.assert.ok(bar.x + bar.width <= 390 + 1, "the tool strip wraps inside the screen");
+      await t.shot();
+      await t.page.setViewportSize({ width: 1480, height: 950 });
+    },
+  },
+];
+
+export default [...first, ...more];

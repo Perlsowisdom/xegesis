@@ -129,13 +129,18 @@ export function preachedText(iso?: string, locale?: string): string {
 
 // firstLine is a note's first line of text without Markdown marks, for its card.
 export function firstLine(md: string, max = 160): string {
+  let ink = false;
+  let drawn = false;
   for (const raw of md.split("\n")) {
+    if (raw === "```ink") ink = drawn = true;
+    else if (ink) ink = raw !== "```";
+    if (ink || raw === "```") continue;
     const line = raw.replace(/^\s{0,3}(#{1,6}\s+|>\s?|[-*+]\s+|\d+[.)]\s+)/, "")
       .replace(/!\[[^\]]*\]\([^)]*\)/g, "").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
       .replace(/[*_`~]+/g, "").trim();
     if (line) return line.length > max ? line.slice(0, max - 1).trimEnd() + "…" : line;
   }
-  return "";
+  return drawn ? "Handwriting" : "";
 }
 
 // Edited is how long ago something changed, in a few words.
@@ -200,13 +205,14 @@ export function purgeQuestion(e: BinEntry): string {
     : `Delete ${what} for good? This cannot be undone.`;
 }
 
-export type NewKind = "note" | "sermon";
+export type NewKind = "note" | "handwritten" | "sermon";
 
 // newChoices are the + New menu's entries: the thing that matches the view first, each in the
 // folder being shown when there is one.
 export function newChoices(view: "notes" | "sermons", folderName?: string): { kind: NewKind; label: string }[] {
   const where = folderName ? ` in ${folderName}` : "";
   const note = { kind: "note" as const, label: `Note${where}` };
+  const hand = { kind: "handwritten" as const, label: `Handwritten note${where}` };
   const sermon = { kind: "sermon" as const, label: `Sermon${where}` };
-  return view === "sermons" ? [sermon, note] : [note, sermon];
+  return view === "sermons" ? [sermon, note, hand] : [note, hand, sermon];
 }
