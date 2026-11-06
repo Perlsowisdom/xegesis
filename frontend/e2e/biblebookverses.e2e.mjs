@@ -88,4 +88,48 @@ export default [
       }
     },
   },
+  {
+    row: "Insert → Verse text in a sermon offers the Bible-type book, marked book, and quotes from it",
+    shot: "bk3v-03-insert-verse-text.png",
+    async run(t) {
+      const { page } = t;
+      await t.openSermon("", "Verse text from a book");
+      await t.focusEnd();
+      await page.click(`${t.root} [data-tool=insert]`);
+      await page.locator(".popover .insert-menu button", { hasText: "Verse text" }).click();
+      await page.locator(".popover .quote-pop").waitFor();
+      await page.locator(".popover .quote-pop input").first().fill("Psalm 84:3");
+      await page.locator(".popover .bible-chip").click();
+      const row = page.locator(".popover .bible-list button", { hasText: TITLE });
+      await row.waitFor();
+      t.assert.equal((await row.locator(".book-tag").textContent()).trim(), "book");
+      await t.shot();
+      await row.click();
+      await page.waitForFunction(() => !document.querySelector(".popover .quote-pop button[type=submit]")?.disabled, null, { timeout: 8000 });
+      t.assert.ok((await page.locator(".popover .quote-preview").textContent()).includes("Verse line 2"), await page.locator(".popover .quote-preview").textContent());
+      await t.press("Enter");
+      const q = t.editor().locator(".verse-quote");
+      await q.waitFor();
+      t.assert.ok((await q.locator(".vq-text").textContent()).includes("Verse line 2"), "the verse's words");
+      t.assert.ok((await q.locator(".vq-credit").textContent()).includes(TITLE), "the credit line names the book");
+      await t.shot("bk3v-03b-quoted.png");
+    },
+  },
+  {
+    row: "Search's Bible filter lists the Bible-type book, marked book, and finds words in it",
+    shot: "bk3v-04-search.png",
+    async run(t) {
+      const { page } = t;
+      await page.evaluate(() => { location.hash = "#search"; });
+      const chip = page.locator(".module-picker .chip-toggle", { hasText: TITLE });
+      await chip.waitFor({ timeout: 8000 });
+      t.assert.ok((await chip.textContent()).includes("book"), await chip.textContent());
+      await page.locator("#search-q").fill("translated");
+      await page.locator('.view button[type=submit]', { hasText: "Search" }).first().click();
+      const hit = page.locator(".results li", { hasText: TITLE }).first();
+      await hit.waitFor({ timeout: 10000 });
+      t.assert.equal((await hit.locator(".badge").first().textContent()).trim(), "book");
+      await t.shot();
+    },
+  },
 ];

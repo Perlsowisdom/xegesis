@@ -33,6 +33,7 @@ func register(r *command.Registry, s *service) {
 		command.Define("book.excerpt", "Read part of a book for printing or exporting: a selection or whole sections, with its licence and length.", false, s.excerptCmd),
 		command.Define("book.bible_map", "Map a Bible-type book to the Bible: which chapters its contents and headings place, and which entries could not be placed.", false, s.bibleMapCmd),
 		command.Define("book.at_reference", "Find where a Bible-type book holds a reference: the section and anchor of that chapter, or of the book when the chapter is not found.", false, s.atRefCmd),
+		command.Define("book.verse_text", "Read the text of verses from a Bible-type book, found by its chapter map and verse numbers, within one chapter; the text is not licence-checked, book.copy does that.", false, s.verseTextCmd),
 		command.Define("book.refs", "Find Bible references in pieces of text, such as the lines of a PDF page, so they can become links.", false, s.refsCmd),
 		command.Define("highlight.create", "Highlight a passage in a book, Bible verses, or exact words within verses.", true, s.highlightCreate),
 		command.Define("highlight.list", "List highlights: in a book, on Bible verses, in a book of the Bible or everywhere, by colour or words.", false, s.highlightList),

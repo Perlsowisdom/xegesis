@@ -146,3 +146,43 @@ func TestBibleBookMarkingLinksVerses(t *testing.T) {
 		t.Errorf("book highlights after a Bible one: %+v", list)
 	}
 }
+
+func TestVerseTextAndCopyPreview(t *testing.T) {
+	sup := map[int]string{
+		83: `<p><sup>1</sup>O God, do not keep silence.</p>`,
+		84: `<p><sup>1</sup>How lovely.</p><p><sup>2</sup>My soul longs.</p><p>Even the sparrow, <sup>3</sup>at your altars.</p><p><sup>4</sup>Blessed.</p>`,
+	}
+	e := setupWith(t, map[string][]byte{"sup.epub": bibleEPUB(t, "Sup Psalms", sup, false), "plain.epub": bibleEPUB(t, "Plain Psalms", map[int]string{83: `<p>x</p>`, 84: `<p>How lovely.</p>`}, false),
+		"shared.epub": bibleEPUB(t, "Shared Psalms", sup, true)})
+	text := func(title, ref string) VerseText {
+		var v VerseText
+		e.must("book.verse_text", map[string]any{"item_id": e.titles[title], "ref": ref}, &v)
+		return v
+	}
+	for _, c := range []struct{ title, ref, want string }{
+		{"Sup Psalms", "Psalm 84:3", "at your altars."},
+		{"Sup Psalms", "Psalm 84:2-3", "My soul longs. Even the sparrow, at your altars."},
+		{"Sup Psalms", "Psalm 84", "How lovely. My soul longs. Even the sparrow, at your altars. Blessed."},
+		{"Shared Psalms", "Psalm 83", "O God, do not keep silence."},
+		{"Shared Psalms", "Psalm 84:4", "Blessed."},
+	} {
+		if v := text(c.title, c.ref); !v.Found || v.Text != c.want {
+			t.Errorf("%s %s = %+v, want %q", c.title, c.ref, v, c.want)
+		}
+	}
+	for _, c := range [][2]string{{"Sup Psalms", "Psalm 84:9"}, {"Sup Psalms", "Psalm 99:1"}, {"Plain Psalms", "Psalm 84:1"}, {"Sup Psalms", "Psalm 83-84"}} {
+		if v := text(c[0], c[1]); v.Found || v.Reason == "" {
+			t.Errorf("%s %s should not be found: %+v", c[0], c[1], v)
+		}
+	}
+	id := e.titles["Sup Psalms"]
+	var c CopyResult
+	e.must("book.copy", map[string]any{"item_id": id, "text": "abc", "preview": true}, &c)
+	if !c.Allowed || c.Text != "" || c.CopiedToday != 0 {
+		t.Errorf("a preview counts nothing: %+v", c)
+	}
+	e.must("book.copy", map[string]any{"item_id": id, "text": "abc"}, &c)
+	if c.CopiedToday != 3 {
+		t.Errorf("a copy counts: %+v", c)
+	}
+}

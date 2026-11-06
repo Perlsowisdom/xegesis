@@ -4,6 +4,7 @@ import (
 	"os"
 	"regexp"
 	"strconv"
+	"unicode/utf8"
 
 	xhtml "golang.org/x/net/html"
 )
@@ -15,6 +16,7 @@ import (
 
 type verseMark struct {
 	N, Para, Offset int
+	Skip            int  // units of the number and the space after it, which are not verse text
 	Strong          bool // class, id or a number alone in a span; superscripts and leading digits are weaker
 }
 
@@ -102,8 +104,21 @@ func (s *sanitizer) noteText(t string) {
 		}
 	}
 	if n > 0 {
-		s.marks = append(s.marks, verseMark{N: n, Para: s.para, Offset: s.off, Strong: strong})
+		s.marks = append(s.marks, verseMark{N: n, Para: s.para, Offset: s.off, Strong: strong, Skip: numberSkip(t)})
 	}
+}
+
+// numberSkip is how much of t is a verse number: all of a lone number, or the digits and the space
+// after them when text follows.
+func numberSkip(t string) int {
+	if numberOnly.MatchString(t) {
+		return utf16Len(t)
+	}
+	if loc := leadNumber.FindStringIndex(t); loc != nil {
+		_, sz := utf8.DecodeLastRuneInString(t[:loc[1]])
+		return utf16Len(t[:loc[1]-sz])
+	}
+	return 0
 }
 
 var inlineStart = map[string]bool{"span": true, "b": true, "strong": true, "small": true}

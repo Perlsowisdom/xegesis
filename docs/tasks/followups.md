@@ -166,6 +166,27 @@ Design first: mock-up for approval, then build.
   domain, Creative Commons and freely distributable stay as they say; copyrighted modules, and any
   that state nothing clear, are a personal copy that keeps the credit line.
 
+## After T38c
+Done: verse level (`book.at_reference` returns `found: "verse"` with a paragraph and character offset when the text shows
+verse numbers); highlights and notes made in a Bible-type book also get `anchors.verse_start/verse_end` (the book's own
+locator is kept); Insert → Verse text (which a sermon shares), Search's Bible filter and the Highlights tool list such books,
+marked "book"; quoting follows the book's licence (`book.verse_text`, then `book.copy`; typing a preview is not counted).
+- Verse numbers are read from `<sup>`, elements whose class or id says verse, a number alone in a span/b/strong/small, and digits
+  leading a paragraph. Inline numbers mid-paragraph with no such markup, and verses shown only as images, are not found. Numbers
+  are accepted as a rising run starting at 1 or 2 (footnote numbers and stray digits are passed over); a chapter with no
+  usable numbers opens at the chapter, and its notes and highlights link to the whole chapter (verse 1 to the end).
+- Not done: PDF books (no map, so no verse links or quoting); DOCX, Markdown and plain-text Bibles are not mapped for verses
+  (only EPUB and HTML); "Chapter Twelve"-style names and non-English book names (still listed as unmapped); a chapter that
+  runs over more than one EPUB section has verses only in the section where it starts; a quotation across two chapters.
+- A highlight or note is linked when it is made. Changing a book's type to Bible later does not link the earlier ones, and
+  changing it away leaves the links (they show until the note or highlight is moved or deleted).
+- The link is made through `core.BookVerses`, a hook the reader sets when it registers (core cannot import the reader). A
+  later change to `internal/command` could give commands a way to call others instead.
+- `highlight.list` and `note.list` `on: "verses"` now mean made on Bible verses (no book anchor); the Bible text only paints
+  those. A linked book highlight shows in the Highlights tool and reports as "Title · Psalms 84:3".
+- Quotations from a book give plain words (no bold verse numbers) with a link to the passage and the book's credit.
+- Reading a Bible-type book in side-by-side columns with the installed Bibles is still not done.
+
 ## After T38b
 - Study grid: at most 3 siblings per split and 9 panes; a drop that would break either is refused
   (use Move to... from the tab menu). Splits sit as a tree; "Equal sizes" evens every split.
