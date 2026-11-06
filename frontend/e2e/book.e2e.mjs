@@ -120,11 +120,15 @@ const checks = [
         throw new Error(`${e.message}\nshown: ${(await page.locator("#reader").innerText().catch(() => "")).slice(0, 400)}`);
       });
       t.assert.ok((await book.locator(".book-text p").count()) > 30, "the whole chapter is shown");
+      // The toolbar: no New tab "+" in Read mode, and the section field is only as wide as its number.
+      t.assert.equal(await page.locator(".grid-plus:visible").count(), 0, "no New tab button in Read mode");
+      const fieldW = (await page.locator(".book-where-input:visible").first().boundingBox()).width;
+      t.assert.ok(fieldW < 80, `section field is ${fieldW}px wide`);
       const body = book.locator(".book-body");
       await body.hover();
       await page.mouse.wheel(0, 1500);
-      await page.waitForTimeout(400);
-      t.assert.ok(await body.evaluate((e) => e.scrollTop > 200), "the text scrolls");
+      await page.waitForFunction(() => [...document.querySelectorAll(".doc-book .book-body")].some((e) => e.offsetParent && e.scrollTop > 200), null, { timeout: 5000 });
+      await t.settled();
       const para = book.locator(".book-text p", { hasText: "Paragraph 20 of" });
       const sel = await selectWords(t, para);
       t.assert.ok(sel.trim().length > 10 && "Paragraph 20 of this chapter speaks of grace".includes(sel.trim().slice(0, 12)), `selected "${sel}"`);
@@ -146,6 +150,7 @@ const checks = [
       const pane = page.locator(".grid-pane:visible", { has: page.locator(".doc-book") }).first();
       await pane.locator(".book-text p", { hasText: "The first words of chapter 1" }).waitFor({ timeout: 15000 });
       t.assert.ok((await page.locator(".grid-pane:visible").count()) >= 1);
+      t.assert.ok((await pane.locator(".grid-plus:visible").count()) === 1, "New tab button shows in Study");
       const body = pane.locator(".book-body");
       await body.hover();
       await page.mouse.wheel(0, 1200);
