@@ -1,14 +1,16 @@
 // Ink: handwriting and drawing kept as vector strokes, in the note's Markdown as a fenced block:
 //
 //   ```ink
-//   {"v":1,"h":260,"s":[{"t":"pen","c":"ink","w":2,"p":[[12.5,30,0],[14,33.5,61]]}]}
+//   {"v":2,"h":260,"s":[{"t":"pen","c":"ink","w":2,"p":[[12.53,30,0],[14.01,33.5,0.612]]}]}
 //   ```
 //
 // The page is always INK_W units wide whatever its width on screen, so strokes line up at every
 // width; h is its height in the same units. A stroke has a tool (t: "pen" or "hl" for the
 // highlighter), a colour (c: "ink" or a highlight colour name), a width step (w: 1 to 3) and points
-// [x, y, pressure]. Pressure is 1 to 100, or 0 when the device gave none (mouse, finger), in which
-// case the pen's speed stands in for it. One line of compact JSON, so it is one Markdown block.
+// [x, y, pressure]. x and y keep two decimals; pressure is 0 to 1 with three decimals, or 0 when the
+// device gave none (mouse, finger), in which case the pen's speed stands in for it. Version 1 (the
+// first release) wrote one decimal and pressure 0 to 100; it is still read. One line of compact JSON,
+// so it is one Markdown block.
 // This file has no dependency on the editor, so it is tested on its own.
 
 import { polygonPath, strokeOutline } from "./inkengine";
@@ -51,11 +53,12 @@ export function inkOpacity(t: InkTool): number {
   return t === "hl" ? 0.38 : 1;
 }
 
-const round1 = (n: number) => Math.round(n * 10) / 10;
+const round2 = (n: number) => Math.round(n * 100) / 100;
+const round3 = (n: number) => Math.round(n * 1000) / 1000;
 
 export function serializeInk(d: InkDoc): string {
-  const s = d.s.map((k) => ({ t: k.t, c: k.c, w: k.w, p: k.p.map(([x, y, p]) => [round1(x), round1(y), Math.round(p ?? 0)]) }));
-  return "```ink\n" + JSON.stringify({ v: 1, h: Math.round(d.h), s }) + "\n```";
+  const s = d.s.map((k) => ({ t: k.t, c: k.c, w: k.w, p: k.p.map(([x, y, p]) => [round2(x), round2(y), round3(p ?? 0)]) }));
+  return "```ink\n" + JSON.stringify({ v: 2, h: Math.round(d.h), s }) + "\n```";
 }
 
 // parseInk reads a fenced ink block (the lines of one Markdown block); null when it is not one.
@@ -69,24 +72,25 @@ export function parseInk(lines: string[]): InkDoc | null {
   }
   if (!j || typeof j !== "object") return null;
   const o = j as { v?: unknown; h?: unknown; s?: unknown };
-  if (o.v !== 1 || typeof o.h !== "number" || !Array.isArray(o.s)) return null;
+  if ((o.v !== 1 && o.v !== 2) || typeof o.h !== "number" || !Array.isArray(o.s)) return null;
   const s: InkStroke[] = [];
   for (const k of o.s as unknown[]) {
-    const st = stroke(k);
+    const st = stroke(k, o.v === 1 ? 0.01 : 1);
     if (!st) return null;
     s.push(st);
   }
   return { h: clampH(o.h), s };
 }
 
-function stroke(k: unknown): InkStroke | null {
+// stroke reads one stroke; pscale turns its stored pressure into 0 to 1.
+function stroke(k: unknown, pscale: number): InkStroke | null {
   if (!k || typeof k !== "object") return null;
   const o = k as Record<string, unknown>;
   if ((o.t !== "pen" && o.t !== "hl") || !INK_COLOURS.includes(o.c as InkColour) || ![1, 2, 3].includes(o.w as number) || !Array.isArray(o.p)) return null;
   const p: number[][] = [];
   for (const pt of o.p as unknown[]) {
     if (!Array.isArray(pt) || pt.length !== 3 || pt.some((n) => typeof n !== "number" || !isFinite(n))) return null;
-    p.push([pt[0], pt[1], pt[2]]);
+    p.push([pt[0], pt[1], Math.min(1, Math.max(0, pt[2] * pscale))]);
   }
   return { t: o.t, c: o.c as InkColour, w: o.w as 1 | 2 | 3, p };
 }
@@ -100,8 +104,7 @@ export function growTo(h: number, y: number): number {
 
 // outlinePath is the SVG path of a stroke's shape (inkengine.ts).
 export function outlinePath(k: InkStroke): string {
-  const pts = k.p.map(([x, y, p]) => [x, y, p / 100]);
-  return polygonPath(strokeOutline(pts, strokeSize(k.t, k.w), k.t === "hl"));
+  return polygonPath(strokeOutline(k.p, strokeSize(k.t, k.w), k.t === "hl"));
 }
 
 // hits is whether the point (x, y) touches the stroke (for the eraser).

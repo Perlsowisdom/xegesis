@@ -187,7 +187,7 @@ class InkBlock {
 
   private point(e: PointerEvent): number[] {
     const [x, y] = this.at(e);
-    const pressure = e.pointerType === "pen" && e.pressure > 0 ? Math.max(1, Math.round(e.pressure * 100)) : 0;
+    const pressure = e.pointerType === "pen" && e.pressure > 0 ? Math.max(0.001, Math.round(e.pressure * 1000) / 1000) : 0;
     return [x, y, pressure];
   }
 
