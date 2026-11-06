@@ -32,7 +32,8 @@ func effectiveLicence(it library.Item) licence.Licence {
 
 type CopyParams struct {
 	BookParams
-	Text string `json:"text" required:"true" desc:"The selected text to copy"`
+	Text    string `json:"text" required:"true" desc:"The selected text to copy"`
+	Preview bool   `json:"preview,omitempty" desc:"Only check the licence: nothing is counted towards the daily limit and no text is returned"`
 }
 
 type CopyResult struct {
@@ -77,6 +78,10 @@ func (s *service) copyCmd(ctx context.Context, env *command.Env, p CopyParams) (
 	case !daily.Allowed:
 		res.Reason = fmt.Sprintf("the licence allows copying about %d characters of this book a day, and %d have been copied today",
 			res.DailyLimit, used)
+		return res, nil
+	}
+	if p.Preview {
+		res.Allowed = true
 		return res, nil
 	}
 	err = env.Store.Write(ctx, "book.copy", func(tx *store.Tx) error {

@@ -6,6 +6,7 @@
 import { activeDoc } from "./activedoc";
 import { Module, Ref, run } from "./api";
 import { installedBibles } from "./bibles";
+import { bibleBooks, type BibleBook } from "./biblebooks";
 import { button, clear, h } from "./dom";
 import { SaveStatus, addMonths, isoDate, monthDays, saveText } from "./docwords";
 import { formatTime } from "./helpers";
@@ -195,10 +196,14 @@ export function verseRefPopover(anchor: HTMLElement, selected: string, insert: (
 let lastBible = "";
 
 // verseQuoteFor quotes verses through document.quote, so the Bible's licence decides; with words, only those words of them.
-export async function verseQuoteFor(ref: string, module: string, words = ""): Promise<{ md: string } | { reason: string }> {
+// A module of "book:<item id>" is a library book typed Bible; its own licence decides. keep counts the
+// quotation against that book's daily copy limit (when it is put in the text, not while typing).
+export const BOOK_MODULE = "book:";
+
+export async function verseQuoteFor(ref: string, module: string, words = "", keep = false): Promise<{ md: string } | { reason: string }> {
   // The text of the open note or sermon goes too, so quotations from one limited Bible add up in it.
   const text = activeDoc()?.text();
-  const r = await run<{ allowed: boolean; reason?: string; quote?: string }>("document.quote", { ref, module, preview: true, ...(words ? { words } : {}), ...(text ? { text } : {}) })
+  const r = await run<{ allowed: boolean; reason?: string; quote?: string }>("document.quote", { ref, ...(module.startsWith(BOOK_MODULE) ? { book: module.slice(BOOK_MODULE.length), ...(keep ? { keep: true } : {}) } : { module }), preview: true, ...(words ? { words } : {}), ...(text ? { text } : {}) })
     .catch((err: Error) => ({ allowed: false, reason: err.message, quote: "" }));
   if (!r.allowed || !r.quote) return { reason: r.reason ?? "the licence does not allow it" };
   return { md: r.quote.trimEnd() };
@@ -213,11 +218,12 @@ export function quotePopover(anchor: HTMLElement, initial: string, onInsert: (md
   const ok = h("button", { type: "submit", class: "primary", disabled: true }, "Insert");
   const why = h("p", { class: "ref-note bad", role: "alert" });
   let bibles: Module[] = [];
+  let books: BibleBook[] = [];
   let module = "";
   let seq = 0;
   let timer = 0;
 
-  const label = () => bibles.find((m) => m.id === module)?.abbreviation || module || "No Bible";
+  const label = () => bibles.find((m) => m.id === module)?.abbreviation || books.find((b) => BOOK_MODULE + b.id === module)?.title || module || "No Bible";
   const setBible = (id: string) => {
     module = id;
     lastBible = id;
@@ -226,12 +232,16 @@ export function quotePopover(anchor: HTMLElement, initial: string, onInsert: (md
   };
   bibleBtn.addEventListener("click", () => {
     // A small menu inside the popover, so the popover stays open.
-    const list = h("div", { class: "menu-list bible-list", role: "menu" }, bibles.map((m) => button(m.abbreviation || m.id, () => {
+    const choose = (id: string) => () => {
       list.remove();
       bibleBtn.setAttribute("aria-expanded", "false");
-      setBible(m.id);
+      setBible(id);
       input.focus();
-    }, { role: "menuitem", title: m.name, class: m.id === module ? "on" : "" })));
+    };
+    const list = h("div", { class: "menu-list bible-list", role: "menu" }, bibles.map((m) => button(m.abbreviation || m.id, choose(m.id),
+      { role: "menuitem", title: m.name, class: m.id === module ? "on" : "" })),
+    books.map((b) => h("button", { type: "button", role: "menuitem", title: `${b.title}, a library book typed Bible`, class: BOOK_MODULE + b.id === module ? "on" : "", onclick: choose(BOOK_MODULE + b.id) },
+      b.title, h("small", { class: "book-tag" }, "book"))));
     const open = form.querySelector(".bible-list");
     if (open) {
       open.remove();
@@ -250,6 +260,14 @@ export function quotePopover(anchor: HTMLElement, initial: string, onInsert: (md
     if (!ref || !module) {
       ok.disabled = true;
       clear(preview, h("span", { class: "hint" }, module ? "Type the verses to quote." : "Install a Bible first, from Library → Get Bibles."));
+      return;
+    }
+    if (module.startsWith(BOOK_MODULE)) {
+      const r = await run<{ allowed: boolean; reason?: string; quote?: string }>("document.quote", { ref, book: module.slice(BOOK_MODULE.length), preview: true }).catch(() => null);
+      if (n !== seq) return;
+      ok.disabled = !r?.allowed;
+      const words = (r?.quote ?? "").split(/\r?\n/)[0].replace(/^>\s*/, "").replace(/\*\*/g, "");
+      clear(preview, h("span", r?.allowed ? {} : { class: "hint" }, r?.allowed ? (words.length > 260 ? `${words.slice(0, 260)}…` : words) : r ? `Not quoted: ${r.reason ?? "the licence does not allow it"}.` : "Not a reference yet."));
       return;
     }
     const p = await run<{ verses: { id: number; text: string }[] }>("bible.read", { module, ref }).catch(() => null);
@@ -278,7 +296,7 @@ export function quotePopover(anchor: HTMLElement, initial: string, onInsert: (md
     const ref = input.value.trim();
     if (!ref || !module) return;
     ok.disabled = true;
-    const r = await verseQuoteFor(ref, module);
+    const r = await verseQuoteFor(ref, module, "", true);
     ok.disabled = false;
     if ("reason" in r) {
       why.textContent = `Not quoted: ${r.reason}.`;
@@ -298,10 +316,11 @@ export function quotePopover(anchor: HTMLElement, initial: string, onInsert: (md
   openPopover(anchor, form, { label: "Quote verses", className: "doc-pop" });
   input.select();
 
-  void installedBibles().then((mods) => {
+  void Promise.all([installedBibles(), bibleBooks()]).then(([mods, bs]) => {
     bibles = mods;
-    const want = [lastBible, ...state.modules].find((id) => mods.some((m) => m.id === id));
-    setBible(want ?? mods[0]?.id ?? "");
+    books = bs;
+    const want = [lastBible, ...state.modules].find((id) => mods.some((m) => m.id === id) || bs.some((b) => BOOK_MODULE + b.id === id));
+    setBible(want ?? mods[0]?.id ?? (bs[0] ? BOOK_MODULE + bs[0].id : ""));
   });
 }
 

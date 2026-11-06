@@ -115,10 +115,10 @@ export function highlightsPanel(o: HighlightsOptions) {
   }
 
   function where(r: HighlightRow): string {
-    if (r.ref) return r.ref;
+    if (!r.item_id && r.ref) return r.ref;
     const loc = r.locator;
     const place = loc?.page ? `page ${loc.page}` : loc?.section ? `section ${loc.section}` : "";
-    return [r.item_title || "A book", place].filter(Boolean).join(" · ");
+    return [r.item_title || "A book", r.ref || place].filter(Boolean).join(" · ");
   }
 
   function drawNote(nt: BookNoteRow) {
@@ -167,7 +167,7 @@ export function highlightsPanel(o: HighlightsOptions) {
   }
 
   async function jump(r: HighlightRow) {
-    if (r.ref) {
+    if (r.ref && !r.item_id) {
       const p = await run<Ref>("verse.parse", { ref: r.ref }).catch(() => null);
       if (!p) return;
       navigate("reader");
@@ -186,8 +186,8 @@ export function highlightsPanel(o: HighlightsOptions) {
     draw();
     clear(msg.el, "Highlight deleted. ", button("Undo", async () => {
       const again = r.range ? { range: r.range, module: r.module, ...(r.parts?.length ? { parts: r.parts } : { quote: r.text }), style: r.style }
-        : r.ref ? { verse_start: r.verse_start, verse_end: r.verse_end, style: r.style }
-        : { item_id: r.item_id, locator: r.locator, style: r.style };
+        : r.item_id ? { item_id: r.item_id, locator: r.locator, style: r.style }
+        : { verse_start: r.verse_start, verse_end: r.verse_end, style: r.style };
       if (await msg.attempt(() => run("highlight.create", again)) !== undefined) {
         msg.clear();
         void refresh();

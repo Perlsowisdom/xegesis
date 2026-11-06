@@ -11,6 +11,7 @@ import (
 
 	"github.com/Perlsowisdom/xegesis/internal/bible"
 	"github.com/Perlsowisdom/xegesis/internal/command"
+	"github.com/Perlsowisdom/xegesis/internal/command/core"
 	"github.com/Perlsowisdom/xegesis/internal/licence"
 	"github.com/Perlsowisdom/xegesis/internal/reader"
 	"github.com/Perlsowisdom/xegesis/internal/store"
@@ -24,7 +25,9 @@ const charsPerPage = reader.CharsPerPage
 type QuoteParams struct {
 	ID      string `json:"id,omitempty" desc:"The document to quote into; not needed with preview"`
 	Ref     string `json:"ref" required:"true" desc:"The passage, e.g. \"Rom 8:28-30\""`
-	Module  string `json:"module" required:"true" desc:"The Bible to quote, from bible.modules"`
+	Module  string `json:"module,omitempty" desc:"The Bible to quote, from bible.modules; or give book"`
+	Book    string `json:"book,omitempty" desc:"Or a library book typed Bible (its item id) to quote from; its own licence decides, as for book.copy"`
+	Keep    bool   `json:"keep,omitempty" desc:"With book and preview: count the quotation against the book's daily copy limit, as when it is put in the text; typing a preview does not"`
 	Preview bool   `json:"preview,omitempty" desc:"Only return the quotation, for an editor to place where the cursor is; nothing is saved"`
 	Text    string `json:"text,omitempty" desc:"The document's text as the editor holds it, when it is not the saved one (a note, or text not saved yet); quotations in it from a limited Bible count towards that Bible's limit for one document"`
 	Words   string `json:"words,omitempty" desc:"Quote only these words of the passage, such as a highlight's exact words; they must be in its text"`
@@ -66,6 +69,12 @@ func (s *service) quote(ctx context.Context, env *command.Env, p QuoteParams) (Q
 	r, err := refOf(p.Ref)
 	if err != nil {
 		return QuoteResult{}, err
+	}
+	if p.Book != "" {
+		return s.quoteBook(ctx, env, p, r)
+	}
+	if p.Module == "" {
+		return QuoteResult{}, command.Errorf("bad_params", "document.quote: give module or book")
 	}
 	var mods []bible.Meta
 	if err := s.call(ctx, env, "bible.modules", map[string]any{}, &mods); err != nil {
@@ -116,11 +125,16 @@ func (s *service) quote(ctx context.Context, env *command.Env, p QuoteParams) (Q
 			return res, nil
 		}
 	}
+	return s.deliver(ctx, env, p, res, text)
+}
+
+// deliver returns an allowed quotation, or adds it to the end of the document.
+func (s *service) deliver(ctx context.Context, env *command.Env, p QuoteParams, res QuoteResult, text string) (QuoteResult, error) {
 	if p.Preview {
 		res.Allowed, res.Quote = true, text
 		return res, nil
 	}
-	err = env.Store.Write(ctx, "document.quote", func(tx *store.Tx) error {
+	err := env.Store.Write(ctx, "document.quote", func(tx *store.Tx) error {
 		cur, err := live(tx, p.ID)
 		if err != nil {
 			return err
@@ -251,4 +265,30 @@ func wordsMarkdown(words, display, osis, bibleName, credit string) string {
 	}
 	b.WriteByte('\n')
 	return b.String()
+}
+
+// quoteBook quotes verses from a library book typed Bible. Its text comes from book.verse_text and
+// the book's licence decides, through book.copy: a preview only checks, and the quotation counts
+// towards the daily limit when it is kept.
+func (s *service) quoteBook(ctx context.Context, env *command.Env, p QuoteParams, r *core.RefResult) (QuoteResult, error) {
+	var vt reader.VerseText
+	if err := s.call(ctx, env, "book.verse_text", map[string]any{"item_id": p.Book, "ref": r.Display}, &vt); err != nil {
+		return QuoteResult{}, err
+	}
+	res := QuoteResult{}
+	if !vt.Found {
+		res.Reason = vt.Reason
+		return res, nil
+	}
+	var cp reader.CopyResult
+	keep := !p.Preview || p.Keep
+	if err := s.call(ctx, env, "book.copy", map[string]any{"item_id": p.Book, "text": vt.Text, "preview": !keep}, &cp); err != nil {
+		return QuoteResult{}, err
+	}
+	res.Attribution = cp.Attribution
+	if !cp.Allowed {
+		res.Reason = cp.Reason
+		return res, nil
+	}
+	return s.deliver(ctx, env, p, res, wordsMarkdown(vt.Text, r.Display, r.OSIS, vt.Title, cp.Attribution))
 }

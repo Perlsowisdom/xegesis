@@ -12,6 +12,7 @@ import (
 	"github.com/Perlsowisdom/xegesis/internal/command"
 	"github.com/Perlsowisdom/xegesis/internal/command/core"
 	"github.com/Perlsowisdom/xegesis/internal/licence"
+	"github.com/Perlsowisdom/xegesis/internal/reader"
 	"github.com/Perlsowisdom/xegesis/internal/store"
 	"github.com/Perlsowisdom/xegesis/internal/verse"
 )
@@ -394,5 +395,50 @@ func TestQuotationsFromOneBibleAddUpPerDocument(t *testing.T) {
 	e.must("document.quote", map[string]any{"id": d.ID, "ref": "John 3:16-17", "module": "kjv"}, &q)
 	if !q.Allowed {
 		t.Fatalf("public domain quote = %+v", q)
+	}
+}
+
+func TestQuoteFromBibleBook(t *testing.T) {
+	e := setup(t)
+	var copies []bool // the preview flag of each book.copy
+	allow := true
+	e.r.Add(command.Define("book.verse_text", "stand-in", false, func(_ context.Context, _ *command.Env, p struct {
+		ItemID string `json:"item_id"`
+		Ref    string `json:"ref"`
+	}) (reader.VerseText, error) {
+		if p.Ref == "John 3:99" {
+			return reader.VerseText{Reason: "no such verse"}, nil
+		}
+		return reader.VerseText{Found: true, Text: "Even the sparrow finds a home.", Title: "Alter Psalms"}, nil
+	}))
+	e.r.Add(command.Define("book.copy", "stand-in", true, func(_ context.Context, _ *command.Env, p reader.CopyParams) (reader.CopyResult, error) {
+		copies = append(copies, p.Preview)
+		if !allow {
+			return reader.CopyResult{Reason: "the licence allows copying about 2000 characters a day"}, nil
+		}
+		return reader.CopyResult{Allowed: true, Attribution: "Personal copy.", Text: p.Text}, nil
+	}))
+	var q QuoteResult
+	e.must("document.quote", map[string]any{"ref": "Psalm 84:3", "book": "ITEM1", "preview": true}, &q)
+	if !q.Allowed || !strings.HasPrefix(q.Quote, "> Even the sparrow finds a home.\n> — [Psalms 84:3](#passage/Ps.84.3) (Alter Psalms). Personal copy.") {
+		t.Fatalf("book quote = %+v", q)
+	}
+	e.must("document.quote", map[string]any{"ref": "Psalm 84:3", "book": "ITEM1", "preview": true, "keep": true}, &q)
+	var d Document
+	e.must("document.create", map[string]any{"title": "Kept", "body": "Text."}, &d)
+	e.must("document.quote", map[string]any{"id": d.ID, "ref": "Psalm 84:3", "book": "ITEM1"}, &q)
+	e.must("document.get", map[string]any{"id": d.ID}, &d)
+	if !strings.Contains(d.Body, "Even the sparrow") || len(copies) != 3 || !copies[0] || copies[1] || copies[2] {
+		t.Fatalf("typing a preview is not counted, keeping is: %v %q", copies, d.Body)
+	}
+	q = QuoteResult{}
+	e.must("document.quote", map[string]any{"ref": "John 3:99", "book": "ITEM1", "preview": true}, &q)
+	if q.Allowed || q.Reason != "no such verse" {
+		t.Fatalf("not found = %+v", q)
+	}
+	allow, q = false, QuoteResult{}
+	e.must("document.quote", map[string]any{"ref": "Psalm 84:3", "book": "ITEM1", "preview": true}, &q)
+	if q.Allowed || !strings.Contains(q.Reason, "licence") || q.Quote != "" {
+		t.Fatalf("over the limit = %+v", q)
 	}
 }

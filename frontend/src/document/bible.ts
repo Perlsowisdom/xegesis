@@ -360,7 +360,7 @@ export function bibleDoc(host: DocHost): DocView {
   }
 
   async function loadHighlights() {
-    highlights = parsed ? (await run<Highlight[]>("highlight.list", { ref: parsed.osis }).catch(() => [])) : [];
+    highlights = parsed ? (await run<Highlight[]>("highlight.list", { ref: parsed.osis, on: "verses" }).catch(() => [])) : [];
     if (alive) paintMarks();
   }
 

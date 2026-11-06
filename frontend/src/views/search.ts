@@ -2,6 +2,8 @@
 // cite a passage (views/librarysearch.ts).
 
 import { installedBibles } from "../bibles";
+import { bibleBooks, type BibleBook } from "../biblebooks";
+import { openBook, type Locator } from "../document/open";
 import { chip } from "../controls";
 import { Message, Module, Ref, paramEnum, run } from "../api";
 import { clear, field, h, select } from "../dom";
@@ -17,6 +19,17 @@ interface Hit {
   text: string;
   snippet?: string;
   score: number;
+}
+
+const BOOK = "book:";
+
+interface BookHit {
+  item_id: string;
+  file_id: string;
+  title: string;
+  heading?: string;
+  locator: Locator;
+  snippet: string;
 }
 
 const MODE_LABELS: Record<string, string> = {
@@ -44,6 +57,7 @@ export function searchView() {
   const results = h("ol", { class: "results" });
   const count = h("p", { class: "hint", role: "status", "aria-live": "polite" });
   let installed: Module[] = [];
+  let books: BibleBook[] = [];
 
   const form = h("form", { class: "card", role: "search", "aria-label": "Search the Bibles" },
     h("div", { class: "grid3" },
@@ -59,7 +73,7 @@ export function searchView() {
   });
 
   const bibleTab = h("div", {},
-    h("p", { class: "hint" }, "Searches the text of your installed Bibles."),
+    h("p", { class: "hint" }, "Searches the text of your installed Bibles, and of library books typed Bible."),
     form, msg.el, count, results);
   const library = librarySearchPanel();
   const citing = citingPanel();
@@ -76,12 +90,26 @@ export function searchView() {
     if (strong.value.trim()) p.strong = strong.value.trim();
     if (within.value.trim()) p.ref = within.value.trim();
     const chosen = [...modules.querySelectorAll<HTMLInputElement>("input:checked")].map((b) => b.value);
-    if (chosen.length) p.modules = chosen;
+    const bookIds = chosen.filter((v) => v.startsWith(BOOK)).map((v) => v.slice(BOOK.length));
+    const mods = chosen.filter((v) => !v.startsWith(BOOK));
+    if (mods.length) p.modules = mods;
     count.textContent = "Searching…";
-    const hits = await msg.attempt(() => run<Hit[]>("bible.search", p));
+    // Books are searched by their words only: a verse range or Strong's number applies to Bibles.
+    const inBooks = bookIds.length > 0 && !!query.value.trim() && !strong.value.trim() && !within.value.trim();
+    const hits = bookIds.length > 0 && mods.length === 0 ? [] : await msg.attempt(() => run<Hit[]>("bible.search", p));
     if (!hits) return void (count.textContent = "");
-    count.textContent = hits.length === 0 ? "No matches." : `${hits.length} matches${hits.length === 200 ? " (showing the best 200)" : ""}.`;
-    clear(results, hits.map((hit) => {
+    const bookHits = inBooks ? ((await msg.attempt(() => run<{ hits: BookHit[] }>("search.query", { query: query.value.trim(), mode: mode.value || "all", item_ids: bookIds, limit: 50 })))?.hits ?? []) : [];
+    const total = hits.length + bookHits.length;
+    count.textContent = total === 0 ? "No matches." : `${total} matches${hits.length === 200 ? " (showing the best 200 Bible verses)" : ""}.`;
+    clear(results, [...bookHits.map((hit) => {
+      const open = h("button", { type: "button", class: "link" }, [hit.title, hit.heading].filter(Boolean).join(" · "));
+      open.addEventListener("click", () => {
+        navigate("reader");
+        openBook({ itemId: hit.item_id, fileId: hit.file_id, locator: hit.locator });
+      });
+      return h("li", {}, h("div", { class: "row" }, open, h("span", { class: "badge" }, "book")),
+        h("p", {}, markSegments(hit.snippet).map((s) => (s.mark ? h("mark", {}, s.text) : s.text))));
+    }), ...hits.map((hit) => {
       const name = installed.find((m) => m.id === hit.module)?.abbreviation || hit.module;
       const segs = markSegments(hit.snippet || hit.text);
       const open = h("button", { type: "button", class: "link" }, hit.ref);
@@ -89,7 +117,7 @@ export function searchView() {
       return h("li", {},
         h("div", { class: "row" }, open, h("span", { class: "badge" }, name)),
         h("p", {}, segs.map((s) => (s.mark ? h("mark", {}, s.text) : s.text))));
-    }));
+    })]);
   }
 
   async function openRef(hit: Hit) {
@@ -108,9 +136,11 @@ export function searchView() {
       query.value = asked;
     }
     installed = await installedBibles();
+    books = await bibleBooks();
     const checked = new Set([...modules.querySelectorAll<HTMLInputElement>("input:checked")].map((b) => b.value));
-    clear(modules, h("span", { class: "hint" }, installed.length ? "Bibles:" : "No Bibles installed."),
-      installed.map((m) => chip({ label: m.abbreviation || m.id, title: m.name, value: m.id, checked: checked.size ? checked.has(m.id) : true })));
+    clear(modules, h("span", { class: "hint" }, installed.length || books.length ? "Bibles:" : "No Bibles installed."),
+      installed.map((m) => chip({ label: m.abbreviation || m.id, title: m.name, value: m.id, checked: checked.size ? checked.has(m.id) : true })),
+      books.map((b) => chip({ label: `${b.title} · book`, title: `${b.title}, a library book typed Bible`, value: BOOK + b.id, checked: checked.size ? checked.has(BOOK + b.id) : true })));
     if (asked) await search();
   }
 

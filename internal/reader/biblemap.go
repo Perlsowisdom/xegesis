@@ -121,7 +121,9 @@ type AtRef struct {
 	FileID  string `json:"file_id"`
 	Section int    `json:"section"`
 	Anchor  string `json:"anchor,omitempty"`
-	Found   string `json:"found" enum:"chapter,book,none" desc:"chapter: the chapter's own place; book: only the start of the book was found; none: the book does not hold it"`
+	Found   string `json:"found" enum:"verse,chapter,book,none" desc:"verse: the verse's own place; chapter: the chapter's place; book: only the start of the book was found; none: the book does not hold it"`
+	Para    int    `json:"para,omitempty" desc:"With found verse: the paragraph the verse starts in"`
+	Offset  int    `json:"offset,omitempty" desc:"With found verse: characters into that paragraph"`
 	Title   string `json:"title,omitempty" desc:"The contents entry opened"`
 }
 
@@ -146,6 +148,9 @@ func (s *service) atRefCmd(ctx context.Context, env *command.Env, p AtRefParams)
 		}
 		if e.Chapter == r.Start.Chapter() && e.Chapter > 0 {
 			out.Section, out.Anchor, out.Found, out.Title = e.Section, e.Anchor, "chapter", e.Title
+			if v := r.Start.Verse(); v > 0 && !(v == 1 && r.End.Verse() == verse.EndOfChapter) {
+				s.verseInto(ctx, env, p.BookParams, m.Entries, i, v, &out)
+			}
 			return out, nil
 		}
 		if book == nil || e.Chapter == 0 {
@@ -156,4 +161,20 @@ func (s *service) atRefCmd(ctx context.Context, env *command.Env, p AtRefParams)
 		out.Section, out.Anchor, out.Found, out.Title = book.Section, book.Anchor, "book", book.Title
 	}
 	return out, nil
+}
+
+// verseInto moves a chapter result to the verse when the text shows where it starts.
+func (s *service) verseInto(ctx context.Context, env *command.Env, p BookParams, entries []MapEntry, i, v int, out *AtRef) {
+	b, err := s.open(ctx, env, p.ItemID, out.FileID)
+	if err != nil {
+		return
+	}
+	r, ok := renderedSection(b, entries[i].Section)
+	if !ok {
+		return
+	}
+	if m, ok := verseAt(r, entries, i, v); ok {
+		out.Found, out.Para, out.Offset = "verse", m.Para, m.Offset
+		out.Anchor = "bp-" + strconv.Itoa(m.Para)
+	}
 }

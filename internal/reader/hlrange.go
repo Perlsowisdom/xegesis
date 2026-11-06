@@ -94,7 +94,7 @@ type ranged struct {
 // overlapping lists the ranged highlights in module that share characters with r; skip is left out.
 func overlapping(ctx context.Context, st *store.Store, r VerseRange, module, skip string) ([]ranged, error) {
 	rows, err := st.Query(ctx, `SELECT h.id, h.anchor_id, h.style, h.created_at, a.locator_json FROM highlights h JOIN anchors a ON a.id = h.anchor_id
-		WHERE h.deleted_at IS NULL AND a.verse_start <= ? AND a.verse_end >= ? AND a.locator_json IS NOT NULL AND h.id <> ?`,
+		WHERE h.deleted_at IS NULL AND a.item_id IS NULL AND a.verse_start <= ? AND a.verse_end >= ? AND a.locator_json IS NOT NULL AND h.id <> ?`,
 		r.End.Verse, r.Start.Verse, skip)
 	if err != nil {
 		return nil, err

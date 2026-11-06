@@ -59,13 +59,16 @@ func bookAnchor(ctx context.Context, env *command.Env, cmd, itemID string, loc m
 }
 
 // newAnchor creates an anchor for verses or a book place and returns its ID.
-func newAnchor(tx *store.Tx, r *verse.Range, itemID, locator string) (string, error) {
+func newAnchor(tx *store.Tx, r *verse.Range, itemID, locator string, link *verse.Range) (string, error) {
 	aid := store.NewID()
 	row := store.Row{"id": aid}
 	if r != nil {
 		row["verse_start"], row["verse_end"], row["versification"] = int64(r.Start), int64(r.End), string(verse.English)
 	} else {
 		row["item_id"], row["locator_json"] = itemID, locator
+		if link != nil { // a book typed Bible: also the verses the place is in
+			row["verse_start"], row["verse_end"], row["versification"] = int64(link.Start), int64(link.End), string(verse.English)
+		}
 	}
 	return aid, tx.Create("anchors", row)
 }
@@ -80,6 +83,7 @@ func noteCreate(ctx context.Context, env *command.Env, p NoteCreateParams) (Note
 		r = &parsed
 	}
 	var locator string
+	var link *verse.Range
 	if p.ItemID != "" || p.Locator != nil {
 		if p.Ref != "" {
 			return Note{}, command.Errorf("bad_params", "note.create: attach a note to a book or to verses, not both")
@@ -88,6 +92,7 @@ func noteCreate(ctx context.Context, env *command.Env, p NoteCreateParams) (Note
 		if locator, err = bookAnchor(ctx, env, "note.create", p.ItemID, p.Locator); err != nil {
 			return Note{}, err
 		}
+		link = linkBook(ctx, env, p.ItemID, locator)
 	}
 	tags, err := cleanTags(p.Tags)
 	if err != nil {
@@ -97,7 +102,7 @@ func noteCreate(ctx context.Context, env *command.Env, p NoteCreateParams) (Note
 	err = env.Store.Write(ctx, "note.create", func(tx *store.Tx) error {
 		var anchor any
 		if r != nil || locator != "" {
-			aid, err := newAnchor(tx, r, p.ItemID, locator)
+			aid, err := newAnchor(tx, r, p.ItemID, locator, link)
 			if err != nil {
 				return err
 			}
