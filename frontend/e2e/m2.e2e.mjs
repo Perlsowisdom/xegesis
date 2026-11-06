@@ -396,8 +396,13 @@ export default [
       await page.locator("button[aria-label='New folder']:visible").click();
       await page.locator("input[aria-label='Name of the new folder']").fill("M2 Sunday");
       await t.press("Enter");
-      const folder = (await app.run("folder.list", {})).find?.((f) => f.name === "M2 Sunday")
-        ?? (await app.run("folder.list", {})).folders?.find((f) => f.name === "M2 Sunday");
+      // Enter starts folder.create; wait for it to land instead of reading the list at once.
+      let folder;
+      for (let i = 0; i < 50 && !folder; i++) {
+        const r = await app.run("folder.list", {});
+        folder = (Array.isArray(r) ? r : r.folders ?? []).find((f) => f.name === "M2 Sunday");
+        if (!folder) await page.waitForTimeout(100);
+      }
       t.assert.ok(folder, "the folder is made");
       s.folder = folder.id;
       await page.waitForFunction(() => /folder/.test(location.hash), null, { timeout: 8000 });
