@@ -3,6 +3,7 @@
 
 import { h } from "../dom";
 import { Block, Span, parseMarkdown } from "./markdown";
+import { inkView } from "./inknode";
 import { verseQuoteEl } from "./versequote";
 
 export function renderMarkdown(md: string): HTMLElement {
@@ -23,6 +24,8 @@ function block(b: Block): Node {
       return h(b.ordered ? "ol" : "ul", {}, b.items.map((it) => h("li", {}, inline(it))));
     case "divider":
       return h("hr", { class: "md-hr" });
+    case "ink":
+      return inkView(b.ink);
     case "versequote":
       return verseQuoteEl(b.lines);
     case "table":

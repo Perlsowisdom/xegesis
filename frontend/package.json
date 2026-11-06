@@ -26,6 +26,7 @@
     "@lexical/table": "0.53.0",
     "@lexical/utils": "0.53.0",
     "lexical": "0.53.0",
-    "pdfjs-dist": "5.4.624"
+    "pdfjs-dist": "5.4.624",
+    "perfect-freehand": "^1.2.2"
   }
 }

@@ -5,6 +5,7 @@
 
 import { Message, Note, run } from "../api";
 import { openInStudy } from "../document/open";
+import { emptyInk, serializeInk } from "../editor/ink";
 import { button, clear, h, select } from "../dom";
 import { icon } from "../icons";
 import { deleteNote, historyDrawer, noteName, placeOf } from "../notes";
@@ -267,11 +268,21 @@ export function notesSectionView() {
     navigate(`sermons/${d.id}?new`);
   }
 
+  // A handwritten note is an ordinary note whose body is one empty ink block; it opens as a Study tab.
+  async function newHandwritten() {
+    const folder = scope.kind === "folder" ? scope.id : undefined;
+    const n = await msg.attempt(() => run<Note>("note.create", { title: "", body: serializeInk(emptyInk()), ...(folder ? { folder_id: folder } : {}) }));
+    if (!n) return;
+    workChanged();
+    void refresh();
+    openInStudy({ kind: "note", target: n.id, title: noteName(n) });
+  }
+
   newBtn.addEventListener("click", () => {
     const choices = newChoices("notes", scope.kind === "folder" ? scopeName() : undefined);
     const body = h("div", { class: "menu-list" }, choices.map((c) =>
-      button("", () => (c.kind === "note" ? edit(null) : void newSermon()), {})));
-    [...body.querySelectorAll("button")].forEach((b, i) => b.append(icon(choices[i].kind === "note" ? "notes" : "sermon"), h("span", {}, choices[i].label)));
+      button("", () => (c.kind === "note" ? edit(null) : c.kind === "handwritten" ? void newHandwritten() : void newSermon()), {})));
+    [...body.querySelectorAll("button")].forEach((b, i) => b.append(icon(choices[i].kind === "note" ? "notes" : choices[i].kind === "handwritten" ? "pen" : "sermon"), h("span", {}, choices[i].label)));
     openPopover(newBtn, body, { label: "New", menu: true });
   });
 

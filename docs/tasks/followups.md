@@ -176,3 +176,22 @@ Design first: mock-up for approval, then build.
   highlight box was null after recolouring) but passes alone and after every file that runs before it;
   looks like a timing flake in the highlights check, not grid-related. Worth a wait-for-mark there.
 - Read mode book toolbar: a stray "+" shows before the section arrows, and the section field is very wide (seen in fu-03-book-overlap.png). Hide "+" outside Study and size the field to its number.
+
+## After T37 stage 1
+- Ink blocks (`frontend/src/editor/inknode.ts`, `ink.ts`) are stored as a fenced ```` ```ink ```` block of one line of
+  JSON (`{"v":1,"h":height,"s":[{t,c,w,p:[[x,y,pressure]]}]}`), always 1000 units wide so strokes follow the
+  note's width. New dependency: `perfect-freehand` 1.2.2 (MIT).
+- Not done: lasso select and move (the brief said "if time allows").
+- Pen tilt is read by the browser but not used; perfect-freehand only uses pressure and speed.
+- HTML and PDF exports draw each stroke as a round-capped polyline with one mean width (HTML as SVG
+  `<polyline>`), not the smoothed variable-width outline the editor shows. The Go side has no
+  perfect-freehand. Word exports leave ink out (it stays in Markdown and HTML copies).
+- A finger on a block never scrolls the page (`touch-action: none`); on a phone, scroll by touching text
+  above or below the block. A "scroll with finger" switch in the strip would fix it.
+- Pen, colour and width are shared by every block on screen and are not remembered after a restart.
+- "New handwritten note" is in My work's New menu only; the right-sidebar notes panel and the
+  Sermons list's New menu do not offer it yet (a sermon takes ink through /handwriting).
+- Ink blocks do not move by dragging; cut and paste of the surrounding text moves them like a divider.
+- Highlighter strokes in PDF are blended with white, not transparent, so they hide whatever is under them.
+- e2e: the pen, touch and palm checks send synthetic pointer events (the harness has no pen); the
+  mouse checks use real `page.mouse` input.

@@ -1,7 +1,7 @@
 // T34g sections 4 and 5: every Markdown format is a toolbar button (with ⋯ More when the row does not
 // fit), and the / menu lists every format and insert alphabetically.
 
-const TOOLS = ["bold", "italic", "underline", "code", "|", "heading", "|", "bullets", "numbers", "checks", "|", "quote", "divider", "link", "table", "insert"];
+const TOOLS = ["bold", "italic", "underline", "code", "|", "heading", "|", "bullets", "numbers", "checks", "|", "quote", "divider", "ink", "link", "table", "insert"];
 
 // selectWord selects the last word typed, with the keyboard.
 async function selectBack(t, n) {
@@ -102,7 +102,7 @@ export default [
       const menu = t.page.locator(".slash-menu:not([hidden])");
       await menu.waitFor();
       const names = await menu.locator(".slash-name").allTextContents();
-      t.assert.deepEqual(names, ["Bulleted list", "Checkbox list", "Code", "Divider", "Heading large", "Heading medium", "Heading small",
+      t.assert.deepEqual(names, ["Bulleted list", "Checkbox list", "Code", "Divider", "Handwriting", "Heading large", "Heading medium", "Heading small",
         "Highlight", "Link", "Link to a note or sermon", "Numbered list", "Quote", "Table", "Verse reference", "Verse text"]);
       await t.shot();
       await t.type("he");

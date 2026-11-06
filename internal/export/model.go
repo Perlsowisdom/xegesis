@@ -24,10 +24,11 @@ const (
 	Quote
 	Bullet
 	Numbered
-	Verse  // Num is the verse number
-	Table  // side-by-side Bibles
-	Notice // what was left out and why
-	Rule   // a divider line
+	Verse       // Num is the verse number
+	Table       // side-by-side Bibles
+	Notice      // what was left out and why
+	Rule        // a divider line
+	Handwriting // a page of ink strokes (Block.Ink)
 )
 
 // Block is one paragraph-like unit.
@@ -38,6 +39,7 @@ type Block struct {
 	Check string // Bullet: "todo" or "done" for a check-list item, else ""
 	Spans []Span
 	Table *Grid
+	Ink   *Ink
 }
 
 // Grid is parallel Bibles side by side (one column per Bible, one row per verse), or a table from

@@ -7,7 +7,7 @@ const labels = (q: string) => filterSlash(SLASH_ITEMS, q).map((i) => i.label);
 describe("slash menu", () => {
   it("lists every format and insert, alphabetically", () => {
     expect(labels("")).toEqual([
-      "Bulleted list", "Checkbox list", "Code", "Divider", "Heading large", "Heading medium", "Heading small", "Highlight",
+      "Bulleted list", "Checkbox list", "Code", "Divider", "Handwriting", "Heading large", "Heading medium", "Heading small", "Highlight",
       "Link", "Link to a note or sermon", "Numbered list", "Quote", "Table", "Verse reference", "Verse text",
     ]);
   });

@@ -1663,3 +1663,24 @@ button.danger-link { color: var(--bad); margin-top: 8px; display: block; }
 /* A split in the study grid: its children sit side by side ("h") or one above the other ("v"). */
 .grid-split { flex: 1 1 0; min-width: 0; min-height: 0; display: flex; }
 .grid-split[data-dir="v"] { flex-direction: column; }
+
+/* Ink: a page to write or draw on, inside a note. Strokes take the text and highlight colours, so both themes work. */
+.ink-block { position: relative; margin: 10px 0 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--quote-bg); overflow: hidden; }
+.ink-block.ink-still { border-color: transparent; background: transparent; }
+.ink-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; padding: 4px 6px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.ink-btn { display: grid; place-items: center; min-width: 30px; height: 30px; padding: 0 4px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--muted); cursor: pointer; }
+.ink-btn:hover:not(:disabled) { background: var(--ghost-hover); color: var(--fg); }
+.ink-btn:disabled { opacity: .35; cursor: default; }
+.ink-btn.on { border-color: var(--accent); color: var(--accent); background: var(--bg); }
+.ink-btn .icon { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.ink-sep { width: 1px; height: 18px; margin: 0 4px; background: var(--line); }
+.ink-grow { flex: 1; }
+.ink-dot { width: 16px; height: 16px; border-radius: 50%; background: var(--text); }
+.ink-dot-yellow { background: var(--hl-yellow); } .ink-dot-green { background: var(--hl-green); } .ink-dot-blue { background: var(--hl-blue); }
+.ink-dot-pink { background: var(--hl-pink); } .ink-dot-purple { background: var(--hl-purple); }
+.ink-width { width: 16px; border-radius: 3px; background: currentColor; }
+.ink-width-1 { height: 2px; } .ink-width-2 { height: 4px; } .ink-width-3 { height: 7px; }
+.ink-page { display: block; width: 100%; touch-action: none; cursor: crosshair; user-select: none; -webkit-user-select: none; outline-offset: -2px; }
+.ink-still .ink-page { cursor: default; }
+.ink-page .ink-erased { opacity: .15; }
+@media (hover: none) { .ink-btn { min-width: 36px; height: 36px; } }
