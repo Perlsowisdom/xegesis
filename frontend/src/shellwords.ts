@@ -224,26 +224,6 @@ export function normalizeTheme(v: unknown): AppTheme {
   return v === "light" || v === "dark" ? v : "system";
 }
 
-export type Provider = "off" | "claude" | "openai" | "gemini" | "openrouter" | "claude-code" | "codex" | "local";
-
-export const ONLINE_PROVIDERS: { id: Provider; label: string }[] = [
-  { id: "claude", label: "Claude" }, { id: "openai", label: "OpenAI" }, { id: "gemini", label: "Gemini" }, { id: "openrouter", label: "OpenRouter" },
-];
-export const LOCAL_PROVIDERS: { id: Provider; label: string }[] = [
-  { id: "claude-code", label: "Claude Code" }, { id: "codex", label: "Codex" }, { id: "local", label: "Local model" },
-];
-
-export function normalizeProvider(v: unknown): Provider {
-  return [...ONLINE_PROVIDERS, ...LOCAL_PROVIDERS].some((p) => p.id === v) ? (v as Provider) : "off";
-}
-
-export function providerText(p: Provider): string {
-  if (p === "off") return "Off";
-  const online = ONLINE_PROVIDERS.find((x) => x.id === p);
-  if (online) return `${online.label}, with your own key`;
-  return `${LOCAL_PROVIDERS.find((x) => x.id === p)?.label ?? p}, on this computer`;
-}
-
 // Recent searches ----------------------------------------------------------------------------------
 
 export const MAX_RECENT = 8;

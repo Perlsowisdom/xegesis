@@ -109,14 +109,14 @@ Design first: mock-up for approval, then build.
 
 ## After T19 (5 November 2026)
 
-- Clicking on the words of a verse quote in a note or sermon puts the caret in them, where typing does nothing and says nothing. Ctrl+End now leaves the quote; a click should put the caret on the line after it instead.
-- A personal-copy Bible's limit is checked per quotation only (about 2,000 characters each), so several quotations in one sermon can add up past it, and exporting the sermon does not count them in `copy_log` (documents.md calls the per-quote limit an estimate).
-- ⋯ → "Notes on this passage" opens the Notes tool as it was left: if a note on another passage is still open there (Romans 8 while reading Romans 12), that note shows instead of the notes on this passage.
+- ~~Clicking on the words of a verse quote in a note or sermon puts the caret in them, where typing does nothing and says nothing. Ctrl+End now leaves the quote; a click should put the caret on the line after it instead.~~ Fixed in followups-1: the quote now takes the click and puts the caret on the line after it.
+- ~~A personal-copy Bible's limit is checked per quotation only (about 2,000 characters each), so several quotations in one sermon can add up past it, and exporting the sermon does not count them in `copy_log` (documents.md calls the per-quote limit an estimate).~~ Fixed in followups-1: `document.quote` counts a document's quotations from the Bible (the editor sends its text) and export counts them in `copy_log`, cutting by the day's limit.
+- ~~⋯ → "Notes on this passage" opens the Notes tool as it was left: if a note on another passage is still open there (Romans 8 while reading Romans 12), that note shows instead of the notes on this passage.~~ Fixed in followups-1: it lists the notes on the passage being read.
 - The interface tests stand in for the system print dialog and the save dialog (a test cannot answer them); printing and choosing where to save are still checked by hand.
 
 ## After T34f (4 November 2026)
 
-- Books (EPUB) already keep exact ranges (paragraph and offset); a new book highlight over an older one still stacks the two colours. Give `highlight.create` for books the same overlap splitting as Bible ranges.
+- ~~Books (EPUB) already keep exact ranges (paragraph and offset); a new book highlight over an older one still stacks the two colours. Give `highlight.create` for books the same overlap splitting as Bible ranges.~~ Fixed in followups-1: `highlight.create` for books takes the overlapped part out of older highlights (`internal/reader/bookrange.go`); pieces keep exact words only inside one paragraph.
 - A whole-verse highlight is never split by new words over it: the newer words are drawn over it (the old one becomes words around them on screen, and stays whole in the library). Picking verse numbers deletes ranged highlights wholly inside those verses but leaves ones that run past them.
 - Side by side, a whole-verse highlight is drawn on each Bible's cell rather than the whole row, and an empty cell is not coloured.
 - Ranged highlights moved by `highlight.update` have no interface yet (the command takes a range; the toolbar only recolours, underlines and removes).
@@ -130,7 +130,7 @@ Design first: mock-up for approval, then build.
 - References become verse chips when a reply is finished (through `book.refs`); while it streams they show as plain text.
 - "Insert into note" inserts after the block with the caret of the note or sermon last typed in; it does not ask which when several are open side by side.
 - Bibles and reference works are shortened to their quoting limit for every provider; only personal copies of library books are withheld from online providers. A personal-copy Bible is therefore sent, shortened, to an online provider, as it may be quoted into a note. Confirm with the user that this is what "personal copies of books" meant.
-- The old local preference `xegesis.assistant.provider` (T34a's placeholder) is no longer read by Settings; `prefs.provider` in `state.ts` and `providerText` in `shellwords.ts` can go once nothing else uses them.
+- ~~The old local preference `xegesis.assistant.provider` (T34a's placeholder) is no longer read by Settings; `prefs.provider` in `state.ts` and `providerText` in `shellwords.ts` can go once nothing else uses them.~~ Fixed in followups-1: `prefs.provider`, `providerText`, `normalizeProvider` and the provider list are gone.
 - The licence gate limits each tool result on its own; a model that reads the same limited passage many times in one chat can receive more than one quoting limit in total, as several quotations in one sermon can (see After T19).
 
 ## After T36b (5 November 2026)
@@ -142,7 +142,7 @@ Design first: mock-up for approval, then build.
 - Detection runs each tool with `--version` every time the Model page opens; cache it for a minute if a slow `claude` start-up shows.
 - The `mcp-assistant` mode starts the whole app executable without a window; check on macOS and Linux builds, where the Wails binary may need a display to start.
 - The Not found state is checked in e2e by hiding the fake `codex`; the install links open through `runtime.BrowserOpenURL`, which e2e does not click.
-- e2e: `structure.e2e.mjs` hover checks ("Headings fold…", "Outline strip…") fail 1–3 times per full run after T36b but pass alone. Make them wait for hover state, and check whether the base commit flakes too.
+- ~~e2e: `structure.e2e.mjs` hover checks ("Headings fold…", "Outline strip…") fail 1–3 times per full run after T36b but pass alone. Make them wait for hover state, and check whether the base commit flakes too.~~ Fixed in followups-1: the cause was the page not settled when the pointer arrived (and a repaint of the marks that followed every highlight change); the checks wait for a still page, and a pane no longer repaints on its own announcement.
 
 ## After T38a (5 November 2026)
 
