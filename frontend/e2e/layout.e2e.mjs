@@ -7,6 +7,9 @@ const LONG = "A very long title that goes on and on about the whole counsel of G
 export async function openNoteInStudy(t, id, title) {
   const { page } = t;
   await page.evaluate(() => { location.hash = "#notes"; });
+  // an earlier check may have left a note open on its own page: go back to the My work list
+  const back = page.locator(".view:not(.reader) .note-page button", { hasText: "My work" }).first();
+  if (await back.isVisible().catch(() => false)) await back.click();
   const card = page.locator(".work-card:visible", { hasText: title }).first();
   await card.waitFor({ timeout: 10000 });
   await card.dblclick();

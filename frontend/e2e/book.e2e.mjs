@@ -175,8 +175,12 @@ const checks = [
     async run(t) {
       const { page } = t;
       await addBooks(t);
-      const tabs = () => page.evaluate(() => JSON.parse(localStorage.getItem("xegesis.grid") || "{}").columns
-        .flatMap((c) => c.panes.flatMap((p) => p.tabs)).filter((x) => x.kind === "book" && x.title === "E2E Test Book").length);
+      const tabs = () => page.evaluate(() => {
+        const g = JSON.parse(localStorage.getItem("xegesis.grid") || "{}");
+        const leaves = (n) => (n?.kids ? n.kids.flatMap(leaves) : n?.tabs ? [n] : []);
+        const ps = g.root ? leaves(g.root) : (g.columns ?? []).flatMap((c) => c.panes);
+        return ps.flatMap((p) => p.tabs).filter((x) => x.kind === "book" && x.title === "E2E Test Book").length;
+      });
       await openFromLibrary(t, EPUB_TITLE, "Read");
       await visibleBook(t).locator(".book-text p", { hasText: "The first words" }).waitFor();
       const before = await tabs();
