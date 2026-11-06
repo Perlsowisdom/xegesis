@@ -44,6 +44,22 @@ export function helpers(app, shotName) {
       await page.waitForTimeout(150);
       t.root = "[data-e2e=current]";
     },
+    // still waits until a locator's element has stayed where it is for several frames. Pointing at
+    // something that is still moving (the page settling, a redraw) loses the hover when it moves on.
+    async still(loc) {
+      const h = await loc.elementHandle();
+      await h.evaluate((el) => new Promise((done) => {
+        let last = "", same = 0;
+        const tick = () => {
+          const r = el.getBoundingClientRect();
+          const now = [r.x, r.y, r.width, r.height].join();
+          same = now === last ? same + 1 : 0;
+          last = now;
+          if (same >= 10) done(); else requestAnimationFrame(tick);
+        };
+        tick();
+      }));
+    },
     editor: () => page.locator(`${t.root} .rich-text`).first(),
     // focusEnd puts the caret at the end of the text, by clicking it and pressing Ctrl+End.
     async focusEnd() {

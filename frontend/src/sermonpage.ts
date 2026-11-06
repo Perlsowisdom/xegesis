@@ -267,7 +267,7 @@ export function sermonPage(o: SermonPageOptions): SermonPage {
       changed();
     }
     if (o.fresh) tbox.focus();
-    unregister = registerDoc({ kind: "sermon", el, id: () => d?.id ?? null, title: () => title || untitled(d?.kind ?? "sermon"), insert: (md) => editor?.insertMarkdown(md) });
+    unregister = registerDoc({ kind: "sermon", el, id: () => d?.id ?? null, title: () => title || untitled(d?.kind ?? "sermon"), insert: (md) => editor?.insertMarkdown(md), text: () => editor?.getMarkdown() ?? "" });
   }
   let unregister = () => {};
 

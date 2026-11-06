@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  RAIL_DEFAULTS, SIDEBAR_DEFAULTS, activeTool, addRecent, gridButtonPlace, isView, moveTool, normalizeProvider, normalizeRail,
-  normalizeReading, normalizeSidebar, normalizeTheme, normalizeTools, placeForKey, placeOf, providerText, railPlaces, showTool, stepSize,
+  RAIL_DEFAULTS, SIDEBAR_DEFAULTS, activeTool, addRecent, gridButtonPlace, isView, moveTool, normalizeRail,
+  normalizeReading, normalizeSidebar, normalizeTheme, normalizeTools, placeForKey, placeOf, railPlaces, showTool, stepSize,
   toggleHidden, visibleTools,
 } from "./shellwords";
 
@@ -93,14 +93,7 @@ describe("reading preferences", () => {
   });
 });
 
-describe("assistant and recent searches", () => {
-  it("only accepts known providers", () => {
-    expect(normalizeProvider("codex")).toBe("codex");
-    expect(normalizeProvider("skynet")).toBe("off");
-    expect(providerText("claude")).toBe("Claude, with your own key");
-    expect(providerText("local")).toBe("Local model, on this computer");
-    expect(providerText("off")).toBe("Off");
-  });
+describe("recent searches", () => {
   it("keeps recent searches unique and short", () => {
     let r: string[] = [];
     for (const q of ["love", "grace", "  Love  ", "", "a", "b", "c", "d", "e", "f"]) r = addRecent(r, q);

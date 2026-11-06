@@ -297,7 +297,7 @@ export function notePage(o: NotePageOptions): NotePage {
       }),
     });
     if (!o.id) tbox.focus();
-    unregister = registerDoc({ kind: "note", el, id: () => note?.id ?? null, title: () => title || noteName(note ?? ({} as Note)), insert: (md) => editor?.insertMarkdown(md) });
+    unregister = registerDoc({ kind: "note", el, id: () => note?.id ?? null, title: () => title || noteName(note ?? ({} as Note)), insert: (md) => editor?.insertMarkdown(md), text: () => editor?.getMarkdown() ?? "" });
   }
   let unregister = () => {};
 

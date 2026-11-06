@@ -361,3 +361,38 @@ func TestTurnNoteInto(t *testing.T) {
 		t.Fatalf("tags lost on edit: %+v", d3)
 	}
 }
+
+// Several quotations from one limited Bible add up against its limit in one document.
+func TestQuotationsFromOneBibleAddUpPerDocument(t *testing.T) {
+	e := setup(t)
+	var d, other Document
+	e.must("document.create", map[string]any{"title": "Love", "body": "Opening words."}, &d)
+	e.must("document.create", map[string]any{"title": "Another"}, &other)
+	var q QuoteResult
+	e.must("document.quote", map[string]any{"id": d.ID, "ref": "John 3:16", "module": "mine"}, &q)
+	if !q.Allowed {
+		t.Fatalf("first quote = %+v", q)
+	}
+	// 1,500 characters are in the document; another as long would pass 2,000 together.
+	e.must("document.quote", map[string]any{"id": d.ID, "ref": "John 3:17", "module": "mine"}, &q)
+	if q.Allowed || !strings.Contains(q.Reason, "in one document") {
+		t.Fatalf("second quote = %+v", q)
+	}
+	text := "> " + strings.Repeat("long ", 300) + "\n> — [John 3:16](#passage/John.3.16) (MINE). © A Publisher\n"
+	e.must("document.quote", map[string]any{"ref": "John 3:17", "module": "mine", "preview": true, "text": text}, &q)
+	if q.Allowed {
+		t.Fatalf("preview with the editor's text = %+v", q)
+	}
+	e.must("document.quote", map[string]any{"id": other.ID, "ref": "John 3:17", "module": "mine"}, &q)
+	if !q.Allowed {
+		t.Fatalf("a different document = %+v", q)
+	}
+	// Other Bibles' quotations are not counted against this one, and a public-domain Bible has no limit.
+	if n := QuotedChars(text, "KJV"); n != 0 {
+		t.Fatalf("KJV chars = %d", n)
+	}
+	e.must("document.quote", map[string]any{"id": d.ID, "ref": "John 3:16-17", "module": "kjv"}, &q)
+	if !q.Allowed {
+		t.Fatalf("public domain quote = %+v", q)
+	}
+}

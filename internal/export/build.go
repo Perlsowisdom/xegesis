@@ -4,10 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"unicode/utf8"
 
+	"github.com/Perlsowisdom/xegesis/internal/backup"
 	"github.com/Perlsowisdom/xegesis/internal/bible"
 	"github.com/Perlsowisdom/xegesis/internal/command"
 	"github.com/Perlsowisdom/xegesis/internal/command/core"
@@ -667,9 +670,7 @@ func (bd *builder) note(src Source) ([]draft, error) {
 	case n.ItemTitle != "":
 		d.piece.Subtitle = n.ItemTitle
 	}
-	for _, b := range parseNote(n.Body) {
-		d.units = append(d.units, unit{block: b})
-	}
+	d.units, d.owners = bd.textUnits(n.Body)
 	if len(n.Tags) > 0 {
 		d.units = append(d.units, unit{block: Block{Kind: Para, Spans: []Span{{Text: "Tags: " + strings.Join(n.Tags, ", "), Italic: true}}}})
 	}
@@ -717,14 +718,67 @@ func (bd *builder) document(src Source) ([]draft, error) {
 			d.units = append(d.units, unit{block: Block{Kind: Numbered, Num: fmt.Sprint(main), Spans: spans}})
 		}
 	}
-	blocks := parseNote(doc.Body)
-	if len(blocks) > 0 && len(doc.Points) > 0 {
+	text, owners := bd.textUnits(doc.Body)
+	if len(text) > 0 && len(doc.Points) > 0 {
 		d.units = append(d.units, unit{block: Block{Kind: Heading, Level: 2, Spans: plain("Text")}})
 	}
-	for _, b := range blocks {
-		d.units = append(d.units, unit{block: b})
-	}
+	d.units = append(d.units, text...)
+	d.owners = owners
 	return []draft{d}, nil
+}
+
+// quoteCreditRe matches the last line of a verse quotation: the link to the passage, then the
+// Bible's short name in brackets (as document.quote writes it).
+var quoteCreditRe = regexp.MustCompile(`^> — \[[^\]]+\]\(#passage/[^)\s]*\) \(([^)]+)\)`)
+
+// textUnits turns a note's or document's text into units. A verse quotation from a Bible whose
+// licence limits exports is charged to that Bible, so the quotations in one text add up against its
+// limit and are counted in copy_log, whatever each was allowed when it was quoted.
+func (bd *builder) textUnits(md string) ([]unit, []*owner) {
+	var units []unit
+	var owners []*owner
+	for _, src := range backup.ParseBlocks(md) {
+		var charges []charge
+		if o := bd.quoteOwner(src); o != nil {
+			charges = []charge{{o, chars(src)}}
+			if !slices.Contains(owners, o) {
+				owners = append(owners, o)
+			}
+		}
+		for _, b := range parseBlock(src) {
+			u := unit{block: b}
+			if len(charges) > 0 {
+				u.charges, charges = charges, nil
+			}
+			units = append(units, u)
+		}
+	}
+	return units, owners
+}
+
+// quoteOwner gives the limited Bible a verse quotation (a block of "> " lines) is from, or nil.
+func (bd *builder) quoteOwner(src string) *owner {
+	lines := strings.Split(src, "\n")
+	if bd.s.bibles == nil || len(lines) < 2 || !all(lines, func(i int, l string) bool { return quoteRe.MatchString(l) }) {
+		return nil
+	}
+	m := quoteCreditRe.FindStringSubmatch(lines[len(lines)-1])
+	if m == nil {
+		return nil
+	}
+	list, err := bd.s.bibles.List()
+	if err != nil {
+		return nil
+	}
+	for _, meta := range list {
+		if meta.Abbreviation == m[1] || (meta.Abbreviation == "" && meta.Name == m[1]) {
+			if o, _, err := bd.moduleOwner(meta.ID); err == nil && o.limited() {
+				return o
+			}
+			return nil
+		}
+	}
+	return nil
 }
 
 func (bd *builder) list(src Source) ([]draft, error) {

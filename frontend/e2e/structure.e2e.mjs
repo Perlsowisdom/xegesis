@@ -6,8 +6,10 @@ const visible = (t, text) => t.editor().locator(":scope > *", { hasText: text })
 
 async function foldAlpha(t) {
   const alpha = t.editor().locator("h1", { hasText: "Alpha" });
+  await t.still(alpha);
   await alpha.hover();
   const arrow = t.page.locator(`${t.root} .rt-fold.hover`);
+  await arrow.waitFor({ timeout: 5000 });
   t.assert.equal(await arrow.count(), 1, "an arrow shows beside the heading under the pointer");
   await arrow.click();
   t.assert.equal(await visible(t, "Alpha text"), false);
@@ -75,6 +77,7 @@ export default [
       const box = await strip.boundingBox();
       const text = await t.editor().boundingBox();
       t.assert.ok(box.x >= text.x + text.width, "the strip is at the right edge of the text");
+      await t.still(strip);
       // Point at the first mark (the names then cover the marks, so move the mouse directly).
       await strip.locator(".rt-strip-mark").first().hover({ force: true });
       const names = strip.locator(".rt-strip-names");

@@ -843,11 +843,15 @@ export function bookDoc(host: DocHost): DocView {
     go: (ref) => host.go(ref),
   });
 
+  // This pane repaints itself, so it ignores its own announcement (a second repaint would replace the marks again).
+  let announcing = false;
   function marksChanged() {
     void loadMarks();
+    announcing = true;
     document.dispatchEvent(new Event("xegesis:marks-changed"));
+    announcing = false;
   }
-  const onMarks = () => { if (alive && book) void loadMarks(); };
+  const onMarks = () => { if (alive && book && !announcing) void loadMarks(); };
   document.addEventListener("xegesis:marks-changed", onMarks);
 
   const marking = attachMarking(body, {

@@ -4,7 +4,7 @@
 // exactly as it was quoted, since its credit belongs with its words.
 
 import {
-  $applyNodeReplacement, $getNodeByKey, DecoratorNode, type EditorConfig, type LexicalEditor, type LexicalNode, type NodeKey,
+  $applyNodeReplacement, $createParagraphNode, $getNodeByKey, DecoratorNode, $isElementNode, type EditorConfig, type ElementNode, type LexicalEditor, type LexicalNode, type NodeKey,
   type SerializedLexicalNode, type Spread,
 } from "lexical";
 import { verseQuoteParts } from "./versequote";
@@ -86,6 +86,13 @@ export class VerseQuoteNode extends DecoratorNode<null> {
     remove.textContent = "×";
     remove.addEventListener("mousedown", (e) => e.preventDefault());
     remove.addEventListener("click", () => editor.update(() => $getNodeByKey(key)?.remove()));
+    // A click on the words never leaves a caret inside (typing there does nothing): it goes to the line after.
+    el.addEventListener("mousedown", (e) => {
+      if ((e.target as Element).closest("button") || e.button !== 0) return;
+      e.preventDefault();
+      editor.update(() => $caretAfterBlock(key));
+      editor.focus();
+    });
     el.append(text, credit, remove);
     return el;
   }
@@ -179,6 +186,19 @@ export function $createRefChipNode(label: string, href: string): RefChipNode {
 
 export function $isRefChipNode(n: LexicalNode | null | undefined): n is RefChipNode {
   return n instanceof RefChipNode;
+}
+
+// $caretAfterBlock puts the caret at the start of the line after a block, adding an empty line when
+// the block is the last one.
+export function $caretAfterBlock(key: NodeKey): void {
+  const n = $getNodeByKey(key);
+  if (!n) return;
+  let next = n.getNextSibling();
+  if (!next || !$isElementNode(next)) {
+    next = $createParagraphNode();
+    n.insertAfter(next);
+  }
+  (next as ElementNode).selectStart();
 }
 
 export function $createVerseQuoteNode(lines: string[]): VerseQuoteNode {

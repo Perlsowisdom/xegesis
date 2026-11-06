@@ -8,6 +8,7 @@ export interface OpenDoc {
   id(): string | null;
   title(): string;
   insert(md: string): void;
+  text(): string; // its text as the editor holds it
 }
 
 const docs = new Set<OpenDoc>();

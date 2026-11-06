@@ -126,6 +126,8 @@ export function notesPanel(opts: NotesOptions) {
   return {
     el,
     refresh,
+    // showList leaves any open note (saving it) and lists the notes on the passage being read.
+    showList: () => close(true),
     create: (ref?: string) => open(undefined, ref),
     createOn: (place: { itemId: string; title: string; locator: Record<string, unknown> }) => open(undefined, undefined, place),
   };

@@ -3,7 +3,7 @@
 
 import type { Ref } from "./api";
 import {
-  AppTheme, Provider, RailPrefs, ReadingPrefs, SidebarPrefs, normalizeProvider, normalizeRail, normalizeReading, normalizeSidebar,
+  AppTheme, RailPrefs, ReadingPrefs, SidebarPrefs, normalizeRail, normalizeReading, normalizeSidebar,
   normalizeTheme,
 } from "./shellwords";
 
@@ -69,12 +69,11 @@ export interface Prefs {
   rail: RailPrefs;
   sidebar: SidebarPrefs;
   reading: ReadingPrefs;
-  provider: Provider;
   theme: AppTheme;
 }
 
 const PREF_KEYS: Record<keyof Prefs, string> = {
-  rail: "xegesis.rail", sidebar: "xegesis.sidebar", reading: "xegesis.reading", provider: "xegesis.assistant.provider",
+  rail: "xegesis.rail", sidebar: "xegesis.sidebar", reading: "xegesis.reading",
   theme: "xegesis.theme",
 };
 
@@ -82,7 +81,6 @@ export const prefs: Prefs = {
   rail: normalizeRail(load(PREF_KEYS.rail, null)),
   sidebar: normalizeSidebar(load(PREF_KEYS.sidebar, null)),
   reading: normalizeReading(load(PREF_KEYS.reading, null)),
-  provider: normalizeProvider(load(PREF_KEYS.provider, "off")),
   theme: normalizeTheme(load(PREF_KEYS.theme, "system")),
 };
 
