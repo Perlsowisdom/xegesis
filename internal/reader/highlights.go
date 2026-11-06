@@ -105,6 +105,8 @@ func (s *service) highlightCreate(ctx context.Context, env *command.Env, p Highl
 	}
 	var cuts []ranged
 	var cut VerseRange
+	var bookCuts []bookHL
+	var newSpan bookSpan
 	if p.Range != nil {
 		if p.ItemID != "" || p.Locator != nil {
 			return Highlight{}, command.Errorf("bad_params", "highlight.create: a range is for Bible verses; a book passage uses locator")
@@ -139,6 +141,12 @@ func (s *service) highlightCreate(ctx context.Context, env *command.Env, p Highl
 		}
 		raw, _ := json.Marshal(p.Locator)
 		anchor["item_id"], anchor["locator_json"] = p.ItemID, string(raw)
+		if sp, ok := p.Locator.span(); ok {
+			newSpan = sp
+			if bookCuts, err = bookOverlapping(ctx, env.Store, p.ItemID, p.Locator.Section, sp); err != nil {
+				return Highlight{}, err
+			}
+		}
 	case haveVerses && p.ItemID == "" && p.Locator == nil:
 		anchor["verse_start"], anchor["verse_end"], anchor["versification"] = int64(r.Start), int64(r.End), string(verse.English)
 	default:
@@ -150,6 +158,9 @@ func (s *service) highlightCreate(ctx context.Context, env *command.Env, p Highl
 	id := store.NewID()
 	err = env.Store.Write(ctx, "highlight.create", func(tx *store.Tx) error {
 		if err := split(tx, cut, cuts); err != nil {
+			return err
+		}
+		if err := splitBook(tx, p.ItemID, newSpan, bookCuts); err != nil {
 			return err
 		}
 		if err := tx.Create("anchors", anchor); err != nil {
