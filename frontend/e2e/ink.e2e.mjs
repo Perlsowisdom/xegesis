@@ -27,6 +27,7 @@ export const wave = (y0, n = 8) => Array.from({ length: n }, (_, i) => [0.1 + (0
 
 // the pages of strokes in the saved Markdown
 export async function savedInk(t) {
+  await t.page.waitForTimeout(500); // the editor has handed the strokes over
   const md = await t.saved();
   return [...md.matchAll(/```ink\n(.*)\n```/g)].map((m) => JSON.parse(m[1]));
 }
@@ -39,6 +40,26 @@ export async function addInk(t) {
 }
 
 const shared = {};
+
+const tool = (t, label) => t.page.click(`${t.root} .ink-bar [aria-label="${label}"]`);
+const count = (t) => t.page.locator(`${t.root} .ink-page path`).count();
+
+// pen draws with synthetic pen pointer events (pressure, tilt, the eraser end), since the harness has no pen.
+export async function pen(t, pts, o = {}) {
+  await t.page.evaluate(({ root, pts, o }) => {
+    const svg = document.querySelector(`${root} .ink-page`);
+    const r = svg.getBoundingClientRect();
+    const ev = (type, [fx, fy, pr], buttons) => new PointerEvent(type, {
+      bubbles: true, cancelable: true, pointerId: o.id ?? 7, pointerType: o.type ?? "pen", isPrimary: true, pressure: pr, tiltX: 20, tiltY: 10,
+      button: type === "pointerup" ? 0 : (o.button ?? 0), buttons: type === "pointerup" ? 0 : buttons, clientX: r.left + fx * r.width, clientY: r.top + fy * 150,
+    });
+    svg.dispatchEvent(ev("pointerdown", pts[0], o.buttons ?? 1));
+    for (const p of pts.slice(1)) svg.dispatchEvent(ev("pointermove", p, o.buttons ?? 1));
+    svg.dispatchEvent(ev("pointerup", pts[pts.length - 1], 0));
+  }, { root: t.root, pts, o });
+}
+
+export const line = (y, from = 0.1, to = 0.9, n = 10) => Array.from({ length: n }, (_, i) => [from + ((to - from) * i) / (n - 1), y]);
 
 export default [
   {
@@ -121,6 +142,96 @@ export default [
       await dlg.locator(".paper svg").first().waitFor({ timeout: 15000 });
       await t.shot();
       await dlg.locator("button[aria-label=Close]").click();
+    },
+  },
+  {
+    row: "Pen, highlighter, three widths and the highlight colours are chosen in the block's tool strip",
+    shot: "ink-04-tools.png",
+    async run(t) {
+      await fresh(t);
+      await addInk(t);
+      await tool(t, "Pen");
+      await tool(t, "Thin");
+      await tool(t, "Blue");
+      await stroke(t, line(0.15));
+      await tool(t, "Highlighter");
+      await tool(t, "Pink");
+      await tool(t, "Thick");
+      await stroke(t, line(0.5));
+      await tool(t, "Pen");
+      await tool(t, "Green");
+      await tool(t, "Medium");
+      await stroke(t, line(0.85));
+      await tool(t, "Purple");
+      await tool(t, "Thick");
+      await stroke(t, line(1.2));
+      const [d] = await savedInk(t);
+      t.assert.deepEqual(d.s.map((k) => [k.t, k.c, k.w]), [["pen", "blue", 1], ["hl", "pink", 3], ["pen", "green", 2], ["pen", "purple", 3]]);
+      const fills = await t.page.locator(`${t.root} .ink-page path`).evaluateAll((ps) => ps.map((p) => [p.style.fill, p.style.fillOpacity]));
+      t.assert.deepEqual(fills.map((f) => f[0]), ["var(--hl-blue)", "var(--hl-pink)", "var(--hl-green)", "var(--hl-purple)"]);
+      t.assert.equal(fills[1][1], "0.38", "the highlighter is see-through");
+      t.assert.equal(d.h > 320, true, "the page grew as the writing went down");
+      await t.shot();
+      await t.page.emulateMedia({ colorScheme: "dark" });
+      await t.page.waitForTimeout(300);
+      await t.shot("ink-04b-tools-dark.png");
+      await t.page.emulateMedia({ colorScheme: "light" });
+    },
+  },
+  {
+    row: "The eraser removes a whole stroke; undo and redo step through changes",
+    shot: "ink-05-erase-undo.png",
+    async run(t) {
+      await fresh(t);
+      await addInk(t);
+      await tool(t, "Pen");
+      await stroke(t, line(0.15));
+      await stroke(t, line(0.5));
+      await stroke(t, line(0.85));
+      t.assert.equal(await count(t), 3);
+      await tool(t, "Eraser (removes a whole stroke)");
+      await stroke(t, [[0.5, 0.4], [0.5, 0.6]]); // across the middle stroke only
+      t.assert.equal(await count(t), 2, "one whole stroke gone");
+      t.assert.equal((await savedInk(t))[0].s.length, 2);
+      await tool(t, "Undo last stroke");
+      t.assert.equal(await count(t), 3, "undo brings it back");
+      await tool(t, "Redo");
+      t.assert.equal(await count(t), 2, "redo removes it again");
+      await tool(t, "Undo last stroke");
+      await tool(t, "Undo last stroke");
+      t.assert.equal(await count(t), 2, "undo also takes back the last drawn stroke");
+      await t.page.locator(`${t.root} .ink-page`).focus();
+      await t.press("Control+z");
+      t.assert.equal(await count(t), 1, "Ctrl+Z with the page focused");
+      await t.press("Control+y");
+      t.assert.equal(await count(t), 2, "Ctrl+Y");
+      t.assert.equal((await savedInk(t))[0].s.length, 2, "saved as shown");
+      await t.shot();
+    },
+  },
+  {
+    row: "A pen's pressure is kept, its eraser end erases, and palm touches are ignored while a pen is in use",
+    shot: "ink-06-pen.png",
+    async run(t) {
+      await fresh(t);
+      await addInk(t);
+      await tool(t, "Pen"); // the pen is shared by every block, and an earlier check left the eraser in hand
+      await tool(t, "Black");
+      await tool(t, "Medium");
+      const press = Array.from({ length: 12 }, (_, i) => [0.1 + i * 0.06, 0.2 + Math.sin(i / 2) * 0.1, 0.1 + i * 0.07]);
+      await pen(t, press);
+      await pen(t, line(0.7).map(([x, y]) => [x, y, 0.5]));
+      const [d] = await savedInk(t);
+      t.assert.equal(d.s.length, 2, "two pen strokes saved");
+      const pr = d.s[0].p.map((p) => p[2]);
+      t.assert.ok(pr[0] >= 1 && pr[pr.length - 1] > pr[0] + 30, "pressure rises along the stroke: " + pr);
+      // A palm (touch) while a pen has just been used draws nothing.
+      await pen(t, line(0.45), { type: "touch", id: 9 });
+      t.assert.equal(await count(t), 2, "touch ignored");
+      // The eraser end (button 5) takes away a whole stroke.
+      await pen(t, [[0.5, 0.6, 0.5], [0.5, 0.8, 0.5]], { button: 5, buttons: 32 });
+      t.assert.equal(await count(t), 1, "pen eraser end");
+      await t.shot();
     },
   },
 ];

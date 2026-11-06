@@ -135,7 +135,7 @@ class InkBlock {
   private undoBtn!: HTMLButtonElement;
   private redoBtn!: HTMLButtonElement;
   private cur: { stroke: InkStroke; path: SVGPathElement; id: number } | null = null;
-  private erasing: { id: number; gone: Set<InkStroke> } | null = null;
+  private erasing: { id: number; gone: Set<InkStroke>; last?: [number, number] } | null = null;
 
   constructor(private editor: LexicalEditor, private key: NodeKey, doc: InkDoc) {
     this.doc = doc;
@@ -203,7 +203,9 @@ class InkBlock {
     if (this.cur || this.erasing || (e.button !== 0 && !eraserEnd)) return;
     e.preventDefault();
     this.page.focus({ preventScroll: true });
-    this.page.setPointerCapture(e.pointerId);
+    try {
+      this.page.setPointerCapture(e.pointerId);
+    } catch { /* a pointer that is no longer down */ }
     if (eraserEnd || pen.tool === "erase") {
       this.erasing = { id: e.pointerId, gone: new Set() };
       this.erase(e);
@@ -268,15 +270,23 @@ class InkBlock {
     }
   }
 
+  // erase touches every stroke the pointer crossed since its last sample, not only those under it.
   private erase(e: PointerEvent): void {
     const er = this.erasing!;
     const [x, y] = this.at(e);
-    this.doc.s.forEach((k, i) => {
-      if (!er.gone.has(k) && hits(k, x, y, ERASE_REACH)) {
-        er.gone.add(k);
-        (this.page.children[i] as SVGElement | undefined)?.classList.add("ink-erased");
-      }
-    });
+    const [x0, y0] = er.last ?? [x, y];
+    er.last = [x, y];
+    const steps = Math.max(1, Math.ceil(Math.hypot(x - x0, y - y0) / (ERASE_REACH / 2)));
+    for (let s = 1; s <= steps; s++) {
+      const px = x0 + ((x - x0) * s) / steps;
+      const py = y0 + ((y - y0) * s) / steps;
+      this.doc.s.forEach((k, i) => {
+        if (!er.gone.has(k) && hits(k, px, py, ERASE_REACH)) {
+          er.gone.add(k);
+          (this.page.children[i] as SVGElement | undefined)?.classList.add("ink-erased");
+        }
+      });
+    }
   }
 
   // History and the editor ------------------------------------------------------------------------
