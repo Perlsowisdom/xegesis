@@ -11,7 +11,7 @@
 // case the pen's speed stands in for it. One line of compact JSON, so it is one Markdown block.
 // This file has no dependency on the editor, so it is tested on its own.
 
-import { getStroke } from "perfect-freehand";
+import { polygonPath, strokeOutline } from "./inkengine";
 
 export const INK_W = 1000;
 export const INK_MIN_H = 200;
@@ -98,28 +98,10 @@ export function growTo(h: number, y: number): number {
   return y > h - 80 ? clampH(y + 240) : h;
 }
 
-// outlinePath is the SVG path of a stroke's shape, drawn with perfect-freehand.
+// outlinePath is the SVG path of a stroke's shape (inkengine.ts).
 export function outlinePath(k: InkStroke): string {
-  const size = strokeSize(k.t, k.w);
-  const real = k.p.some((q) => q[2] > 0);
-  const pts = k.p.map(([x, y, p]) => [x, y, p > 0 ? p / 100 : 0.5]);
-  if (pts.length === 1) pts.push([pts[0][0] + 0.01, pts[0][1], pts[0][2]]);
-  const out = getStroke(pts, {
-    size, thinning: k.t === "hl" ? 0 : 0.55, smoothing: 0.6, streamline: 0.45, simulatePressure: !real, last: true,
-  });
-  return pathOf(out);
-}
-
-function pathOf(o: number[][]): string {
-  if (o.length < 3) return "";
-  const f = (n: number) => Math.round(n * 10) / 10;
-  let d = `M${f(o[0][0])},${f(o[0][1])}Q`;
-  for (let i = 0; i < o.length; i++) {
-    const [x0, y0] = o[i];
-    const [x1, y1] = o[(i + 1) % o.length];
-    d += `${f(x0)},${f(y0)} ${f((x0 + x1) / 2)},${f((y0 + y1) / 2)} `;
-  }
-  return d + "Z";
+  const pts = k.p.map(([x, y, p]) => [x, y, p / 100]);
+  return polygonPath(strokeOutline(pts, strokeSize(k.t, k.w), k.t === "hl"));
 }
 
 // hits is whether the point (x, y) touches the stroke (for the eraser).
