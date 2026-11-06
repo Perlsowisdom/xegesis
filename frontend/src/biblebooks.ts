@@ -27,7 +27,8 @@ interface Place {
   file_id: string;
   section: number;
   anchor?: string;
-  found: "chapter" | "book" | "none";
+  found: "verse" | "chapter" | "book" | "none";
+  offset?: number;
   title?: string;
 }
 
@@ -43,7 +44,7 @@ export async function openAt(book: BibleBook, ref: string, msg: Message, study =
     return open({ kind: "book", itemId: book.id, title: book.title });
   }
   if (place.found === "book") msg.info(`${book.title}: opened at the start of the book; its chapters are not listed in its contents.`);
-  open({ kind: "book", itemId: book.id, fileId: place.file_id, section: place.section, anchor: place.anchor, title });
+  open({ kind: "book", itemId: book.id, fileId: place.file_id, section: place.section, anchor: place.anchor, offset: place.found === "verse" ? place.offset : undefined, title });
 }
 
 // bookRows draws one button per Bible-type book, each marked as a book.

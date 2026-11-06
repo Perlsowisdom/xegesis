@@ -27,6 +27,7 @@ export interface Tab {
   target?: string; // the note, sermon or list shown
   locator?: Record<string, unknown>; // where a book opens, used once and not saved
   anchor?: string; // the element a book opens at, used once and not saved
+  offset?: number; // with anchor: characters into that paragraph, used once and not saved
 }
 
 // TabSpec is a tab before it has an id, as a drop or a + creates it.

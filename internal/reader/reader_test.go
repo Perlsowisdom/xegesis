@@ -158,19 +158,23 @@ func writeBooks(t *testing.T, dir string) {
 // Environment ------------------------------------------------------------------------------------
 
 type env struct {
-	t     *testing.T
-	data  string
-	books string
-	st    *store.Store
-	reg   *command.Registry
-	svc   *service
-	env   *command.Env
-	items map[string]string // item ID by format
+	t      *testing.T
+	data   string
+	books  string
+	st     *store.Store
+	reg    *command.Registry
+	svc    *service
+	env    *command.Env
+	items  map[string]string // item ID by format
+	titles map[string]string // item ID by title
 }
 
 // setup opens a library with one folder of books, scanned and indexed. Index files stay open
 // until the process ends, so the data folder is removed on a best-effort basis.
-func setup(t *testing.T) *env {
+func setup(t *testing.T) *env { return setupWith(t, nil) }
+
+// setupWith adds extra files (name to bytes) to the library; e.titles finds their items by title.
+func setupWith(t *testing.T, extra map[string][]byte) *env {
 	t.Helper()
 	data, err := os.MkdirTemp("", "xegesis-reader-")
 	if err != nil {
@@ -182,6 +186,12 @@ func setup(t *testing.T) *env {
 		t.Fatal(err)
 	}
 	writeBooks(t, e.books)
+	for name, body := range extra {
+		if err := os.WriteFile(filepath.Join(e.books, name), body, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	e.titles = map[string]string{}
 	e.openStore()
 	var f library.Folder
 	e.must("library.add_folder", map[string]any{"path": e.books}, &f)
@@ -195,6 +205,7 @@ func setup(t *testing.T) *env {
 		var full library.Item
 		e.must("library.item", map[string]any{"id": it.ID}, &full)
 		e.items[full.Files[0].Format] = it.ID
+		e.titles[full.Title] = it.ID
 	}
 	return e
 }

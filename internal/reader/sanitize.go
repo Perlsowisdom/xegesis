@@ -66,6 +66,8 @@ type rendered struct {
 	html    string
 	paras   int    // paragraphs numbered
 	heading string // the first heading's text
+	marks   []verseMark
+	ids     map[string]int
 }
 
 type sanitizer struct {
@@ -78,6 +80,14 @@ type sanitizer struct {
 	heading bool
 	first   strings.Builder
 	links   int // open <a> elements
+
+	off        int            // UTF-16 units of text since the paragraph marker
+	marks      []verseMark    // where verse numbers start (see verses.go)
+	ids        map[string]int // paragraph each element id falls in
+	pending    int            // a verse number given by an element id, for the next text
+	mark       bool           // inside a possible verse number element
+	markStrong bool
+	markDepth  int
 }
 
 // sanitize renders an HTML or XHTML document's body.
@@ -102,7 +112,7 @@ func sanitize(doc []byte, res resources) rendered {
 	for i := len(s.open) - 1; i >= 0; i-- {
 		s.out.WriteString("</" + s.open[i] + ">")
 	}
-	return rendered{html: s.out.String(), paras: s.para, heading: strings.Join(strings.Fields(s.first.String()), " ")}
+	return rendered{html: s.out.String(), paras: s.para, heading: strings.Join(strings.Fields(s.first.String()), " "), marks: s.marks, ids: s.ids}
 }
 
 // tag mirrors search's paragraph rules (search.htmlBlocks) and writes the element if it is kept.
@@ -133,6 +143,7 @@ func (s *sanitizer) tag(tt xhtml.TokenType, t xhtml.Token) {
 		return
 	}
 	s.out.WriteString("<" + tag + attrs + ">")
+	defer s.noteTag(tag, t, !voidTags[tag] && tt != xhtml.SelfClosingTagToken)
 	if !voidTags[tag] {
 		if tt == xhtml.SelfClosingTagToken {
 			s.out.WriteString("</" + tag + ">")
@@ -158,6 +169,7 @@ func (s *sanitizer) close(tag string) {
 			}
 		}
 		s.open = s.open[:i]
+		s.markClosed()
 		return
 	}
 }
@@ -215,7 +227,10 @@ func (s *sanitizer) text(t string) {
 		s.para++
 		s.started = true
 		fmt.Fprintf(&s.out, `<span class="bp" id="bp-%d" data-p="%d"></span>`, s.para, s.para)
+		s.off = 0
 	}
+	s.noteText(t)
+	defer func() { s.off += utf16Len(t) }()
 	if s.heading && s.first.Len() < 200 && s.para > 0 {
 		s.first.WriteString(t)
 	}
