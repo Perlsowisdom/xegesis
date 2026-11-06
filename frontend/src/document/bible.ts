@@ -365,11 +365,16 @@ export function bibleDoc(host: DocHost): DocView {
   }
 
   // changed reloads the highlights after a change here, and tells the Highlights tool.
+  // This pane has just repainted, so it ignores its own announcement: a second repaint would replace
+  // the marks (and drop a selection made on them) a moment after the first.
+  let announcing = false;
   async function changed() {
     await loadHighlights();
+    announcing = true;
     document.dispatchEvent(new Event("xegesis:marks-changed"));
+    announcing = false;
   }
-  const onMarks = () => { if (alive) void loadHighlights(); };
+  const onMarks = () => { if (alive && !announcing) void loadHighlights(); };
   document.addEventListener("xegesis:marks-changed", onMarks);
 
   // colour highlights the given verse runs (the selection by default).
