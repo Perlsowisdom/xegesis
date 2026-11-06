@@ -102,7 +102,7 @@ export default [
       const menu = t.page.locator(".slash-menu:not([hidden])");
       await menu.waitFor();
       const names = await menu.locator(".slash-name").allTextContents();
-      t.assert.deepEqual(names, ["Bulleted list", "Checkbox list", "Code", "Divider", "Heading large", "Heading medium", "Heading small",
+      t.assert.deepEqual(names, ["Bulleted list", "Checkbox list", "Code", "Divider", "Handwriting", "Heading large", "Heading medium", "Heading small",
         "Highlight", "Link", "Link to a note or sermon", "Numbered list", "Quote", "Table", "Verse reference", "Verse text"]);
       await t.shot();
       await t.type("he");
