@@ -298,7 +298,13 @@ export default [
     async run(t) {
       const { page, app } = t;
       await readRom12(t);
-      for (const n of [11, 12]) await page.locator(`.doc-bible .vnum[aria-label="verse ${n}"]:visible`).first().click();
+      // The toolbar closes on any scroll, and a scroll event arrives a frame late: a click that first
+      // scrolls its verse into view would lose the toolbar it opens. Bring both verses on screen, wait
+      // for the page to stop moving, then pick them, as a reader does.
+      const nums = [11, 12].map((n) => page.locator(`.doc-bible .vnum[aria-label="verse ${n}"]:visible`).first());
+      for (const num of nums) await num.scrollIntoViewIfNeeded();
+      await t.settled();
+      for (const num of nums) await num.click();
       await page.locator(".mark-bar button[aria-label='Add to a list']").click();
       const dlg = page.locator("dialog.drawer[open]", { hasText: "to a list" });
       await dlg.locator("input[type=text]").fill("M2 verses on love");

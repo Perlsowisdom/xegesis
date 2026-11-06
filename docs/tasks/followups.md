@@ -195,7 +195,7 @@ Design first: mock-up for approval, then build.
 - Highlighter strokes in PDF are blended with white, not transparent, so they hide whatever is under them.
 - e2e: the pen, touch and palm checks send synthetic pointer events (the harness has no pen); the
   mouse checks use real `page.mouse` input.
-- e2e flakes seen in the T37 full run (pass alone): "EPUB opens in Read mode, scrolls" (book.e2e.mjs) and M2 step 5 "add to a list" (which then fails step 10).
+- FIXED (m2/followups-2) e2e flakes seen in the T37 full run: M2 step 5 clicked a verse number that was off screen, so Playwright scrolled it into view first and the scroll event, which arrives a frame after the click, closed the marking toolbar the click had opened (deterministic once earlier checks left the chapter scrolled); the step now scrolls both verses into view, waits with `t.settled()`, then picks. Step 10 failed only because step 5 did. "EPUB opens in Read mode" never failed in 8 full runs here; its blind 400 ms wait after the wheel scroll (the same scroll-closes-toolbar mechanism) is now a wait for the scroll plus `t.settled()` before selecting, which is a hardening, not a reproduced fix.
 
 ## After T37 stage 1b
 - Own stroke engine: `frontend/src/editor/inkengine.ts`, ported to Go in `internal/export/inkoutline.go` (keep the two in step; a Go test pins the numbers the screen engine gives). `perfect-freehand` is removed. Ink is saved as `"v":2` (x and y to two decimals, pressure 0 to 1 to three); version 1 is still read in the editor and in Go.

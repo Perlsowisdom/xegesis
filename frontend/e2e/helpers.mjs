@@ -44,6 +44,24 @@ export function helpers(app, shotName) {
       await page.waitForTimeout(150);
       t.root = "[data-e2e=current]";
     },
+    // settled waits until the page has stopped changing: no change in the Bible or book text for 500 ms
+    // and every scrollable element holds its scrollTop. Highlights are reloaded and repainted by every
+    // open Bible after a change (more of them as checks pile up), and that repaint shifts the scroll;
+    // the marking toolbar closes on any scroll, so selecting during it loses the toolbar.
+    async settled() {
+      await page.evaluate(() => new Promise((done) => {
+        let changed = performance.now();
+        new MutationObserver(() => { changed = performance.now(); }).observe(document.body, { subtree: true, childList: true, characterData: true, attributeFilter: ["class"] });
+        const tops = () => [...document.querySelectorAll("*")].filter((e) => e.scrollTop > 0).map((e) => e.scrollTop).join();
+        let last = "", same = 0;
+        const tick = () => {
+          const now = tops() + "|" + scrollY;
+          if (now !== last) { same = 0; last = now; } else same++;
+          if (same >= 15 && performance.now() - changed > 500) done(); else requestAnimationFrame(tick);
+        };
+        tick();
+      }));
+    },
     // still waits until a locator's element has stayed where it is for several frames. Pointing at
     // something that is still moving (the page settling, a redraw) loses the hover when it moves on.
     async still(loc) {

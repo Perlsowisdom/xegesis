@@ -127,8 +127,8 @@ const checks = [
       const body = book.locator(".book-body");
       await body.hover();
       await page.mouse.wheel(0, 1500);
-      await page.waitForTimeout(400);
-      t.assert.ok(await body.evaluate((e) => e.scrollTop > 200), "the text scrolls");
+      await page.waitForFunction(() => [...document.querySelectorAll(".doc-book .book-body")].some((e) => e.offsetParent && e.scrollTop > 200), null, { timeout: 5000 });
+      await t.settled();
       const para = book.locator(".book-text p", { hasText: "Paragraph 20 of" });
       const sel = await selectWords(t, para);
       t.assert.ok(sel.trim().length > 10 && "Paragraph 20 of this chapter speaks of grace".includes(sel.trim().slice(0, 12)), `selected "${sel}"`);
