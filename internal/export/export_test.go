@@ -469,3 +469,39 @@ func TestBadSources(t *testing.T) {
 	}
 	e.must("export.make", map[string]any{"sources": passage, "format": "md", "path": path, "replace": true}, nil)
 }
+
+// Quotations in a sermon or note count against the Bible's limit together, and are counted in copy_log.
+func TestQuotationsInASermonAddUpAndAreCounted(t *testing.T) {
+	e := setup(t)
+	usfm := filepath.Join(e.data, "mine.usfm")
+	long := strings.Repeat("grace ", 200)
+	nl := string(rune(10))
+	os.WriteFile(usfm, []byte(strings.Join([]string{`\id JHN Mine test`, `\c 3`, `\p`, `\v 16 ` + long, `\v 17 ` + long, ""}, nl)), 0o644)
+	e.must("bible.install", map[string]any{"path": usfm, "id": "mine", "abbreviation": "MINE", "name": "Mine", "licence_type": "personal_purchase", "rights_holder": "A Publisher"}, nil)
+	quote := func(v string) string {
+		return "> **" + v + "** " + long + nl + "> — [John 3:" + v + "](#passage/John.3." + v + ") (MINE). © A Publisher"
+	}
+	var doc struct{ ID string }
+	e.must("document.create", map[string]any{"title": "Grace", "body": quote("16") + nl + nl + "Between." + nl + nl + quote("17")}, &doc)
+	src := []map[string]any{{"kind": "document", "id": doc.ID}}
+	var pv export.Preview
+	e.must("export.preview", map[string]any{"sources": src, "format": "md"}, &pv)
+	if len(pv.Cuts) != 1 || !strings.Contains(pv.Body, "Shortened.") {
+		t.Fatalf("two quotations of 1,200 characters should pass one page (2,000): %+v", pv.Cuts)
+	}
+	_, md := e.make("md", src, nil)
+	if !bytes.Contains(md, []byte("John 3:16")) || bytes.Contains(md, []byte("John 3:17")) {
+		t.Errorf("the second quotation should be cut:%s%s", nl, md)
+	}
+	var n int
+	if err := e.env.Store.QueryRow(context.Background(), `SELECT COALESCE(SUM(chars), 0) FROM copy_log WHERE module = 'mine' AND action = 'export'`).Scan(&n); err != nil || n < 1200 {
+		t.Errorf("copy_log counted %d characters for the Bible (%v)", n, err)
+	}
+	// A note is counted the same way: the day's page is used up.
+	var note struct{ ID string }
+	e.must("note.create", map[string]any{"title": "N", "body": quote("16")}, &note)
+	e.must("export.preview", map[string]any{"sources": []map[string]any{{"kind": "note", "id": note.ID}}, "format": "md"}, &pv)
+	if len(pv.Cuts) != 1 {
+		t.Errorf("a note quoting the Bible should be cut: %+v", pv.Cuts)
+	}
+}

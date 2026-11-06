@@ -3,6 +3,7 @@
 // its details, each edited in a small popover; and the popovers for verses: a reference to link to,
 // verses to quote (through document.quote, so each Bible's licence applies) and a month calendar.
 
+import { activeDoc } from "./activedoc";
 import { Module, Ref, run } from "./api";
 import { installedBibles } from "./bibles";
 import { button, clear, h } from "./dom";
@@ -195,7 +196,9 @@ let lastBible = "";
 
 // verseQuoteFor quotes verses through document.quote, so the Bible's licence decides; with words, only those words of them.
 export async function verseQuoteFor(ref: string, module: string, words = ""): Promise<{ md: string } | { reason: string }> {
-  const r = await run<{ allowed: boolean; reason?: string; quote?: string }>("document.quote", { ref, module, preview: true, ...(words ? { words } : {}) })
+  // The text of the open note or sermon goes too, so quotations from one limited Bible add up in it.
+  const text = activeDoc()?.text();
+  const r = await run<{ allowed: boolean; reason?: string; quote?: string }>("document.quote", { ref, module, preview: true, ...(words ? { words } : {}), ...(text ? { text } : {}) })
     .catch((err: Error) => ({ allowed: false, reason: err.message, quote: "" }));
   if (!r.allowed || !r.quote) return { reason: r.reason ?? "the licence does not allow it" };
   return { md: r.quote.trimEnd() };

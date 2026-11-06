@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -25,6 +26,7 @@ type QuoteParams struct {
 	Ref     string `json:"ref" required:"true" desc:"The passage, e.g. \"Rom 8:28-30\""`
 	Module  string `json:"module" required:"true" desc:"The Bible to quote, from bible.modules"`
 	Preview bool   `json:"preview,omitempty" desc:"Only return the quotation, for an editor to place where the cursor is; nothing is saved"`
+	Text    string `json:"text,omitempty" desc:"The document's text as the editor holds it, when it is not the saved one (a note, or text not saved yet); quotations in it from a limited Bible count towards that Bible's limit for one document"`
 	Words   string `json:"words,omitempty" desc:"Quote only these words of the passage, such as a highlight's exact words; they must be in its text"`
 }
 
@@ -104,6 +106,16 @@ func (s *service) quote(ctx context.Context, env *command.Env, p QuoteParams) (Q
 		res.Reason = fmt.Sprintf("the licence of %s allows quoting about %d characters at a time; choose fewer verses", name(*meta), max)
 		return res, nil
 	}
+	if max := quoteLimit(lic); max > 0 {
+		held, err := s.heldChars(ctx, env, p, name(*meta))
+		if err != nil {
+			return QuoteResult{}, err
+		}
+		if held+utf8.RuneCountInString(text) > max {
+			res.Reason = fmt.Sprintf("the licence of %s allows quoting about %d characters in one document, and this one already has %d", name(*meta), max, held)
+			return res, nil
+		}
+	}
 	if p.Preview {
 		res.Allowed, res.Quote = true, text
 		return res, nil
@@ -129,6 +141,39 @@ func (s *service) quote(ctx context.Context, env *command.Env, p QuoteParams) (Q
 	}
 	res.Allowed, res.Quote, res.Document = true, text, &d
 	return res, nil
+}
+
+// heldChars counts the characters the document already quotes from a Bible: those of the text the
+// editor sent, or else of the saved document.
+func (s *service) heldChars(ctx context.Context, env *command.Env, p QuoteParams, bibleName string) (int, error) {
+	body := p.Text
+	if body == "" && p.ID != "" {
+		d, err := get(ctx, env, p.ID)
+		if err != nil {
+			return 0, err
+		}
+		body = d.Body
+	}
+	return QuotedChars(body, bibleName), nil
+}
+
+var creditRe = regexp.MustCompile(`^> — \[[^\]]+\]\(#passage/[^)\s]*\) \(([^)]+)\)`)
+
+// QuotedChars is the length of the verse quotations from a Bible (named as in the credit line) in
+// some Markdown: each is a block of "> " lines whose last line is its credit.
+func QuotedChars(md, bibleName string) int {
+	n := 0
+	for _, block := range strings.Split(strings.ReplaceAll(md, "\r\n", "\n"), "\n\n") {
+		block = strings.Trim(block, "\n")
+		lines := strings.Split(block, "\n")
+		if len(lines) < 2 || !strings.HasPrefix(lines[0], "> ") {
+			continue
+		}
+		if m := creditRe.FindStringSubmatch(lines[len(lines)-1]); m != nil && m[1] == bibleName {
+			n += utf8.RuneCountInString(block)
+		}
+	}
+	return n
 }
 
 func name(m bible.Meta) string {
