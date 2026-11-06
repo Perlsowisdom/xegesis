@@ -320,6 +320,69 @@ const more = [
       await t.page.setViewportSize({ width: 1480, height: 950 });
     },
   },
+  {
+    row: "Cursive-like pen strokes with varying pressure keep every point, draw live on a canvas, and commit a smooth outline",
+    shot: "ink-10-cursive.png",
+    async run(t) {
+      await fresh(t);
+      await addInk(t);
+      await tool(t, "Pen");
+      await tool(t, "Black");
+      await tool(t, "Medium");
+      // a row of looped letters (a trochoid), pressure swelling and easing
+      const n = 150;
+      const pts = Array.from({ length: n }, (_, i) => {
+        const u = i / (n - 1), a = u * 12 * Math.PI;
+        return [0.08 + 0.84 * u - 0.035 * Math.sin(a), 0.5 - 0.3 * Math.cos(a), 0.15 + 0.7 * Math.abs(Math.sin(a / 2))];
+      });
+      const box = await t.page.locator(`${t.root} .ink-page`).boundingBox();
+      const mid = await t.page.evaluate(async ({ root, pts }) => {
+        const svg = document.querySelector(`${root} .ink-page`);
+        const r = svg.getBoundingClientRect();
+        const ev = (type, [fx, fy, pr]) => new PointerEvent(type, {
+          bubbles: true, cancelable: true, pointerId: 5, pointerType: "pen", isPrimary: true, pressure: pr, button: 0, buttons: type === "pointerup" ? 0 : 1,
+          clientX: r.left + fx * r.width, clientY: r.top + fy * 150,
+        });
+        svg.dispatchEvent(ev("pointerdown", pts[0]));
+        for (const p of pts.slice(0, 60)) svg.dispatchEvent(ev("pointermove", p));
+        await new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok)));
+        const cv = svg.parentElement.querySelector("canvas.ink-live");
+        const d = cv.getContext("2d").getImageData(0, 0, cv.width, cv.height).data;
+        let inked = 0;
+        for (let i = 3; i < d.length; i += 4) if (d[i] > 0) inked++;
+        const during = svg.querySelectorAll("path").length;
+        for (const p of pts.slice(60)) svg.dispatchEvent(ev("pointermove", p));
+        svg.dispatchEvent(ev("pointerup", pts[pts.length - 1]));
+        const cleared = cv.getContext("2d").getImageData(0, 0, cv.width, cv.height).data.every((v) => v === 0);
+        return { inked, during, cleared, caps: window.__xgInk };
+      }, { root: t.root, pts });
+      t.assert.ok(mid.inked > 500, "the live stroke is on the canvas: " + mid.inked + " pixels");
+      t.assert.equal(mid.during, 0, "nothing is added to the page's SVG while the pen is down");
+      t.assert.ok(mid.cleared, "the canvas is cleared once the stroke is committed");
+      const [d] = await savedInk(t);
+      t.assert.equal(d.s.length, 1);
+      const got = d.s[0].p;
+      const unit = 1000 / box.width;
+      t.assert.ok(got.length >= n - 2, "every point kept: " + got.length + " of " + n);
+      // each input point is on the saved stroke, within 0.02 units of x and y and 0.002 of pressure
+      let worst = 0, worstP = 0;
+      for (const [fx, fy, pr] of pts) {
+        const ex = fx * 1000, ey = fy * 150 * unit;
+        const q = got.reduce((b, c) => (Math.hypot(c[0] - ex, c[1] - ey) < Math.hypot(b[0] - ex, b[1] - ey) ? c : b));
+        worst = Math.max(worst, Math.hypot(q[0] - ex, q[1] - ey));
+        worstP = Math.max(worstP, Math.abs(q[2] - pr));
+      }
+      t.assert.ok(worst < 0.5, "saved points are the input points: worst " + worst.toFixed(3) + " units");
+      t.assert.ok(worstP < 0.002, "pressure kept to three decimals: worst " + worstP.toFixed(4));
+      // the drawn outline covers the whole loop line: its box reaches the input box, by at most the pen's width
+      const bb = await t.page.locator(`${t.root} .ink-page path`).first().evaluate((p) => { const b = p.getBBox(); return [b.x, b.y, b.x + b.width, b.y + b.height]; });
+      const xs = pts.map((p) => p[0] * 1000), ys = pts.map((p) => p[1] * 150 * unit);
+      t.assert.ok(bb[0] < Math.min(...xs) && bb[0] > Math.min(...xs) - 8 && bb[2] > Math.max(...xs) && bb[2] < Math.max(...xs) + 8, "outline spans the input in x: " + bb);
+      t.assert.ok(bb[1] < Math.min(...ys) && bb[1] > Math.min(...ys) - 8 && bb[3] > Math.max(...ys) && bb[3] < Math.max(...ys) + 8, "outline spans the input in y: " + bb);
+      t.note = `canvas desynchronized: ${mid.caps.desynchronized}; delegated ink trail: ${mid.caps.delegated} (navigator.ink ${await t.page.evaluate(() => "ink" in navigator)}); predicted events: ${mid.caps.predicted}; worst point error ${worst.toFixed(3)} units`;
+      await t.shot();
+    },
+  },
 ];
 
 export default [...first, ...more];

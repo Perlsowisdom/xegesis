@@ -99,7 +99,7 @@ const ERASE_REACH = 7;
 
 // What this webview can do for low-latency ink; read by the end-to-end test and nothing else.
 const caps = { desynchronized: false, delegated: false, predicted: false };
-(window as unknown as { __xgInk: typeof caps }).__xgInk = caps;
+if (typeof window !== "undefined") (window as unknown as { __xgInk: typeof caps }).__xgInk = caps;
 
 // The delegated ink trail (Chromium, so WebView2 on Windows): the system draws the pen tip itself.
 interface InkPresenter {

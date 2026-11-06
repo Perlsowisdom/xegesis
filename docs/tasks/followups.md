@@ -196,3 +196,12 @@ Design first: mock-up for approval, then build.
 - e2e: the pen, touch and palm checks send synthetic pointer events (the harness has no pen); the
   mouse checks use real `page.mouse` input.
 - e2e flakes seen in the T37 full run (pass alone): "EPUB opens in Read mode, scrolls" (book.e2e.mjs) and M2 step 5 "add to a list" (which then fails step 10).
+
+## After T37 stage 1b
+- Own stroke engine: `frontend/src/editor/inkengine.ts`, ported to Go in `internal/export/inkoutline.go` (keep the two in step; a Go test pins the numbers the screen engine gives). `perfect-freehand` is removed. Ink is saved as `"v":2` (x and y to two decimals, pressure 0 to 1 to three); version 1 is still read in the editor and in Go.
+- Real pen feel, the delegated ink trail on a real digitiser, and the width curve (`pressureWidth`, `speedWidth`) are untested by machine; they need the user's pen. If the line feels too thick or thin at light pressure, change the curve in both files.
+- No smoothing of the newest point (the brief allowed "at most a tiny"); the spline goes through every point, so a shaky hand shows. Add a small lag-free filter only if the pen feels jittery.
+- The live stroke is redrawn whole on each animation frame (the current stroke only); fine for ordinary strokes, could be made incremental for very long ones.
+- The live canvas stroke and the committed SVG use the same outline, so there is no jump on pen-up; the highlighter is not drawn by the delegated trail (it is see-through).
+- Tilt is still unused. The eraser still removes whole strokes and uses the saved points, not the outline.
+- Exported HTML grows with the outline: a stroke is about 2 to 3 path points per page unit of its length; simplifying the polygon would shrink it.
