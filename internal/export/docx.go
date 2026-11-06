@@ -276,6 +276,8 @@ func docxBlocks(b *strings.Builder, bs []Block, opt Options, links *relList) {
 			b.WriteString(para("", rtl, content.String()))
 		case Table:
 			docxTable(b, bl.Table, opt, links)
+		case Handwriting:
+			// Word has no place for strokes yet; they stay in the Markdown and HTML copies.
 		case Rule:
 			b.WriteString(`<w:p><w:pPr><w:pBdr><w:bottom w:val="single" w:sz="6" w:space="1" w:color="999999"/></w:pBdr></w:pPr></w:p>`)
 		default:

@@ -256,3 +256,27 @@ func TestNoteTablesRoundTripAndExport(t *testing.T) {
 		t.Errorf("no header row expected:\n%s", h)
 	}
 }
+
+func TestHandwritingExports(t *testing.T) {
+	ink := "```ink\n{\"v\":1,\"h\":300,\"s\":[{\"t\":\"pen\",\"c\":\"blue\",\"w\":2,\"p\":[[10,20,0],[200,80,61],[300,40,0]]},{\"t\":\"hl\",\"c\":\"yellow\",\"w\":1,\"p\":[[5,5,0]]}]}\n```"
+	md := "Before\n\n" + ink + "\n\nAfter"
+	bs := parseNote(md)
+	if len(bs) != 3 || bs[1].Kind != Handwriting || len(bs[1].Ink.Strokes) != 2 {
+		t.Fatalf("blocks = %+v", bs)
+	}
+	d := Doc{Pieces: []Piece{{Blocks: bs}}}
+	if out := string(Markdown(d)); !strings.Contains(out, ink) {
+		t.Errorf("Markdown lost the strokes: %q", out)
+	}
+	h := HTML(d)
+	if !strings.Contains(h, `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 300"`) || !strings.Contains(h, "<polyline") || !strings.Contains(h, "<circle") || !strings.Contains(h, "#4f7fbf") {
+		t.Errorf("HTML has no drawing: %q", h)
+	}
+	pdf, _, err := PDF(d)
+	if err == nil && !bytes.Contains(pdf, []byte("%PDF")) {
+		t.Errorf("PDF is not a PDF")
+	}
+	if parseInk([]string{"```ink", "{nope", "```"}) != nil || parseInk([]string{"```ink", `{"v":2,"h":300,"s":[]}`, "```"}) != nil {
+		t.Error("damaged ink is read as ink")
+	}
+}

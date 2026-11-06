@@ -94,9 +94,16 @@ type rule struct {
 	rgb                   [3]float64
 }
 
+type pdfStroke struct {
+	pts   [][2]float64
+	width float64
+	rgb   [3]float64
+}
+
 type pdfPage struct {
-	runs  []glyphRun
-	rules []rule
+	runs    []glyphRun
+	rules   []rule
+	strokes []pdfStroke
 }
 
 type layout struct {
@@ -511,6 +518,8 @@ func (l *layout) blocks(bs []Block) {
 			l.para(sp, 0, after, nil)
 		case Table:
 			l.table(b.Table)
+		case Handwriting:
+			l.ink(b.Ink)
 		case Rule:
 			l.need(l.base)
 			l.y -= l.base * 0.5
@@ -717,6 +726,14 @@ func pageContent(p *pdfPage, names map[*ttfFont]string) []byte {
 	for _, r := range p.rules {
 		fmt.Fprintf(&b, "%.3f %.3f %.3f RG %.2f w %.2f %.2f m %.2f %.2f l S\n", r.rgb[0], r.rgb[1], r.rgb[2], r.width, r.x1, r.y1, r.x2, r.y2)
 	}
+	b.WriteString("1 J 1 j\n")
+	for _, s := range p.strokes {
+		fmt.Fprintf(&b, "%.3f %.3f %.3f RG %.2f w %.2f %.2f m", s.rgb[0], s.rgb[1], s.rgb[2], s.width, s.pts[0][0], s.pts[0][1])
+		for _, q := range s.pts[1:] {
+			fmt.Fprintf(&b, " %.2f %.2f l", q[0], q[1])
+		}
+		b.WriteString(" S\n")
+	}
 	b.WriteString("BT\n")
 	for _, r := range p.runs {
 		fmt.Fprintf(&b, "%s %.2f Tf %.3f g 1 0 0 1 %.2f %.2f Tm <", names[r.font], r.size, r.gray, r.x, r.y)
@@ -792,4 +809,31 @@ func pdfText(s string) string {
 	}
 	b.WriteString(">")
 	return b.String()
+}
+
+// ink draws a page of handwriting across the text width, scaled down when it is taller than a page.
+func (l *layout) ink(n *Ink) {
+	w := l.width()
+	scale := w / inkW
+	if max := l.ph - l.mt - l.mb; n.H*scale > max {
+		scale = max / n.H
+	}
+	h := n.H * scale
+	l.need(h)
+	top := l.y
+	x0 := l.ml + (w-inkW*scale)/2
+	for _, k := range n.Strokes {
+		if len(k.Points) == 0 {
+			continue
+		}
+		s := pdfStroke{width: k.meanWidth() * scale, rgb: k.rgb()}
+		for _, p := range k.Points {
+			s.pts = append(s.pts, [2]float64{x0 + p[0]*scale, top - p[1]*scale})
+		}
+		if len(s.pts) == 1 { // a dot is a stroke of no length with round ends
+			s.pts = append(s.pts, s.pts[0])
+		}
+		l.cur.strokes = append(l.cur.strokes, s)
+	}
+	l.y = top - h - l.base*0.4
 }

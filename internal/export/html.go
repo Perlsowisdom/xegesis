@@ -95,6 +95,8 @@ func htmlBlocks(b *strings.Builder, bs []Block, opt Options) {
 			tableHTML(b, bl.Table, opt)
 		case Rule:
 			b.WriteString(`<hr>`)
+		case Handwriting:
+			fmt.Fprintf(b, `<div class="xd-par xd-ink">%s</div>`, bl.Ink.svg())
 		default:
 			fmt.Fprintf(b, `<p dir="auto">%s</p>`, inlineHTML(bl.Spans))
 		}
@@ -218,6 +220,8 @@ func CSS(o Options, title string) string {
 .xdoc table.xd-par th { text-align: start; border-bottom: 1px solid #999; padding: .2em .4em; }
 .xdoc table.xd-par td { vertical-align: top; padding: .25em .4em; }
 .xdoc table.xd-par th.xd-n, .xdoc table.xd-par td.xd-n { width: 2.2em; padding-left: 0; }
+.xdoc .xd-ink { margin: .4em 0 .8em; break-inside: avoid; }
+.xdoc .xd-ink svg { display: block; width: 100%%; height: auto; }
 .xdoc table.xd-par tr { break-inside: avoid; }
 .xdoc table.xd-table th, .xdoc table.xd-table td { border: 1px solid #bbb; padding: .25em .45em; }
 .xdoc table.xd-table th { background: #f2f2f2; }

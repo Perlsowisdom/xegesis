@@ -43,6 +43,9 @@ func parseBlock(src string) []Block {
 			return []Block{{Kind: Rule}}
 		}
 	}
+	if ink := parseInk(lines); ink != nil {
+		return []Block{{Kind: Handwriting, Ink: ink}}
+	}
 	if g := parseNoteTable(lines); g != nil {
 		return []Block{{Kind: Table, Table: g}}
 	}
@@ -326,6 +329,8 @@ func mdBlocks(bs []Block, opt Options) []string {
 			out = append(out, mdTable(b.Table, opt))
 		case Rule:
 			out = append(out, "---")
+		case Handwriting:
+			out = append(out, b.Ink.Raw)
 		}
 	}
 	flush()
