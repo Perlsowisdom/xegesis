@@ -7,7 +7,6 @@ import (
 	"errors"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/Perlsowisdom/xegesis/internal/command"
 	"github.com/Perlsowisdom/xegesis/internal/integrations/secrets"
@@ -24,10 +23,8 @@ const (
 // Option customises Register, mainly for tests.
 type Option func(*service)
 
-func WithBaseURL(u string) Option          { return func(s *service) { s.baseURL = u } }
-func WithFUMSURL(u string) Option          { return func(s *service) { s.fumsURL = u } }
-func WithHTTPClient(h *http.Client) Option { return func(s *service) { s.http = h } }
-func WithCacheTTL(d time.Duration) Option  { return func(s *service) { s.cache = NewCache(d) } }
+func WithBaseURL(u string) Option { return func(s *service) { s.baseURL = u } }
+func WithFUMSURL(u string) Option { return func(s *service) { s.fumsURL = u } }
 
 type service struct {
 	secrets   secrets.Store

@@ -32,10 +32,6 @@ export function onPassage(l: Listener): void {
   listeners.add(l);
 }
 
-export function lastRef(): string {
-  return load<string>("xegesis.ref", "John 1");
-}
-
 // loadPref and savePref keep per-device preferences in localStorage. Both survive storage being
 // unavailable: preferences are a convenience, never data.
 export function loadPref<T>(key: string, fallback: T): T {

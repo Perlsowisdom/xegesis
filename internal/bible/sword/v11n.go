@@ -148,9 +148,6 @@ func (v *Versification) Entries(testament int) int {
 	return n
 }
 
-// Books lists a testament's books in index order.
-func (v *Versification) Books(testament int) []Book { return v.books(testament) }
-
 func (v *Versification) books(testament int) []Book {
 	if testament == 0 {
 		return v.OT

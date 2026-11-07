@@ -210,9 +210,6 @@ func (b *builder) addText(s string) {
 	b.markup.WriteString(esc(s))
 }
 
-// raw writes markup that has no plain-text form.
-func (b *builder) raw(m string) { b.out().WriteString(m) }
-
 func (b *builder) strong(nums []string) {
 	if b.cur != nil {
 		b.cur.Strongs = append(b.cur.Strongs, nums...)

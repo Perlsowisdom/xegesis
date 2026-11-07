@@ -13,9 +13,6 @@ import (
 	"github.com/Perlsowisdom/xegesis/internal/verse"
 )
 
-// Register adds the Bible commands to r, serving modules from dir. None of them writes library.db.
-func Register(r *command.Registry, dir string) { RegisterLibrary(r, NewLibrary(dir)) }
-
 // RegisterLibrary adds the Bible commands for an existing Library.
 func RegisterLibrary(r *command.Registry, l *Library) {
 	c := cmds{l}

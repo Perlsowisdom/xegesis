@@ -190,7 +190,6 @@ export type PageTheme = "auto" | "light" | "sepia" | "dark";
 export const SPACINGS: Record<Spacing, number> = { tight: 1.45, normal: 1.75, loose: 2.1 };
 const THEMES: PageTheme[] = ["auto", "light", "sepia", "dark"];
 
-export const READING_DEFAULTS: ReadingPrefs = { mode: "read", size: 100, font: "serif", width: "narrow", spacing: "normal", theme: "auto", taggedWords: false };
 export const TEXT_SIZES = [85, 100, 115, 130, 150];
 
 export function normalizeReading(v: unknown): ReadingPrefs {

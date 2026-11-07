@@ -22,8 +22,7 @@ const (
 // Option customises Register, mainly for tests.
 type Option func(*service)
 
-func WithBaseURL(u string) Option          { return func(s *service) { s.baseURL = u } }
-func WithHTTPClient(h *http.Client) Option { return func(s *service) { s.http = h } }
+func WithBaseURL(u string) Option { return func(s *service) { s.baseURL = u } }
 
 type service struct {
 	secrets secrets.Store

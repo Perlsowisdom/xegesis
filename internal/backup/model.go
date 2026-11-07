@@ -123,18 +123,6 @@ var anchorFields = []field{
 // Groups are the names a caller can pass to choose what to export or import.
 var Groups = []string{"note", "highlight", "list", "collection", "reading_plan", "document", "folder"}
 
-func typeByName(name string) (objType, bool) {
-	if name == "item" {
-		return itemType, true
-	}
-	for _, t := range objTypes {
-		if t.name == name {
-			return t, true
-		}
-	}
-	return objType{}, false
-}
-
 // objectID is the file name stem of a row: the id, or the key parts joined by "." (IDs are ULIDs, so
 // they never contain a dot). A NULL key part is written "_".
 func objectID(t objType, row store.Row) string {
