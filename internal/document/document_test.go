@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/Perlsowisdom/xegesis/internal/bible"
 	"github.com/Perlsowisdom/xegesis/internal/command"
@@ -198,7 +199,7 @@ func TestQuoteFollowsLicence(t *testing.T) {
 		t.Fatalf("quote = %+v", q)
 	}
 	body := q.Document.Body
-	for _, want := range []string{"Opening words.\n\n> **16** Verse text", " **17** Verse text", "[John 3:16-17](#passage/John.3.16-John.3.17) (KJV)"} {
+	for _, want := range []string{"Opening words.\n\n> **16** Verse text", " **17** Verse text", "[John 3:16-17](#passage/John.3.16-John.3.17) ([KJV](#bible/kjv))"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("body lacks %q:\n%s", want, body)
 		}
@@ -214,7 +215,7 @@ func TestQuoteFollowsLicence(t *testing.T) {
 		t.Fatalf("long quote = %+v", q)
 	}
 	e.must("document.quote", map[string]any{"id": d.ID, "ref": "John 3:16", "module": "mine"}, &q)
-	if !q.Allowed || !strings.Contains(q.Quote, "(MINE). © A Publisher") {
+	if !q.Allowed || !strings.Contains(q.Quote, "([MINE](#bible/mine)). © A Publisher") {
 		t.Fatalf("short quote = %+v", q)
 	}
 	var got Document
@@ -235,7 +236,7 @@ func TestQuotePreview(t *testing.T) {
 	e := setup(t)
 	var q QuoteResult
 	e.must("document.quote", map[string]any{"ref": "John 3:16", "module": "kjv", "preview": true}, &q)
-	if !q.Allowed || q.Document != nil || !strings.HasPrefix(q.Quote, "> **16** Verse text") || !strings.Contains(q.Quote, "\n> — [John 3:16](#passage/John.3.16) (KJV)") {
+	if !q.Allowed || q.Document != nil || !strings.HasPrefix(q.Quote, "> **16** Verse text") || !strings.Contains(q.Quote, "\n> — [John 3:16](#passage/John.3.16) ([KJV](#bible/kjv))") {
 		t.Fatalf("preview = %+v", q)
 	}
 	// The licence rules are the same: nothing to store means nothing to place.
@@ -277,7 +278,7 @@ func TestQuoteOnlySomeWords(t *testing.T) {
 	var q QuoteResult
 	// A highlight's exact words keep the place and the credit line; the licence's limit counts only them.
 	e.must("document.quote", map[string]any{"preview": true, "ref": "John 3:16-17", "module": "mine", "words": "long  long"}, &q)
-	if !q.Allowed || !strings.HasPrefix(q.Quote, "> long long\n> — [John 3:16-17](#passage/John.3.16-John.3.17) (MINE). © A Publisher") || strings.Contains(q.Quote, "**16**") {
+	if !q.Allowed || !strings.HasPrefix(q.Quote, "> long long\n> — [John 3:16-17](#passage/John.3.16-John.3.17) ([MINE](#bible/mine)). © A Publisher") || strings.Contains(q.Quote, "**16**") {
 		t.Fatalf("words quote = %+v", q)
 	}
 	// Words that are not in the passage are not quoted as if they were.
@@ -389,7 +390,7 @@ func TestQuotationsFromOneBibleAddUpPerDocument(t *testing.T) {
 		t.Fatalf("a different document = %+v", q)
 	}
 	// Other Bibles' quotations are not counted against this one, and a public-domain Bible has no limit.
-	if n := QuotedChars(text, "KJV"); n != 0 {
+	if n := QuotedChars(text, "kjv", "KJV"); n != 0 {
 		t.Fatalf("KJV chars = %d", n)
 	}
 	e.must("document.quote", map[string]any{"id": d.ID, "ref": "John 3:16-17", "module": "kjv"}, &q)
@@ -420,7 +421,7 @@ func TestQuoteFromBibleBook(t *testing.T) {
 	}))
 	var q QuoteResult
 	e.must("document.quote", map[string]any{"ref": "Psalm 84:3", "book": "ITEM1", "preview": true}, &q)
-	if !q.Allowed || !strings.HasPrefix(q.Quote, "> Even the sparrow finds a home.\n> — [Psalms 84:3](#passage/Ps.84.3) (Alter Psalms). Personal copy.") {
+	if !q.Allowed || !strings.HasPrefix(q.Quote, "> Even the sparrow finds a home.\n> — [Psalms 84:3](#passage/Ps.84.3) ([Alter Psalms](#book/ITEM1)). Personal copy.") {
 		t.Fatalf("book quote = %+v", q)
 	}
 	e.must("document.quote", map[string]any{"ref": "Psalm 84:3", "book": "ITEM1", "preview": true, "keep": true}, &q)
@@ -440,5 +441,20 @@ func TestQuoteFromBibleBook(t *testing.T) {
 	e.must("document.quote", map[string]any{"ref": "Psalm 84:3", "book": "ITEM1", "preview": true}, &q)
 	if q.Allowed || !strings.Contains(q.Reason, "licence") || q.Quote != "" {
 		t.Fatalf("over the limit = %+v", q)
+	}
+}
+
+// Quotations are counted by the module id in the credit line; older ones with only the name still count.
+func TestQuotedCharsByModuleID(t *testing.T) {
+	byID := "> text one\n> — [John 3:16](#passage/John.3.16) ([Renamed](#bible/mine)). Credit"
+	byName := "> text two\n> — [John 3:17](#passage/John.3.17) (MINE). Credit"
+	other := "> text three\n> — [John 3:18](#passage/John.3.18) ([MINE](#bible/other))"
+	book := "> text four\n> — [John 3:19](#passage/John.3.19) ([MINE](#book/mine))"
+	md := strings.Join([]string{byID, byName, other, book}, "\n\n")
+	if got, want := QuotedChars(md, "mine", "MINE"), utf8.RuneCountInString(byID)+utf8.RuneCountInString(byName); got != want {
+		t.Fatalf("chars = %d, want %d", got, want)
+	}
+	if src, ok := QuoteSource("> — [Psalms 84:3](#passage/Ps.84.3) ([Alter Psalms](#book/a%20b)). x"); !ok || src.Kind != "book" || src.ID != "a b" {
+		t.Fatalf("book source = %+v, %v", src, ok)
 	}
 }

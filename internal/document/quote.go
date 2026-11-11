@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"regexp"
 	"strings"
 	"unicode"
@@ -103,20 +104,21 @@ func (s *service) quote(ctx context.Context, env *command.Env, p QuoteParams) (Q
 		res.Reason = fmt.Sprintf("%s has no verses for %s", name(*meta), r.Display)
 		return res, nil
 	}
-	text := quoteMarkdown(pas, r.Display, r.OSIS, name(*meta), res.Attribution)
+	src := sourceLink("bible", meta.ID, name(*meta))
+	text := quoteMarkdown(pas, r.Display, r.OSIS, src, res.Attribution)
 	if p.Words != "" {
 		if !wordsIn(p.Words, pas) {
 			res.Reason = fmt.Sprintf("those words are not in %s's text of %s", name(*meta), r.Display)
 			return res, nil
 		}
-		text = wordsMarkdown(p.Words, r.Display, r.OSIS, name(*meta), res.Attribution)
+		text = wordsMarkdown(p.Words, r.Display, r.OSIS, src, res.Attribution)
 	}
 	if max := quoteLimit(lic); max > 0 && utf8.RuneCountInString(text) > max {
 		res.Reason = fmt.Sprintf("the licence of %s allows quoting about %d characters at a time; choose fewer verses", name(*meta), max)
 		return res, nil
 	}
 	if max := quoteLimit(lic); max > 0 {
-		held, err := s.heldChars(ctx, env, p, name(*meta))
+		held, err := s.heldChars(ctx, env, p, *meta)
 		if err != nil {
 			return QuoteResult{}, err
 		}
@@ -159,7 +161,7 @@ func (s *service) deliver(ctx context.Context, env *command.Env, p QuoteParams, 
 
 // heldChars counts the characters the document already quotes from a Bible: those of the text the
 // editor sent, or else of the saved document.
-func (s *service) heldChars(ctx context.Context, env *command.Env, p QuoteParams, bibleName string) (int, error) {
+func (s *service) heldChars(ctx context.Context, env *command.Env, p QuoteParams, m bible.Meta) (int, error) {
 	body := p.Text
 	if body == "" && p.ID != "" {
 		d, err := get(ctx, env, p.ID)
@@ -168,14 +170,49 @@ func (s *service) heldChars(ctx context.Context, env *command.Env, p QuoteParams
 		}
 		body = d.Body
 	}
-	return QuotedChars(body, bibleName), nil
+	return QuotedChars(body, m.ID, name(m)), nil
 }
 
-var creditRe = regexp.MustCompile(`^> — \[[^\]]+\]\(#passage/[^)\s]*\) \(([^)]+)\)`)
+// A quotation's last line is its credit: the link to the passage, then the source in brackets. The
+// source is a link whose address holds the Bible's module id (#bible/<id>) or the library book's
+// item id (#book/<id>), so quotations are counted by source and not by the name shown. Quotations
+// made before that have only the name, "(KJV)".
+var creditRe = regexp.MustCompile(`^> — \[[^\]]+\]\(#passage/[^)\s]*\) \((?:\[[^\]]*\]\(#(bible|book)/([^)\s]*)\)|([^)]+))\)`)
 
-// QuotedChars is the length of the verse quotations from a Bible (named as in the credit line) in
-// some Markdown: each is a block of "> " lines whose last line is its credit.
-func QuotedChars(md, bibleName string) int {
+// Source is where a quotation came from: Kind "bible" with a module id, "book" with an item id, or
+// no kind and only the name shown, for a quotation made before ids were kept.
+type Source struct {
+	Kind string
+	ID   string
+	Name string
+}
+
+// QuoteSource reads the source from a quotation's credit line (its last line, with the "> ").
+func QuoteSource(line string) (Source, bool) {
+	m := creditRe.FindStringSubmatch(line)
+	if m == nil {
+		return Source{}, false
+	}
+	if m[1] == "" {
+		return Source{Name: m[3]}, true
+	}
+	id, err := url.PathUnescape(m[2])
+	if err != nil {
+		id = m[2]
+	}
+	return Source{Kind: m[1], ID: id}, true
+}
+
+// sourceLink is the source as it is written in a credit line: the name, linking to the id.
+func sourceLink(kind, id, label string) string {
+	label = strings.NewReplacer("[", "", "]", "").Replace(label)
+	return fmt.Sprintf("[%s](#%s/%s)", label, kind, url.PathEscape(id))
+}
+
+// QuotedChars is the length of the verse quotations from a Bible (by its module id, or for older
+// quotations by the name in the credit line) in some Markdown: each is a block of "> " lines whose
+// last line is its credit.
+func QuotedChars(md, moduleID, bibleName string) int {
 	n := 0
 	for _, block := range strings.Split(strings.ReplaceAll(md, "\r\n", "\n"), "\n\n") {
 		block = strings.Trim(block, "\n")
@@ -183,7 +220,8 @@ func QuotedChars(md, bibleName string) int {
 		if len(lines) < 2 || !strings.HasPrefix(lines[0], "> ") {
 			continue
 		}
-		if m := creditRe.FindStringSubmatch(lines[len(lines)-1]); m != nil && m[1] == bibleName {
+		src, ok := QuoteSource(lines[len(lines)-1])
+		if ok && (src.Kind == "bible" && src.ID == moduleID || src.Kind == "" && src.Name == bibleName) {
 			n += utf8.RuneCountInString(block)
 		}
 	}
@@ -212,9 +250,9 @@ func quoteLimit(l licence.Licence) int {
 }
 
 // quoteMarkdown is the passage as a Markdown block quote: bold verse numbers, then a line with a
-// link to the passage, the Bible's short name and its credit. The editor shows a quote whose last
+// link to the passage, the Bible's short name (a link holding its id) and its credit. The editor shows a quote whose last
 // line starts with "— " as a verse quotation, the credit in small type.
-func quoteMarkdown(p bible.Passage, display, osis, bibleName, credit string) string {
+func quoteMarkdown(p bible.Passage, display, osis, source, credit string) string {
 	var b strings.Builder
 	b.WriteString("> ")
 	for i, v := range p.Verses {
@@ -227,7 +265,7 @@ func quoteMarkdown(p bible.Passage, display, osis, bibleName, credit string) str
 		}
 		fmt.Fprintf(&b, "**%s** %s", num, strings.Join(strings.Fields(v.Text), " "))
 	}
-	fmt.Fprintf(&b, "\n> — [%s](#passage/%s) (%s)", display, osis, bibleName)
+	fmt.Fprintf(&b, "\n> — [%s](#passage/%s) (%s)", display, osis, source)
 	if credit != "" {
 		b.WriteString(". " + credit)
 	}
@@ -257,9 +295,9 @@ func wordsIn(words string, p bible.Passage) bool {
 }
 
 // wordsMarkdown quotes some words of a passage the way quoteMarkdown quotes it all, without verse numbers.
-func wordsMarkdown(words, display, osis, bibleName, credit string) string {
+func wordsMarkdown(words, display, osis, source, credit string) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "> %s\n> — [%s](#passage/%s) (%s)", strings.Join(strings.Fields(words), " "), display, osis, bibleName)
+	fmt.Fprintf(&b, "> %s\n> — [%s](#passage/%s) (%s)", strings.Join(strings.Fields(words), " "), display, osis, source)
 	if credit != "" {
 		b.WriteString(". " + credit)
 	}
@@ -290,5 +328,5 @@ func (s *service) quoteBook(ctx context.Context, env *command.Env, p QuoteParams
 		res.Reason = cp.Reason
 		return res, nil
 	}
-	return s.deliver(ctx, env, p, res, wordsMarkdown(vt.Text, r.Display, r.OSIS, vt.Title, cp.Attribution))
+	return s.deliver(ctx, env, p, res, wordsMarkdown(vt.Text, r.Display, r.OSIS, sourceLink("book", p.Book, vt.Title), cp.Attribution))
 }
