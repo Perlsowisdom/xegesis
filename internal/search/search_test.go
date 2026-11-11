@@ -414,3 +414,17 @@ func TestCollectionFilter(t *testing.T) {
 		t.Error("an unknown collection was accepted")
 	}
 }
+
+// Closing the registry (as the app does at shutdown) closes the indexes that are open.
+func TestRegistryCloseClosesIndexes(t *testing.T) {
+	e := setup(t)
+	if _, err := e.svc.index("f1", true); err != nil {
+		t.Fatal(err)
+	}
+	e.reg.Close()
+	e.svc.mu.Lock()
+	defer e.svc.mu.Unlock()
+	if len(e.svc.indexes) != 0 {
+		t.Fatalf("%d indexes still open", len(e.svc.indexes))
+	}
+}

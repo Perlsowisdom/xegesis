@@ -24,6 +24,7 @@ import (
 func Register(r *command.Registry, dataDir string) { register(r, newService(r, dataDir)) }
 
 func register(r *command.Registry, s *service) {
+	r.OnClose(s.closeAll)
 	r.Add(
 		command.Define("search.index", "Index the text of books in one library folder or all of them, resuming where indexing stopped.", false, s.indexCmd),
 		command.Define("search.status", "Show how far each library folder's search index has got.", false, s.statusCmd),

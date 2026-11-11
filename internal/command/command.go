@@ -82,8 +82,22 @@ func Define[P, R any](id, summary string, writes bool, fn func(context.Context, 
 
 // Registry holds every command.
 type Registry struct {
-	cmds  map[string]Command
-	books BookLinker
+	cmds    map[string]Command
+	books   BookLinker
+	closers []func()
+}
+
+// OnClose registers something to run when the registry is closed: closing a database, say.
+func (r *Registry) OnClose(f func()) { r.closers = append(r.closers, f) }
+
+// Close runs what was registered with OnClose, the last registered first, once. Call it when
+// background work has stopped, as the app does at shutdown.
+func (r *Registry) Close() {
+	closers := r.closers
+	r.closers = nil
+	for i := len(closers) - 1; i >= 0; i-- {
+		closers[i]()
+	}
 }
 
 // SetBookLinker registers what maps places in books to verses (the reader does this at start-up).
