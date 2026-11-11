@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/Perlsowisdom/xegesis/internal/command"
-	"github.com/Perlsowisdom/xegesis/internal/command/core"
 	"github.com/Perlsowisdom/xegesis/internal/library"
 )
 
@@ -22,7 +21,7 @@ import (
 func Register(r *command.Registry) { register(r, newService(r)) }
 
 func register(r *command.Registry, s *service) {
-	core.BookVerses = s.linkVerses
+	r.SetBookLinker(s)
 	r.Add(
 		command.Define("book.open", "Open a library book: its format, number of sections or pages, table of contents and saved reading position.", false, s.openCmd),
 		command.Define("book.section", "Read one section of a book: an EPUB chapter or a whole document as sanitised HTML, or a PDF page's size.", false, s.sectionCmd),

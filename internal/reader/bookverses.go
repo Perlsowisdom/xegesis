@@ -94,8 +94,8 @@ func placeVerse(r rendered, entries []MapEntry, section, para, off int, end bool
 	return verse.ID(e.Book*1_000_000 + e.Chapter*1000 + v), true
 }
 
-// linkVerses is core's hook: the locator is a note's or highlight's book place as JSON.
-func (s *service) linkVerses(ctx context.Context, env *command.Env, itemID, locator string) (verse.Range, bool) {
+// BookVerses is the command package's book linker: the locator is a note's or highlight's book place as JSON.
+func (s *service) BookVerses(ctx context.Context, env *command.Env, itemID, locator string) (verse.Range, bool) {
 	var a Anchor
 	if json.Unmarshal([]byte(locator), &a) != nil {
 		return verse.Range{}, false
