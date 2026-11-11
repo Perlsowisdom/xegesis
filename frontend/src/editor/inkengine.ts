@@ -3,7 +3,8 @@
 // through the real pen points, converted to cubic Béziers, then offset on both sides by the width at
 // each point. The spline passes through every point, so there is no lag and sharp turns stay sharp.
 // Points are [x, y, pressure] with pressure 0 to 1, or 0 when the device gave none. Pure functions.
-// internal/export/inkoutline.go is the same algorithm for HTML and PDF; keep the two in step.
+// internal/export/inkoutline.go is the same algorithm for HTML and PDF; keep the two in step. This
+// file is the source of truth: both tests check internal/export/testdata/ink-golden.json point by point.
 
 export type Pt = number[];
 

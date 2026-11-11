@@ -2,7 +2,9 @@ package export
 
 import (
 	"bytes"
+	"encoding/json"
 	"math"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -290,17 +292,39 @@ func TestInkFormats(t *testing.T) {
 	}
 }
 
-// The numbers come from the screen's engine (frontend/src/editor/inkengine.ts) for the same stroke.
+// The screen's engine (frontend/src/editor/inkengine.ts) wrote testdata/ink-golden.json, and its own
+// test reads the same file: every outline point must match, so neither engine can drift alone.
 func TestInkOutlineMatchesScreen(t *testing.T) {
-	k := InkStroke{Tool: "pen", Colour: "ink", Width: 2, Points: [][3]float64{{10, 20, 0.2}, {40, 25, 0.5}, {70, 10, 0.9}, {100, 40, 0.6}}}
-	o := k.outline()
-	minX, maxX, minY, maxY := 1e9, -1e9, 1e9, -1e9
-	for _, p := range o {
-		minX, maxX = math.Min(minX, p[0]), math.Max(maxX, p[0])
-		minY, maxY = math.Min(minY, p[1]), math.Max(maxY, p[1])
+	raw, err := os.ReadFile("testdata/ink-golden.json")
+	if err != nil {
+		t.Fatal(err)
 	}
-	near := func(a, b float64) bool { return math.Abs(a-b) < 0.002 }
-	if len(o) != 104 || !near(minX, 8.527) || !near(maxX, 102.341) || !near(minY, 7.361) || !near(maxY, 42.341) {
-		t.Errorf("outline = %d points, x %.3f..%.3f, y %.3f..%.3f", len(o), minX, maxX, minY, maxY)
+	var cases []struct {
+		Name    string       `json:"name"`
+		Tool    string       `json:"tool"`
+		W       int          `json:"w"`
+		Size    float64      `json:"size"`
+		Points  [][3]float64 `json:"points"`
+		Outline [][2]float64 `json:"outline"`
+	}
+	if err := json.Unmarshal(raw, &cases); err != nil || len(cases) == 0 {
+		t.Fatalf("golden file: %v", err)
+	}
+	for _, c := range cases {
+		k := InkStroke{Tool: c.Tool, Colour: "ink", Width: c.W, Points: c.Points}
+		if k.size() != c.Size {
+			t.Errorf("%s: size %v, the screen uses %v", c.Name, k.size(), c.Size)
+		}
+		o := k.outline()
+		if len(o) != len(c.Outline) {
+			t.Errorf("%s: %d points, the screen draws %d", c.Name, len(o), len(c.Outline))
+			continue
+		}
+		for i := range o {
+			if math.Abs(o[i][0]-c.Outline[i][0]) > 0.002 || math.Abs(o[i][1]-c.Outline[i][1]) > 0.002 {
+				t.Errorf("%s: point %d is %.3f,%.3f, the screen draws %.3f,%.3f", c.Name, i, o[i][0], o[i][1], c.Outline[i][0], c.Outline[i][1])
+				break
+			}
+		}
 	}
 }
