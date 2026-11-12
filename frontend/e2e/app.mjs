@@ -225,6 +225,16 @@ export async function startApp({ build: doBuild = true, port } = {}) {
     s.browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`, { timeout: left() });
     s.page = await waitFor(() => s.browser.contexts().flatMap((c) => c.pages()).find((p) => p.url().startsWith("http")), left(), "the app page");
     s.page.setDefaultTimeout(30000);
+    // The checks were written for a 1480 x 950 page. Pin that size, so a smaller screen (a laptop
+    // at 125 % scaling gives about 1230 x 650) does not push toolbar buttons into "More" and fail
+    // checks that have nothing to do with screen size. XEGESIS_E2E_SIZE=native keeps the window's
+    // own size; WxH sets another.
+    const size = process.env.XEGESIS_E2E_SIZE ?? "1480x950";
+    if (size !== "native") {
+      const [width, height] = size.split("x").map(Number);
+      const cdp = await s.page.context().newCDPSession(s.page);
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: false });
+    }
     await s.page.waitForFunction(() => !!(window.go && window.go.main && window.go.main.App), null, { timeout: left() });
     await s.page.waitForSelector("#app, body", { timeout: left() });
     return s;
