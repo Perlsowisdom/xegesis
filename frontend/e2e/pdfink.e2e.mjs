@@ -2,6 +2,8 @@
 // the real mouse over the page, kept as annotations through ink.page.set, and must stay pinned to the
 // page box at every zoom, in Pages and Scroll mode, in Read and Study panes and after a restart.
 
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { addBooks, closeBooks, openFromLibrary } from "./book.e2e.mjs";
 
 // The book helpers use t.page, which is replaced by a restart.
@@ -301,6 +303,38 @@ const checks = [
       const saved = await t.app.run("ink.page.get", { item_id: shared.pdf.id, page: 1 });
       t.assert.equal(saved.ink.strokes.length, 3, "a stroke written in the Study pane is saved");
       await t.shot();
+    },
+  },
+  {
+    row: "PDF ink: Print or export shows the page's ink, and exports carry it as SVG in HTML and an outline in PDF",
+    shot: "pdfink-07-export.png",
+    async run(t) {
+      const page = t.app.page;
+      await closeBooks(T(t));
+      await chooseLayout(t, "Pages");
+      await openFromLibrary(T(t), "e2e-test-pages", "Read");
+      await onPage(t).waitFor({ timeout: 20000 });
+      await visibleBook(t).locator(".pdf-ink-svg path").first().waitFor({ timeout: 10000 });
+      await paneMenu(t, "Print or export");
+      const paper = page.locator(".export-dialog .paper");
+      await paper.locator("svg path").first().waitFor({ timeout: 15000 });
+      t.assert.ok(/Ink · page 1/.test(await paper.innerText()), "the preview names the ink");
+      t.assert.equal(await paper.locator("svg path").count(), 3, "all three strokes are in the preview");
+      await t.shot();
+      await page.keyboard.press("Escape");
+      // the files
+      const src = [{ kind: "book", item_id: shared.pdf.id, from: 1, to: 2 }];
+      const html = await t.app.run("export.make", { sources: src, format: "html" });
+      const text = readFileSync(html.path, "utf8");
+      t.assert.ok(text.includes("Ink · page 1") && (text.match(/<svg[^>]*viewBox="0 0 1000 /g) ?? []).length === 1, "HTML has one SVG drawing, for page 1");
+      t.assert.ok((text.match(/<path d="M/g) ?? []).length === 3, "HTML draws three strokes");
+      const pdfOut = await t.app.run("export.make", { sources: src, format: "pdf" });
+      const bare = await t.app.run("export.make", { sources: [{ ...src[0], no_ink: true }], format: "pdf" });
+      t.assert.ok(readFileSync(pdfOut.path).length > readFileSync(bare.path).length, "the PDF with ink is larger than the one without");
+      const backup = await t.app.run("export.data", { types: ["highlight"] });
+      const files = readdirSync(join(backup.path, "objects", "highlight"));
+      t.assert.ok(files.some((f) => readFileSync(join(backup.path, "objects", "highlight", f), "utf8").includes('"strokes"')), "the annotations export holds the ink");
+      t.note = "HTML, PDF and annotations export checked";
     },
   },
 ];

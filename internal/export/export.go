@@ -52,6 +52,7 @@ type Source struct {
 	From   int    `json:"from,omitempty" desc:"book: first section or PDF page"`
 	To     int    `json:"to,omitempty" desc:"book: last section or PDF page"`
 	Skip   int    `json:"skip,omitempty" desc:"book: paragraphs at the start to leave out (the part already printed)"`
+	NoInk  bool   `json:"no_ink,omitempty" desc:"book: leave out the ink written on PDF pages (it is included by default with whole pages)"`
 
 	ID     string `json:"id,omitempty" desc:"note, list, plan or document: its ID"`
 	Module string `json:"module,omitempty" desc:"list: a Bible to quote a verse list's verses from"`

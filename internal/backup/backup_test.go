@@ -459,3 +459,41 @@ func TestImportRejectsBadInput(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// Ink on a PDF page is a highlight row of style "ink" whose anchor holds the strokes, so the export
+// carries it and an import brings it back unchanged.
+func TestInkOnPdfPagesRoundTrips(t *testing.T) {
+	src, srcDir := openStore(t)
+	loc := `{"section":2,"page":2,"text":"Ink · page 2","ink":{"aspect":1.414,"strokes":[{"t":"pen","c":"blue","w":2,"p":[[0.1,0.2,0],[0.4,0.5,0.6]]}]}}`
+	err := src.Write(context.Background(), "test.seed", func(tx *store.Tx) error {
+		for _, c := range []struct {
+			table string
+			row   store.Row
+		}{
+			{"items", store.Row{"id": "PDF1", "kind": "monograph", "title": "Faith", "source": "own", "created_at": int64(1), "updated_at": int64(2)}},
+			{"anchors", store.Row{"id": "AI1", "item_id": "PDF1", "locator_json": loc}},
+			{"highlights", store.Row{"id": "HI1", "anchor_id": "AI1", "style": "ink", "created_at": int64(10)}},
+		} {
+			if err := tx.Create(c.table, c.row); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := run[ExportResult](t, registry(srcDir), src, "export.data", ExportParams{Path: filepath.Join(t.TempDir(), "out"), Types: []string{"highlight"}})
+	if res.Counts["highlight"] != 1 {
+		t.Fatalf("counts %v", res.Counts)
+	}
+	dst, dstDir := openStore(t)
+	run[ImportResult](t, registry(dstDir), dst, "import.data", ImportParams{Path: res.Path})
+	if want, have := dump(t, src), dump(t, dst); want != have {
+		t.Fatalf("ink differs after the round trip\nwant:\n%s\nhave:\n%s", want, have)
+	}
+	var n int
+	if err := dst.QueryRow(context.Background(), `SELECT COUNT(*) FROM anchors a JOIN highlights h ON h.anchor_id = a.id WHERE h.style = 'ink' AND json_extract(a.locator_json, '$.ink.strokes[0].p[1][2]') = 0.6`).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("ink strokes after import: %d %v", n, err)
+	}
+}

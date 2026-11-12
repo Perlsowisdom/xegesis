@@ -633,6 +633,8 @@ func (bd *builder) book(src Source) ([]draft, error) {
 		}
 		d.units = append(d.units, unit{block: k, charges: []charge{{o, chars(b.Text)}}})
 	}
+	// Your own ink on the pages is yours: it is not counted against the book's licence.
+	d.units = append(d.units, bd.pageInk(src, e.Format)...)
 	d.rest = func(kept int) *Source {
 		if kept >= len(blocks) {
 			return nil
