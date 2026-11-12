@@ -8,7 +8,8 @@ import (
 
 // The stroke engine, the same algorithm as frontend/src/editor/inkengine.ts so HTML and PDF draw the
 // shape the screen draws: a centripetal Catmull-Rom spline through the pen points, as cubic Béziers,
-// offset on both sides by the width at each point, with round ends. Keep the two in step.
+// offset on both sides by the width at each point, with round ends. Keep the two in step: the TypeScript
+// engine is the source of truth, and both tests check testdata/ink-golden.json point by point.
 
 const (
 	inkStep     = 2.5 // longest chord before a spline segment is split further

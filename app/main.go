@@ -74,6 +74,8 @@ func (a *App) shutdown(context.Context) {
 	if _, err := a.reg.Run(context.Background(), a.env, "search.cancel", nil); err != nil {
 		log.Printf("search.cancel: %v", err)
 	}
+	// With nothing running, close the Bible modules and the search indexes that are still open.
+	a.reg.Close()
 }
 
 // index starts indexing new and changed books in the background; books become searchable one by

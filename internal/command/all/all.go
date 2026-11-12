@@ -32,6 +32,7 @@ func Registry(dataDir string, s secrets.Store) *command.Registry {
 	core.Register(r)
 	library.Register(r)
 	bibles := bible.NewLibrary(filepath.Join(dataDir, "modules"))
+	r.OnClose(bibles.Close)
 	bible.RegisterLibrary(r, bibles)
 	repos.Register(r, filepath.Join(dataDir, "catalogues"), bibles)
 	apibible.Register(r, s)

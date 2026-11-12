@@ -13,11 +13,21 @@ import (
 	"strings"
 
 	"github.com/Perlsowisdom/xegesis/internal/store"
+	"github.com/Perlsowisdom/xegesis/internal/verse"
 )
 
 // Env is what commands work with.
 type Env struct {
 	Store *store.Store
+	// Books maps a place in a library book to Bible verses. Registry.Run fills it in from the
+	// linker registered with SetBookLinker, so callers need not set it.
+	Books BookLinker
+}
+
+// BookLinker tells which verses a place in a library book typed Bible falls in (locatorJSON is a
+// note's or highlight's book place), so a note or highlight there shows with those verses.
+type BookLinker interface {
+	BookVerses(ctx context.Context, env *Env, itemID, locatorJSON string) (verse.Range, bool)
 }
 
 // Error is a command failure with a stable code that callers can act on.
@@ -72,8 +82,26 @@ func Define[P, R any](id, summary string, writes bool, fn func(context.Context, 
 
 // Registry holds every command.
 type Registry struct {
-	cmds map[string]Command
+	cmds    map[string]Command
+	books   BookLinker
+	closers []func()
 }
+
+// OnClose registers something to run when the registry is closed: closing a database, say.
+func (r *Registry) OnClose(f func()) { r.closers = append(r.closers, f) }
+
+// Close runs what was registered with OnClose, the last registered first, once. Call it when
+// background work has stopped, as the app does at shutdown.
+func (r *Registry) Close() {
+	closers := r.closers
+	r.closers = nil
+	for i := len(closers) - 1; i >= 0; i-- {
+		closers[i]()
+	}
+}
+
+// SetBookLinker registers what maps places in books to verses (the reader does this at start-up).
+func (r *Registry) SetBookLinker(l BookLinker) { r.books = l }
 
 func NewRegistry() *Registry { return &Registry{cmds: map[string]Command{}} }
 
@@ -95,6 +123,11 @@ func (r *Registry) Run(ctx context.Context, env *Env, id string, params json.Raw
 	c, ok := r.cmds[id]
 	if !ok {
 		return nil, Errorf("unknown_command", "no command %q", id)
+	}
+	if env != nil && env.Books == nil && r.books != nil {
+		e := *env
+		e.Books = r.books
+		env = &e
 	}
 	res, err := c.run(ctx, env, params)
 	if err != nil {

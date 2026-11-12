@@ -727,9 +727,18 @@ func (bd *builder) document(src Source) ([]draft, error) {
 	return []draft{d}, nil
 }
 
-// quoteCreditRe matches the last line of a verse quotation: the link to the passage, then the
-// Bible's short name in brackets (as document.quote writes it).
-var quoteCreditRe = regexp.MustCompile(`^> — \[[^\]]+\]\(#passage/[^)\s]*\) \(([^)]+)\)`)
+// sourceLinkRe finds the link that holds a quotation's source id in its credit line.
+var sourceLinkRe = regexp.MustCompile(`\[([^\]]*)\]\(#(?:bible|book)/[^)\s]*\)`)
+
+// plainSource shows a quotation's source as its name alone, so the credit line in an export reads
+// as it always has.
+func plainSource(src string) string {
+	lines := strings.Split(src, "\n")
+	if last := len(lines) - 1; last > 0 && strings.HasPrefix(lines[last], "> — ") {
+		lines[last] = sourceLinkRe.ReplaceAllString(lines[last], "$1")
+	}
+	return strings.Join(lines, "\n")
+}
 
 // textUnits turns a note's or document's text into units. A verse quotation from a Bible whose
 // licence limits exports is charged to that Bible, so the quotations in one text add up against its
@@ -745,7 +754,7 @@ func (bd *builder) textUnits(md string) ([]unit, []*owner) {
 				owners = append(owners, o)
 			}
 		}
-		for _, b := range parseBlock(src) {
+		for _, b := range parseBlock(plainSource(src)) {
 			u := unit{block: b}
 			if len(charges) > 0 {
 				u.charges, charges = charges, nil
@@ -762,8 +771,14 @@ func (bd *builder) quoteOwner(src string) *owner {
 	if bd.s.bibles == nil || len(lines) < 2 || !all(lines, func(i int, l string) bool { return quoteRe.MatchString(l) }) {
 		return nil
 	}
-	m := quoteCreditRe.FindStringSubmatch(lines[len(lines)-1])
-	if m == nil {
+	qs, ok := document.QuoteSource(lines[len(lines)-1])
+	if !ok || qs.Kind == "book" {
+		return nil
+	}
+	if qs.Kind == "bible" {
+		if o, _, err := bd.moduleOwner(qs.ID); err == nil && o.limited() {
+			return o
+		}
 		return nil
 	}
 	list, err := bd.s.bibles.List()
@@ -771,7 +786,7 @@ func (bd *builder) quoteOwner(src string) *owner {
 		return nil
 	}
 	for _, meta := range list {
-		if meta.Abbreviation == m[1] || (meta.Abbreviation == "" && meta.Name == m[1]) {
+		if meta.Abbreviation == qs.Name || (meta.Abbreviation == "" && meta.Name == qs.Name) {
 			if o, _, err := bd.moduleOwner(meta.ID); err == nil && o.limited() {
 				return o
 			}

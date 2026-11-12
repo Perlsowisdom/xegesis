@@ -1,7 +1,8 @@
 // T19, the milestone 2 integration check: one study session in the real app, as a reader would do it
 // in one sitting. Reports, notes and highlights, saved lists, collections, a reading plan, a sermon,
 // printing and exporting, then a restart on the same library. The checks run in order and share
-// what they made; each saves a screenshot.
+// what they made, but each one builds what it needs (the `need` helpers, by command) when an
+// earlier one did not leave it, so a failure does not fail the rest. Each saves a screenshot.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -21,6 +22,92 @@ const AUTHOR = "M2 Integration Author";
 const s = {};
 
 const squash = (x) => x.replace(/\s+/g, "");
+
+// quoteBy gives a verse quotation's Markdown from document.quote, for setting a step up by command.
+async function quoteBy(app, ref, abbr) {
+  const mods = await app.run("bible.modules", {});
+  const m = (Array.isArray(mods) ? mods : mods.modules).find((x) => x.abbreviation === abbr || x.id === abbr);
+  const q = await app.run("document.quote", { ref, module: m.id, preview: true });
+  if (!q.allowed) throw new Error(`could not quote ${ref} from ${abbr}: ${q.reason}`);
+  return { quote: q.quote.trim(), module: m.id };
+}
+
+// addBooks puts the three M2 books in the library (once) and waits until they are online.
+async function addBooks(t) {
+  if (s.books) return;
+  const { app, page } = t;
+  const dir = join(dirname(app.library), "m2-books");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "m2-sermon-on-the-mount.epub"), epub("M2 Sermon on the Mount", { author: AUTHOR }));
+  writeFileSync(join(dir, "m2-letters-of-paul.epub"), epub("M2 Letters of Paul", { author: AUTHOR }));
+  writeFileSync(join(dir, "m2-other-book.epub"), epub("M2 Other Book", { author: "Someone Else" }));
+  const res = await app.run("library.add", { paths: [dir] });
+  t.assert.ok(res.added >= 3, JSON.stringify(res));
+  for (let i = 0; i < 40; i++) {
+    const r = await app.run("library.items", { text: "M2 ", limit: 10 });
+    if (r.items.filter((x) => x.status === "online").length >= 3) break;
+    await page.waitForTimeout(250);
+  }
+  s.books = true;
+}
+
+// Each step makes what it needs: need.* builds a thing by command when an earlier step did not leave
+// it, so one failing step does not fail the ones after it. A step that tests the making itself
+// (through the screen) still does that, and sets what it made.
+const need = {
+  async highlight(t) {
+    if (s.highlight && s.phrase) return;
+    const { app } = t;
+    const { module } = await quoteBy(app, "Rom 12:9", "ENGNET");
+    // The first three words of the verse, as a reader selects them.
+    const text = (await app.run("bible.read", { module, ref: "Rom 12:9" })).verses[0].text;
+    const end = /^\s*(\S+\s+){2}\S+/.exec(text)[0].length;
+    const words = text.slice(0, end).trim();
+    const range = { start: { verse: v(9), offset: 0 }, end: { verse: v(9), offset: end } };
+    const made = await app.run("highlight.create", { range, module, quote: words, style: "green" });
+    s.highlight = (await app.run("highlight.list", { ref: "Rom 12:9" })).find((h) => h.id === made.id);
+    s.phrase = words.replace(/\s+/g, " ");
+  },
+  async note(t) {
+    if (s.note) return;
+    await need.highlight(t);
+    const { quote } = await quoteBy(t.app, "Rom 12:10", "ENGNET");
+    const body = `Love must be without hypocrisy.\n\n> ${s.phrase}\n\n${quote}`;
+    const n = await t.app.run("note.create", { title: "Sincere love", ref: "Rom 12:9", body });
+    s.note = n.id;
+    s.noteBody = (await t.app.run("note.get", { id: n.id })).body;
+  },
+  async sermon(t) {
+    if (s.sermon) return;
+    const { app } = t;
+    await need.highlight(t);
+    if (!s.folder) s.folder = (await app.run("folder.create", { name: "M2 Sunday" })).id;
+    const { quote } = await quoteBy(app, "Rom 12:9-10", "NETfree");
+    const body = `## Love without pretence\n\nPaul's first command.\n\n${quote}\n\n### Hold on to what is good\n\n> ${s.phrase}\n\n## Love in the church\n\n| Duty | Verse |\n| --- | --- |\n| Bless | 12:14 |\n`;
+    const d = await app.run("document.create", { title: "Love in action", folder_id: s.folder, passage: "Rom 12:9-21", body,
+      points: [{ h: "Love without pretence", level: 1 }, { h: "Hold on to what is good", level: 2 }, { h: "Love in the church", level: 1 }] });
+    s.sermon = d.id;
+    s.sermonBody = (await app.run("document.get", { id: d.id })).body;
+  },
+  async list(t) {
+    if (s.list) return;
+    const l = await t.app.run("list.create", { kind: "verses", name: "M2 verses on love" });
+    await t.app.run("list.add", { list: l.id, ref: "Rom 12:11-12" });
+    s.list = l.id;
+  },
+  async collection(t) {
+    if (s.collection) return;
+    await addBooks(t);
+    s.collection = (await t.app.run("collection.create", { name: "M2 by the author", rule: { author: "M2 Integration" } })).id;
+  },
+  async plan(t) {
+    if (s.plan) return;
+    const { app } = t;
+    const p = await app.run("plan.create", { template: "nt-90" });
+    await app.run("plan.mark", { plan_id: p.id });
+    s.plan = p.id;
+  },
+};
 
 async function mode(page, name) {
   const b = page.locator(".shell button, header button", { hasText: new RegExp(`^${name}$`) }).first();
@@ -257,6 +344,7 @@ export default [
       t.assert.ok(n, "the note is on the passage");
       s.note = n.id;
       s.noteBody = n.body;
+      s.noteInSidebar = true;
       t.assert.ok(n.body.includes(`> ${s.phrase}`), `the highlight is quoted:\n${n.body}`);
       t.assert.ok(n.body.includes("[Romans 12:10](#passage/Rom.12.10)"), "the verse quote links back");
       t.assert.ok(n.body.includes(NET_CREDIT), "the verse quote carries the NET Bible's credit line");
@@ -268,8 +356,13 @@ export default [
     shot: "m2-04-history.png",
     async run(t) {
       const { page, app } = t;
-      await page.locator("#rightbar .note-page button[aria-label='Note actions']").click();
-      await page.locator(".popover .menu-list button", { hasText: "Open in a tab" }).click();
+      await need.note(t);
+      if (s.noteInSidebar) {
+        await page.locator("#rightbar .note-page button[aria-label='Note actions']").click();
+        await page.locator(".popover .menu-list button", { hasText: "Open in a tab" }).click();
+      } else {
+        await page.evaluate((id) => { location.hash = `#notes/note/${id}`; }, s.note);
+      }
       await t.current(".note-page");
       t.id = s.note;
       await t.focusEnd();
@@ -326,19 +419,7 @@ export default [
     shot: "m2-06-collection.png",
     async run(t) {
       const { page, app } = t;
-      const dir = join(dirname(app.library), "m2-books");
-      mkdirSync(dir, { recursive: true });
-      writeFileSync(join(dir, "m2-sermon-on-the-mount.epub"), epub("M2 Sermon on the Mount", { author: AUTHOR }));
-      writeFileSync(join(dir, "m2-letters-of-paul.epub"), epub("M2 Letters of Paul", { author: AUTHOR }));
-      writeFileSync(join(dir, "m2-other-book.epub"), epub("M2 Other Book", { author: "Someone Else" }));
-      const res = await app.run("library.add", { paths: [dir] });
-      t.assert.ok(res.added >= 3, JSON.stringify(res));
-      for (let i = 0; i < 40; i++) {
-        const r = await app.run("library.items", { text: "M2 ", limit: 10 });
-        if (r.items.filter((x) => x.status === "online").length >= 3) break;
-        await page.waitForTimeout(250);
-      }
-
+      await addBooks(t);
       await page.evaluate(() => { location.hash = "#library"; });
       await page.locator(".collections button", { hasText: "New collection…" }).click();
       const form = page.locator(".collections .card:not([hidden])");
@@ -392,6 +473,7 @@ export default [
     timeout: 180000,
     async run(t) {
       const { page, app } = t;
+      await need.highlight(t);
       await page.evaluate(() => { location.hash = "#notes"; });
       await page.locator("button[aria-label='New folder']:visible").click();
       await page.locator("input[aria-label='Name of the new folder']").fill("M2 Sunday");
@@ -472,6 +554,8 @@ export default [
     timeout: 180000,
     async run(t) {
       const { page } = t;
+      await need.sermon(t);
+      await need.note(t);
       const dir = join(dirname(t.app.library), "exports");
       mkdirSync(dir, { recursive: true });
       await stubDialogs(page, dir);
@@ -528,6 +612,9 @@ export default [
     timeout: 180000,
     async run(t) {
       const { app } = t;
+      // What the earlier steps made must survive; whatever one of them did not leave is made now.
+      for (const k of ["note", "list", "collection", "sermon", "plan"]) await need[k](t);
+      await need.highlight(t);
       await app.restart();
       const page = app.page;
       t.assert.equal((await app.run("note.get", { id: s.note })).body, s.noteBody, "the note, as restored");
@@ -538,12 +625,12 @@ export default [
       const d = await app.run("document.get", { id: s.sermon });
       t.assert.equal(d.body, s.sermonBody, "the sermon");
       t.assert.equal(d.folder_id, s.folder, "the sermon's folder");
-      for (const f of Object.values(s.files)) t.assert.ok(existsSync(f), f);
+      for (const f of Object.values(s.files ?? {})) t.assert.ok(existsSync(f), f);
 
       // And on screen.
       await page.evaluate(() => { location.hash = "#plans"; });
       await page.waitForFunction(() => Number(document.querySelector(".card.plan progress")?.getAttribute("value")) === 1, null, { timeout: 10000 });
-      t.assert.equal(await page.locator(".card.plan progress").first().getAttribute("aria-label"), s.progress);
+      if (s.progress) t.assert.equal(await page.locator(".card.plan progress").first().getAttribute("aria-label"), s.progress);
       await page.evaluate(() => { location.hash = "#passage/Rom.12"; });
       await mode(page, "Read");
       await page.locator(`.doc-bible .vt[data-tb="${v(9)}"] mark[data-hl="${s.highlight.id}"]:visible`).first().waitFor({ timeout: 15000 });

@@ -7,15 +7,13 @@ import (
 	"github.com/Perlsowisdom/xegesis/internal/verse"
 )
 
-// BookVerses is set by the reader. For a library book typed Bible it gives the verses a place in the
-// book (a note or highlight locator, as JSON) falls in, so the note shows with those verses.
-var BookVerses func(ctx context.Context, env *command.Env, itemID, locatorJSON string) (verse.Range, bool)
-
+// linkBook gives the verses a place in a library book typed Bible falls in (a note or highlight
+// locator, as JSON), so the note shows with those verses. The lookup comes from env.Books.
 func linkBook(ctx context.Context, env *command.Env, itemID, locator string) *verse.Range {
-	if BookVerses == nil {
+	if env.Books == nil {
 		return nil
 	}
-	if r, ok := BookVerses(ctx, env, itemID, locator); ok {
+	if r, ok := env.Books.BookVerses(ctx, env, itemID, locator); ok {
 		return &r
 	}
 	return nil

@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import golden from "../../../internal/export/testdata/ink-golden.json";
+import { strokeSize } from "./ink";
 import { centreline, outline, pressureWidth, radii, strokeOutline } from "./inkengine";
 
 const distToPoly = (x: number, y: number, s: { x: number; y: number }[]) => {
@@ -48,5 +50,26 @@ describe("stroke engine", () => {
     expect(Math.max(...ys)).toBeGreaterThan(1);
     expect(Math.min(...ys)).toBeLessThan(-1);
     expect(outline([{ x: 1, y: 1, r: 2 }]).length).toBeGreaterThan(5);
+  });
+});
+
+// The same strokes are drawn by internal/export/inkoutline.go for HTML and PDF. Both test against
+// internal/export/testdata/ink-golden.json, so a change to either engine fails the other's test.
+// After changing the engine on purpose, replace the file with JSON.stringify(made) from this test,
+// then make the Go port match.
+describe("the golden strokes shared with the Go export", () => {
+  const strokes: { name: string; tool: "pen" | "hl"; w: 1 | 2 | 3; points: number[][] }[] = [
+    { name: "pen with pressure", tool: "pen", w: 2, points: [[10, 20, 0.2], [40, 25, 0.5], [70, 10, 0.9], [100, 40, 0.6]] },
+    { name: "mouse, speed sets the width", tool: "pen", w: 1, points: [[5, 5, 0], [9, 8, 0], [20, 12, 0], [26, 30, 0], [31, 52, 0], [50, 60, 0], [52, 61, 0], [53, 61.5, 0]] },
+    { name: "highlighter, one width", tool: "hl", w: 2, points: [[10, 10, 0], [60, 12, 0], [120, 9, 0]] },
+    { name: "a single point", tool: "pen", w: 3, points: [[40, 40, 0.7]] },
+    { name: "a sharp corner", tool: "pen", w: 2, points: [[0, 0, 0.5], [50, 0, 0.5], [50, 1, 0.5], [0, 2, 0.5]] },
+    { name: "repeated points", tool: "pen", w: 1, points: [[10, 10, 0.4], [10, 10, 0.4], [30, 30, 0.6], [30, 30, 0.6]] },
+  ];
+  const round = (o: number[][]) => o.map((p) => [Math.round(p[0] * 1000) / 1000, Math.round(p[1] * 1000) / 1000]);
+  const made = strokes.map((s) => ({ ...s, size: strokeSize(s.tool, s.w), outline: round(strokeOutline(s.points, strokeSize(s.tool, s.w), s.tool === "hl")) }));
+
+  it("match the file", () => {
+    expect(golden).toEqual(made);
   });
 });
