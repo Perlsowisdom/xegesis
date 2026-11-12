@@ -45,6 +45,18 @@ func TestKeygenSignVerify(t *testing.T) {
 	if err := updatesig.Verify(pub, "1.2.3", hash, strings.TrimSpace(out.String())); err != nil {
 		t.Fatalf("signature does not verify: %v", err)
 	}
+	sig := strings.TrimSpace(out.String())
+	pubFile := filepath.Join(dir, "pubkey.txt")
+	if err := os.WriteFile(pubFile, []byte("# test key"+string(rune(10))+lines[len(lines)-1]+string(rune(10))), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var vout bytes.Buffer
+	if err := run([]string{"verify", "-version", "1.2.3", "-pub", pubFile, installer, sig}, &vout, nil); err != nil || !strings.Contains(vout.String(), "OK") {
+		t.Fatalf("verify: %v %q", err, vout.String())
+	}
+	if err := run([]string{"verify", "-version", "1.2.4", "-pub", pubFile, installer, sig}, &vout, nil); err == nil {
+		t.Error("verify accepted the wrong version")
+	}
 	if err := run([]string{"sign", "-version", "1.2.3", installer}, &out, func(string) string { return "" }); err == nil {
 		t.Error("signed without a key")
 	}

@@ -3,6 +3,9 @@
 //	xegesis-sign keygen [-out key.txt]          write a new key pair; print the public key
 //	xegesis-sign sign -version 1.2.3 <file>     print the base64 signature for an installer
 //	xegesis-sign hash <file>                    print the installer's SHA-256
+//	xegesis-sign verify -version 1.2.3 -pub pubkey.txt <file> <signature>
+//	                                            check a signature against a public key (CI does this
+//	                                            with the key committed in the app before publishing)
 //
 // sign reads the private key from the XEGESIS_UPDATE_KEY environment variable (a secret in CI) or
 // from the file named by -key. The private key is never written anywhere but the file keygen is
@@ -29,7 +32,7 @@ func main() {
 
 func run(args []string, stdout io.Writer, getenv func(string) string) error {
 	if len(args) == 0 {
-		return errors.New("usage: xegesis-sign keygen | sign -version V <file> | hash <file>")
+		return errors.New("usage: xegesis-sign keygen | sign -version V <file> | verify -version V -pub <file> <file> <signature> | hash <file>")
 	}
 	switch args[0] {
 	case "keygen":
@@ -64,6 +67,33 @@ func run(args []string, stdout io.Writer, getenv func(string) string) error {
 			return err
 		}
 		fmt.Fprintln(stdout, h)
+		return nil
+	case "verify":
+		fs := flag.NewFlagSet("verify", flag.ContinueOnError)
+		version := fs.String("version", "", "the version the installer is released as")
+		pubFile := fs.String("pub", "", "file holding the public key (internal/update/pubkey.txt)")
+		if err := fs.Parse(args[1:]); err != nil {
+			return err
+		}
+		if *version == "" || *pubFile == "" || fs.NArg() != 2 {
+			return errors.New("usage: xegesis-sign verify -version V -pub <file> <installer> <signature>")
+		}
+		text, err := os.ReadFile(*pubFile)
+		if err != nil {
+			return err
+		}
+		pub, err := updatesig.ParsePublicKey(string(text))
+		if err != nil {
+			return err
+		}
+		h, err := hashFile(fs.Arg(0))
+		if err != nil {
+			return err
+		}
+		if err := updatesig.Verify(pub, *version, h, fs.Arg(1)); err != nil {
+			return err
+		}
+		fmt.Fprintln(stdout, "signature OK")
 		return nil
 	case "sign":
 		fs := flag.NewFlagSet("sign", flag.ContinueOnError)

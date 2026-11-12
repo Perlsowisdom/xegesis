@@ -1,0 +1,105 @@
+name: Release
+
+# Runs when a version tag is pushed: git tag v1.2.3 && git push origin v1.2.3 (docs/releasing.md).
+# It builds the Windows setup (NSIS) and the Microsoft Store package (MSIX), signs the update with
+# XEGESIS_UPDATE_KEY, and makes a DRAFT release: nothing is public until you publish it by hand.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Version from the tag
+        id: ver
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF_NAME -notmatch '^v\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?$') { throw "The tag $env:GITHUB_REF_NAME is not vMAJOR.MINOR.PATCH" }
+          $v = ./scripts/version.ps1 -Ref $env:GITHUB_REF_NAME
+          "version=$v" >> $env:GITHUB_OUTPUT
+          "prerelease=$($v.Contains('-'))" >> $env:GITHUB_OUTPUT
+
+      - name: Frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm test
+          npm run build
+
+      - name: Go vet and tests
+        run: |
+          go vet ./...
+          go test ./...
+          go test -tags store ./internal/update/...
+
+      - name: Update key check
+        shell: pwsh
+        run: |
+          if (Select-String -Path internal/update/pubkey.txt -Pattern PLACEHOLDER -Quiet) {
+            Write-Host "::warning::internal/update/pubkey.txt is still the placeholder. Updates from this release cannot verify until a real key is committed (docs/releasing.md)."
+          }
+
+      - name: Install NSIS
+        run: choco install nsis -y --no-progress
+
+      - name: Build the setup (NSIS)
+        shell: pwsh
+        run: ./scripts/package-nsis.ps1 -Version ${{ steps.ver.outputs.version }}
+
+      - name: Try the setup
+        shell: pwsh
+        run: |
+          $setup = "build/bin/Xegesis-${{ steps.ver.outputs.version }}-windows-x64-setup.exe"
+          $dir = Join-Path $env:RUNNER_TEMP 'xegesis-try'
+          Start-Process (Resolve-Path $setup) -ArgumentList '/S', "/D=$dir" -Wait
+          foreach ($f in 'Xegesis.exe', 'Uninstall.exe', 'LICENSE-MIT', 'LICENSE-APACHE') {
+            if (-not (Test-Path "$dir/$f")) { throw "The setup did not install $f" }
+          }
+          Start-Process "$dir/Uninstall.exe" -ArgumentList '/S', "_?=$dir" -Wait
+          if (Test-Path "$dir/Xegesis.exe") { throw 'The uninstaller left Xegesis.exe behind' }
+
+      - name: Build the Store package (MSIX)
+        shell: pwsh
+        env:
+          XEGESIS_MSIX_IDENTITY: ${{ vars.XEGESIS_MSIX_IDENTITY }}
+          XEGESIS_MSIX_PUBLISHER: ${{ vars.XEGESIS_MSIX_PUBLISHER }}
+          XEGESIS_MSIX_PUBLISHER_DISPLAY: ${{ vars.XEGESIS_MSIX_PUBLISHER_DISPLAY }}
+        run: ./scripts/package-msix.ps1 -Version ${{ steps.ver.outputs.version }}
+
+      - name: Checksums, signature and latest.json
+        shell: pwsh
+        env:
+          XEGESIS_UPDATE_KEY: ${{ secrets.XEGESIS_UPDATE_KEY }}
+        run: >
+          ./scripts/release-files.ps1 -Version ${{ steps.ver.outputs.version }}
+          -Setup "build/bin/Xegesis-${{ steps.ver.outputs.version }}-windows-x64-setup.exe"
+          -Msix "build/bin/Xegesis-${{ steps.ver.outputs.version }}-windows-x64.msix"
+
+      - name: Draft release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $flags = @('--draft', '--generate-notes', '--title', "Xegesis ${{ steps.ver.outputs.version }}")
+          if ('${{ steps.ver.outputs.prerelease }}' -eq 'True') { $flags += '--prerelease' }
+          $files = Get-ChildItem build/release | ForEach-Object { $_.FullName }
+          gh release create $env:GITHUB_REF_NAME @flags @files
+          if ($LASTEXITCODE) { throw 'gh release create failed' }
