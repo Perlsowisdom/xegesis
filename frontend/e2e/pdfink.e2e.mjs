@@ -4,6 +4,8 @@
 
 import { addBooks, closeBooks, openFromLibrary } from "./book.e2e.mjs";
 
+// The book helpers use t.page, which is replaced by a restart.
+const T = (t) => ({ ...t, page: t.app.page });
 const visibleBook = (t) => t.app.page.locator(".doc-book:visible").first();
 const near = (t, a, b, tol, what) => t.assert.ok(Math.abs(a - b) <= tol, `${what}: ${a} is not within ${tol} of ${b}`);
 
@@ -75,10 +77,10 @@ const checks = [
     shot: "pdfink-01-draw.png",
     async run(t) {
       const page = t.app.page;
-      const books = await addBooks(t);
+      const books = await addBooks(T(t));
       shared.pdf = books.pdf;
       await chooseLayout(t, "Pages");
-      await openFromLibrary(t, "e2e-test-pages", "Read");
+      await openFromLibrary(T(t), "e2e-test-pages", "Read");
       await onPage(t).waitFor({ timeout: 20000 });
       await visibleBook(t).locator(".pdf-box .textLayer span", { hasText: "Page one" }).first().waitFor({ timeout: 20000 });
       t.assert.equal(await visibleBook(t).locator(".pdf-ink-bar:visible").count(), 0, "no tool strip before writing");
@@ -136,10 +138,10 @@ const checks = [
     shot: "pdfink-03-scroll.png",
     async run(t) {
       const page = t.app.page;
-      const books = await addBooks(t);
-      await closeBooks(t);
+      const books = await addBooks(T(t));
+      await closeBooks(T(t));
       await chooseLayout(t, "Scroll");
-      await openFromLibrary(t, "e2e-scroll-pages", "Read");
+      await openFromLibrary(T(t), "e2e-scroll-pages", "Read");
       await visibleBook(t).locator(".pdf-slot[data-page='1'] canvas").waitFor({ timeout: 20000 });
       await paneMenu(t, "Write on this PDF");
       await draw(t, stroke, 0);
@@ -183,6 +185,124 @@ const checks = [
       await t.shot();
     },
   },
+  {
+    row: "PDF ink: undo, redo and the eraser go through commands, and Hide ink / Show ink works per book",
+    shot: "pdfink-04-undo-hide.png",
+    async run(t) {
+      const page = t.app.page;
+      await closeBooks(T(t));
+      await chooseLayout(t, "Pages");
+      await openFromLibrary(T(t), "e2e-test-pages", "Read");
+      await onPage(t).waitFor({ timeout: 20000 });
+      await visibleBook(t).locator(".pdf-ink-svg path").first().waitFor({ timeout: 10000 });
+      t.assert.equal((await inkBox(t)).strokes, 2, "the saved ink is drawn when the PDF is opened");
+      const pe = () => visibleBook(t).locator(".pdf-ink").first().evaluate((e) => getComputedStyle(e).pointerEvents);
+      t.assert.equal(await pe(), "none", "ink does not catch the pointer while not writing, so text can be selected");
+      const count = async () => ((await t.app.run("ink.page.get", { item_id: shared.pdf.id, page: 1 })).ink.strokes ?? []).length;
+      // hide and show
+      await paneMenu(t, "Hide ink");
+      t.assert.equal(await visibleBook(t).locator(".pdf-ink:visible").count(), 0, "ink is hidden");
+      t.assert.equal(await count(), 2, "hiding changes nothing in the book's annotations");
+      await paneMenu(t, "Show ink");
+      t.assert.equal((await inkBox(t)).strokes, 2, "ink is shown again");
+      // undo, redo (the history is of what is written in this pane)
+      await paneMenu(t, "Write on this PDF");
+      const bar = visibleBook(t).locator(".pdf-ink-bar");
+      await draw(t, [[0.1, 0.05], [0.9, 0.05]]);
+      t.assert.equal(await count(), 3, "a third stroke is saved");
+      await bar.locator("[aria-label='Undo last stroke']").click();
+      await page.waitForTimeout(400);
+      t.assert.equal(await count(), 2, "undo removes the last stroke from the saved page");
+      t.assert.equal((await inkBox(t)).strokes, 2);
+      await bar.locator("[aria-label='Redo']").click();
+      await page.waitForTimeout(400);
+      t.assert.equal(await count(), 3, "redo puts it back");
+      // the eraser takes the whole stroke it crosses
+      await bar.locator("[aria-label^='Eraser']").click();
+      await draw(t, [[0.05, 0.05], [0.95, 0.05]]);
+      t.assert.equal(await count(), 2, "the eraser removed the stroke it crossed");
+      await page.keyboard.press("Control+z");
+      await page.waitForTimeout(400);
+      t.assert.equal(await count(), 3, "Ctrl+Z undoes the erasing");
+      await bar.locator("[aria-label='Undo last stroke']").click();
+      await page.waitForTimeout(400);
+      t.assert.equal(await count(), 2, "back to the two strokes");
+      // Done leaves writing and keeps the ink; hide stays hidden for the next check
+      await bar.locator(".ink-done").click();
+      t.assert.equal(await visibleBook(t).locator(".pdf-ink-bar:visible").count(), 0, "the strip is gone");
+      await paneMenu(t, "Hide ink");
+      t.assert.equal(await visibleBook(t).locator(".pdf-ink:visible").count(), 0, "hidden again");
+      const history = await t.app.run("history.list", { limit: 40 }).catch(() => null);
+      if (history) t.note = "ink.page.set is in the change history";
+      await t.shot();
+    },
+  },
+  {
+    row: "PDF ink: ink and the Hide choice survive a restart, and the Highlights tool lists \"Ink · page 1\"",
+    shot: "pdfink-05-restart-list.png",
+    async run(t) {
+      await t.app.restart();
+      const page = t.app.page;
+      await page.waitForTimeout(500);
+      await openFromLibrary(T(t), "e2e-test-pages", "Read");
+      await onPage(t).waitFor({ timeout: 20000 });
+      await visibleBook(t).locator(".pdf-box .textLayer span", { hasText: "Page one" }).first().waitFor({ timeout: 20000 });
+      t.assert.equal(await visibleBook(t).locator(".pdf-ink:visible").count(), 0, "still hidden after the restart");
+      await paneMenu(t, "Show ink");
+      const b = await inkBox(t);
+      t.assert.equal(b.strokes, 2, "both strokes are back after the restart");
+      for (const k of ["x0", "y0", "x1", "y1"]) near(t, b[k], shared.box[k], 0.004, `${k} after restart`);
+      // the Highlights tool lists it, and choosing it goes to the page
+      const openedSidebar = !(await page.locator("#rightbar").isVisible().catch(() => false));
+      if (openedSidebar) await page.locator("button[aria-label='Right sidebar']").click();
+      await page.locator("#rightbar [role=tab]", { hasText: "Highlights" }).click();
+      const row = page.locator("#rightbar .hl-row", { hasText: "Ink · page 1" }).first();
+      await row.waitFor({ timeout: 8000 });
+      t.assert.ok(/page 1/.test(await row.innerText()), "the entry names the page");
+      await page.locator("button[aria-label='Next section']:visible").first().click();
+      await page.waitForTimeout(600);
+      t.assert.equal(await visibleBook(t).locator(".pdf-ink-svg path").count(), 0, "page 2 has no ink");
+      // on page 2 the tool lists that page only; the whole book still lists page 1's ink
+      await page.locator("#rightbar .side-scope", { hasText: "whole book" }).click();
+      await row.waitFor({ timeout: 8000 });
+      await row.locator(".hl-row-main").click();
+      await page.waitForTimeout(500);
+      t.assert.ok((await inkBox(t))?.strokes === 2, "choosing the entry shows page 1 with its ink");
+      await t.shot();
+      // deleting the entry removes the ink from the page, and Undo brings it back
+      await row.locator(".hl-x").click();
+      await page.locator("#rightbar .hl-row", { hasText: "Ink · page 1" }).waitFor({ state: "detached", timeout: 8000 });
+      await page.waitForTimeout(500);
+      t.assert.equal(await visibleBook(t).locator(".pdf-ink-svg path").count(), 0, "the ink left the page");
+      const gone = await t.app.run("ink.page.get", { item_id: shared.pdf.id, page: 1 });
+      t.assert.equal((gone.ink.strokes ?? []).length, 0, "and the annotation");
+      await page.locator("#rightbar .msg button", { hasText: "Undo" }).click();
+      await page.locator("#rightbar .hl-row", { hasText: "Ink · page 1" }).waitFor({ timeout: 8000 });
+      await page.waitForTimeout(500);
+      t.assert.equal((await inkBox(t)).strokes, 2, "Undo restored both strokes on the page");
+      if (openedSidebar) await page.locator("button[aria-label='Right sidebar']").click();
+    },
+  },
+  {
+    row: "PDF ink: a Study pane draws the same ink in the same place",
+    shot: "pdfink-06-study.png",
+    async run(t) {
+      const page = t.app.page;
+      await closeBooks(T(t));
+      await openFromLibrary(T(t), "e2e-test-pages", "Open in Study");
+      await page.waitForFunction(() => document.querySelector(".doc-book .pdf-page"), null, { timeout: 20000 });
+      await visibleBook(t).locator(".pdf-ink-svg path").first().waitFor({ timeout: 10000 });
+      const b = await inkBox(t);
+      t.assert.equal(b.strokes, 2, "the Study pane shows both strokes");
+      near(t, b.x0, shared.box.x0, 0.004, "x0 in Study");
+      near(t, b.y1, shared.box.y1, 0.004, "y1 in Study");
+      await paneMenu(t, "Write on this PDF");
+      await draw(t, [[0.2, 0.05], [0.6, 0.06]]);
+      const saved = await t.app.run("ink.page.get", { item_id: shared.pdf.id, page: 1 });
+      t.assert.equal(saved.ink.strokes.length, 3, "a stroke written in the Study pane is saved");
+      await t.shot();
+    },
+  },
 ];
 
 export default checks.map((c) => ({ ...c, async run(t) {
@@ -190,7 +310,7 @@ export default checks.map((c) => ({ ...c, async run(t) {
     await c.run(t);
   } finally {
     if (c === checks[checks.length - 1]) {
-      await closeBooks(t);
+      await closeBooks(T(t));
       await t.app.page.evaluate(() => localStorage.removeItem("xegesis.book.layout"));
     }
   }

@@ -69,6 +69,8 @@ export function attachInk(c: BookCtx, n: number, r: RenderedPage) {
   const layer = new PageInkLayer(r.aspect, (next) => commit(c, n, r.aspect, next));
   c.ink.layers.set(n, layer);
   r.page.append(layer.el);
+  // Writing leaves the focus in the pane, so Ctrl+Z and Ctrl+Y reach it.
+  layer.el.addEventListener("pointerdown", () => c.body.focus({ preventScroll: true }));
   layer.el.hidden = c.ink.hidden;
   layer.show(c.ink.pages.get(n)?.strokes ?? []);
 }
