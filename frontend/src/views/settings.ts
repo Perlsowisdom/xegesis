@@ -16,6 +16,8 @@ import { prefs, setPrefs } from "../state";
 import { commandsView } from "./commands";
 import { dataSection } from "./data";
 import { readingControls } from "./reader";
+import { restartToUpdate } from "../updates";
+import { UpdateInfo, lastCheckedText, versionLine } from "../updatewords";
 
 interface KeyStatus {
   key_set: boolean;
@@ -36,6 +38,7 @@ const GROUPS: { label: string; pages: Page[] }[] = [
       { id: "online", label: "Bibles online", make: apiBiblePage },
       { id: "privacy", label: "Privacy", make: privacyPage },
       { id: "data", label: "Your data", make: dataPage },
+      { id: "updates", label: "Updates", make: updatesPage },
     ],
   },
   { label: "Assistant", pages: [{ id: "model", label: "Model", make: modelPage }] },
@@ -63,6 +66,8 @@ export function settingsView() {
       })))));
 
   const el = h("div", { class: "view settings" }, h("h1", {}, "Settings"), h("div", { class: "settings-body" }, nav, body));
+  // The Microsoft Store build has no updater, so the page is not offered there.
+  void run("update.settings.get").catch(() => links.get("updates")?.parentElement?.setAttribute("hidden", ""));
 
   function open(id: string, focus = false) {
     const p = all.find((x) => x.id === id) ?? all[0];
@@ -252,6 +257,51 @@ function privacyPage(): PageView {
       h("dd", {}, badge("Off"), " Nothing is sent. When this arrives, you will see each report and choose whether to send it."));
   }
   return { el, show };
+}
+
+// Updates: off until turned on. The check is one HTTPS GET of the release's latest.json on GitHub;
+// a download is signed and checked before it runs (docs/privacy.md).
+function updatesPage(): PageView {
+  const msg = new Message();
+  const body = h("div", {});
+  const el = pageEl("Updates",
+    "Xegesis can look for new versions on its public releases page on GitHub, once a day. It sends nothing but that web request. Off until you turn it on.",
+    body, msg.el);
+  let newer = false;
+
+  async function setOn(on: boolean) {
+    if ((await msg.attempt(() => run("update.settings.set", { enabled: on }))) !== undefined) void show();
+  }
+  async function checkNow() {
+    const r = await msg.attempt(() => run<{ newer: boolean; latest?: string }>("update.check"));
+    if (!r) return;
+    newer = r.newer;
+    if (r.newer) msg.ok(`Version ${r.latest} is available.`);
+    else msg.ok("You have the newest version.");
+    void show(true);
+  }
+  async function show(keep = false) {
+    if (!keep) msg.clear();
+    const info = await msg.attempt(() => run<UpdateInfo>("update.settings.get"));
+    if (!info) return;
+    if (!keep) newer = !!info.latest && newerThan(info.latest, info.current);
+    const check = button("Check for updates", () => void checkNow(), { class: "check-updates" });
+    check.disabled = !info.enabled;
+    clear(body,
+      toggleSwitch({ label: "Check for updates automatically", hint: "Looks at GitHub once a day while Xegesis is open.", checked: info.enabled, onChange: (on) => void setOn(on) }),
+      h("div", { class: "row wrap" }, check, newer ? button("Restart to update", () => void restartToUpdate(msg), { class: "primary" }) : null),
+      h("p", { class: "hint update-status" }, lastCheckedText(info.last_checked), " ", versionLine(info, newer)),
+      info.key_set ? null : h("p", { class: "hint" }, "This build does not have its update key yet, so it cannot install updates."));
+  }
+  return { el, show: () => void show() };
+}
+
+// newerThan compares plain x.y.z versions, as the app does.
+function newerThan(a: string, b: string): boolean {
+  const n = (v: string) => v.replace(/^v/, "").split(/[-+]/)[0].split(".").map((x) => parseInt(x, 10) || 0);
+  const [x, y] = [n(a), n(b)];
+  for (let i = 0; i < 3; i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) > (y[i] ?? 0);
+  return false;
 }
 
 function dataPage(): PageView {

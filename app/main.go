@@ -61,6 +61,7 @@ func (a *App) startup(ctx context.Context) {
 			}
 		})
 	})
+	a.startUpdates(ctx, bg)
 	// Files and folders dropped on the window are added to the library by the interface.
 	runtime.OnFileDrop(ctx, func(_, _ int, paths []string) { runtime.EventsEmit(ctx, "files:dropped", paths) })
 	if a.shot != "" {
@@ -131,6 +132,7 @@ func (a *App) Run(id, params string) (string, error) {
 	if addsBooks(id) {
 		a.index()
 	}
+	a.afterRun(res)
 	b, err := json.Marshal(res)
 	return string(b), err
 }

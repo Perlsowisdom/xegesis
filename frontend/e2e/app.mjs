@@ -15,6 +15,7 @@ import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { chmodSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
+import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -177,6 +178,18 @@ async function sweep() {
   for (const f of readdirSync(WORK)) if (f.startsWith("run-")) await removeRun(join(WORK, f), 3000);
 }
 
+// The first-run question about updates (T23) would sit over every test, so the copy starts with it
+// answered "no". updates.e2e.mjs asks for it again to test it. This writes the copy, never the
+// user's library.
+function markUpdateQuestionAsked(db) {
+  const d = new DatabaseSync(db);
+  try {
+    d.prepare("INSERT OR REPLACE INTO settings (key, value_json) VALUES ('update.settings', ?)").run('{"enabled":false,"asked":true}');
+  } finally {
+    d.close();
+  }
+}
+
 export async function startApp({ build: doBuild = true, port } = {}) {
   if (process.platform !== "win32") throw new Error("The interface tests drive WebView2 and run on Windows.");
   if (!existsSync(join(SOURCE, "library.db"))) throw new Error(`No library to copy at ${SOURCE}`);
@@ -188,6 +201,7 @@ export async function startApp({ build: doBuild = true, port } = {}) {
   const run = join(WORK, `run-${Date.now()}`);
   const lib = join(run, "library");
   cpSync(SOURCE, lib, { recursive: true });
+  markUpdateQuestionAsked(join(lib, "library.db"));
   const profile = join(run, "webview");
   mkdirSync(profile, { recursive: true });
 
