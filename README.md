@@ -2,7 +2,16 @@
 
 A free, open-source Bible study app for Windows, macOS and Linux: fast, offline-first, and drivable by both people and AI agents.
 
-Status: foundation (milestone M0). The Phase 1 functional survey and the Phase 2 implementation plan are kept in the project's planning document.
+Xegesis keeps your library, notes and sermons on your own computer in open formats. It has no accounts and no telemetry; the few features that use the internet are off until you turn them on (see [what Xegesis sends](docs/privacy.md)).
+
+Status: under active development. Windows comes first; macOS and Linux builds follow.
+
+## Installing (Windows)
+
+- **Microsoft Store**: search for Xegesis once it is listed there. The Store installs updates.
+- **Direct download**: take `Xegesis-<version>-windows-x64-setup.exe` from the [Releases page](https://github.com/Perlsowisdom/xegesis/releases). It installs for your user only (no administrator prompt). The setup is not code-signed, so Windows SmartScreen may ask you to confirm: choose More info, then Run anyway. Compare the file with `SHA256SUMS` on the release page if you like. This build can check for updates once a day, but only if you turn that on; each update is verified with the project's own signature before it runs.
+
+Uninstall it from Windows Settings, Apps. Your library (`%APPDATA%\Xegesis`) is kept unless you tick "Also remove my library".
 
 ## Building
 
@@ -14,6 +23,8 @@ go test ./...
 go build ./cmd/xegesis                                       # CLI
 go build -tags desktop,production -o xegesis-desktop ./app   # desktop app (add ,webkit2_41 on Linux)
 ```
+
+Release builds (setup and Store package) are made by `scripts/package-nsis.ps1` and `scripts/package-msix.ps1`; `docs/releasing.md` has the whole process. `go run ./cmd/xegesis version` prints the version a build was stamped with.
 
 ## Using the CLI
 
@@ -28,6 +39,10 @@ xegesis serve                                       # one JSON request per line 
 ```
 
 The library lives in your user config folder (`Xegesis/library.db`); set `XEGESIS_LIBRARY` or `-library` to use another.
+
+## Contributing
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md) first. Xegesis is designed clean-room from public sources: contributions must not use or copy any commercial Bible software.
 
 ## Licence
 

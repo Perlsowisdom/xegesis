@@ -20,7 +20,7 @@ is T34f.
 The desktop app runs in WebView2, which can expose the Chrome DevTools Protocol:
 - Start the app with the environment variable
   `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=<port>`.
-- Point `XEGESIS_LIBRARY` at a temporary **copy** of `C:\Users\perlj\Documents\Xegesis-scratch3`.
+- Point `XEGESIS_LIBRARY` at a temporary **copy** of the scratch library (`%USERPROFILE%\Documents\Xegesis-scratch3`, or the folder `XEGESIS_E2E_SOURCE` names).
   Never use the original or the user's default library.
 - Connect with `playwright-core`'s `chromium.connectOverCDP`. It's Apache-2.0; add it as a dev
   dependency only.

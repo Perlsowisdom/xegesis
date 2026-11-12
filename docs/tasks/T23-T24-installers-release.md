@@ -86,7 +86,7 @@ ADR 0009 (privacy) and `docs/privacy.md` first.
    - a checklist of what the user must do in Partner Center: create the free individual account,
      reserve the name, age rating, submit.
 8. **Pre-public cleanup.**
-   - Replace the hard-coded `C:\Users\perlj\...` default in `frontend/e2e/app.mjs` with an
+   - Replace the hard-coded `C:\Users\<name>\...` default in `frontend/e2e/app.mjs` with an
      environment variable, or a path under `%USERPROFILE%`.
    - Remove the user's name from paths in `docs/tasks/T34e-editor-behaviour.md`.
    - Add or check the root `README.md` (what it is, licence, how to build and install), and

@@ -16,7 +16,7 @@ import { createHash } from "node:crypto";
 import { chmodSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { DatabaseSync } from "node:sqlite";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
@@ -28,8 +28,9 @@ export const shots = join(here, "shots");
 export const fakeCli = join(here, "fake-cli");
 const pathKey = Object.keys(process.env).find((k) => k.toLowerCase() === "path") ?? "PATH";
 
-// The library the tests copy. Override with XEGESIS_E2E_SOURCE.
-const SOURCE = process.env.XEGESIS_E2E_SOURCE ?? "C:\\Users\\perlj\\Documents\\Xegesis-scratch3";
+// The library the tests copy: a scratch library with the test Bibles, never your own. Set XEGESIS_E2E_SOURCE
+// to its folder; the default is Documents/Xegesis-scratch3 in your user profile.
+const SOURCE = process.env.XEGESIS_E2E_SOURCE ?? join(homedir(), "Documents", "Xegesis-scratch3");
 // One folder per checkout: two worktrees running the tests at once must not build into, or run,
 // each other's executable (a running app also locks it, so the other's build fails).
 const WORK = join(tmpdir(), "xegesis-e2e", createHash("sha1").update(repo.toLowerCase()).digest("hex").slice(0, 10));
