@@ -8,3 +8,4 @@
 *.db-shm
 /frontend/e2e/shots/
 /app/*.syso
+/build/msix/layout/
