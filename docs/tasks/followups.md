@@ -214,3 +214,4 @@ open was dropped, duplicates were merged, and the dates of the original notes ar
   `core.BookVerses` hook with a `command.BookLinker` the reader registers.
 - Databases are closed on shutdown (T39): the Bible module library and the search indexes.
 - The M2 real-app steps no longer depend on each other (T39).
+- e2e: build the keep-awake request (SetThreadExecutionState with ES_DISPLAY_REQUIRED) into run.mjs on Windows. On 12 November a laptop display going to sleep during a full run made screenshots hang and the app close, failing 116 of 130; the same run passed 130 of 130 with the display kept awake.
