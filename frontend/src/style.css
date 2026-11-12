@@ -1688,3 +1688,12 @@ button.danger-link { color: var(--bad); margin-top: 8px; display: block; }
 .ink-still .ink-page { cursor: default; }
 .ink-page .ink-erased { opacity: .15; }
 @media (hover: none) { .ink-btn { min-width: 36px; height: 36px; } }
+
+/* Ink on PDF pages: over the page and its text, always the light-theme inks since a PDF page is white. */
+.pdf-ink { position: absolute; inset: 0; z-index: 2; pointer-events: none; --text: #2a2622; --hl-yellow: #d9b43c; --hl-green: #5f9e55; --hl-blue: #4f7fbf; --hl-pink: #c4607f; --hl-purple: #8b6bbd; }
+.pdf-ink[hidden] { display: none; }
+.pdf-ink-svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none; }
+.pdf-ink .ink-erased { opacity: .15; }
+.pdf-box.ink-writing .pdf-ink { pointer-events: auto; touch-action: none; cursor: crosshair; user-select: none; -webkit-user-select: none; }
+.pdf-ink-bar { flex: none; }
+.ink-text-btn { padding: 2px 10px; height: 28px; font-size: .85rem; }

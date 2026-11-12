@@ -6,6 +6,7 @@ import type { BookCtx } from "./bookctx";
 import { fetchSection, scrolling } from "./bookpaging";
 import { header } from "./bookwhere";
 import { loadMarksFor } from "./bookmarks";
+import { attachInk, dropInk } from "./bookink";
 import { linkPdfRefs } from "./booklinks";
 
 // Scroll mode: the next section loads below when the end is near, the previous above when the
@@ -71,6 +72,7 @@ export function stopPdfScroll(c: BookCtx) {
   c.pending.clear();
   c.near.clear();
   c.slots.clear();
+  dropInk(c);
 }
 
 export async function buildSlots(c: BookCtx, start: number, seq: number) {
@@ -113,6 +115,7 @@ export function applyPlan(c: BookCtx, mine: number) {
   for (const n of plan.free) {
     c.drawn.get(n)?.cancel();
     c.drawn.delete(n);
+    dropInk(c, n);
     c.slots.get(n)?.replaceChildren();
     c.store.delete(n);
   }
@@ -137,6 +140,7 @@ export async function drawSlot(c: BookCtx, n: number, mine: number) {
     // A page above the view that turns out taller or shorter must not move the text being read.
     if (sl.offsetTop + was <= c.body.scrollTop + c.pdfBox.offsetTop) c.body.scrollTop += sl.offsetHeight - was;
     c.drawn.set(n, r);
+    attachInk(c, n, r);
     void linkPdfRefs(r.page);
     void loadMarksFor(c, n);
   } catch (e) {

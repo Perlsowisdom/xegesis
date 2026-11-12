@@ -9,9 +9,10 @@ import {
 } from "lexical";
 import { icon } from "../icons";
 import {
-  INK_COLOURS, INK_COLOUR_LABEL, INK_W, InkColour, InkDoc, InkStroke, InkTool, emptyInk, growTo, hits, inkOpacity, outlinePath, strokeSize,
+  INK_COLOURS, INK_COLOUR_LABEL, INK_W, InkDoc, InkStroke, emptyInk, growTo, hits, strokeSize,
 } from "./ink";
 import { strokeOutline } from "./inkengine";
+import { ERASE_REACH, InkPresenter, MIN_STEP, NS, bars, caps, inkApi, notePen, palm, pen, strokeEl } from "./inkpen";
 import { $caretAfterBlock } from "./nodes";
 
 type SerializedInk = Spread<{ ink: InkDoc }, SerializedLexicalNode>;
@@ -82,30 +83,7 @@ export function insertInk(editor: LexicalEditor, topBlock: () => LexicalNode | n
   });
 }
 
-// The pen, shared by every ink block on the screen.
-type Pen = { tool: InkTool | "erase"; colour: InkColour; width: 1 | 2 | 3 };
-const pen: Pen = { tool: "pen", colour: "ink", width: 2 };
-const bars = new Set<() => void>();
 const live = new WeakMap<HTMLElement, InkBlock>();
-
-// Once a pen has touched the screen, touches count as a resting palm for a while.
-const PEN_PRESENCE_MS = 120_000;
-let penAt = -Infinity;
-const palm = (e: PointerEvent) => e.pointerType === "touch" && performance.now() - penAt < PEN_PRESENCE_MS;
-
-const NS = "http://www.w3.org/2000/svg";
-const MIN_STEP = 0.15; // page units between points kept: almost every point the pen reports
-const ERASE_REACH = 7;
-
-// What this webview can do for low-latency ink; read by the end-to-end test and nothing else.
-const caps = { desynchronized: false, delegated: false, predicted: false };
-if (typeof window !== "undefined") (window as unknown as { __xgInk: typeof caps }).__xgInk = caps;
-
-// The delegated ink trail (Chromium, so WebView2 on Windows): the system draws the pen tip itself.
-interface InkPresenter {
-  updateInkTrailStartPoint(e: PointerEvent, style: { color: string; diameter: number }): void;
-}
-const inkApi = () => (navigator as unknown as { ink?: { requestPresenter(o: { presentationArea: Element }): Promise<InkPresenter> } }).ink;
 
 // inkView is the read-only picture of a page of ink (saved reports, the chat).
 export function inkView(doc: InkDoc): HTMLElement {
@@ -121,21 +99,6 @@ export function inkView(doc: InkDoc): HTMLElement {
   el.append(svg);
   return el;
 }
-
-function strokeEl(k: InkStroke): SVGPathElement {
-  const p = document.createElementNS(NS, "path");
-  p.setAttribute("d", pathOf(k));
-  p.style.fill = k.c === "ink" ? "var(--text)" : `var(--hl-${k.c})`;
-  if (k.t === "hl") p.style.fillOpacity = String(inkOpacity("hl"));
-  return p;
-}
-
-const pathCache = new WeakMap<InkStroke, string>();
-const pathOf = (k: InkStroke) => {
-  let d = pathCache.get(k);
-  if (d === undefined) pathCache.set(k, (d = outlinePath(k)));
-  return d;
-};
 
 class InkBlock {
   readonly el: HTMLElement;
@@ -215,7 +178,7 @@ class InkBlock {
   // Pointer input ---------------------------------------------------------------------------------
 
   private down(e: PointerEvent): void {
-    if (e.pointerType === "pen") penAt = performance.now();
+    if (e.pointerType === "pen") notePen();
     if (palm(e)) {
       e.preventDefault();
       return;
@@ -240,7 +203,7 @@ class InkBlock {
   }
 
   private move(e: PointerEvent): void {
-    if (e.pointerType === "pen") penAt = performance.now();
+    if (e.pointerType === "pen") notePen();
     if (this.erasing?.id === e.pointerId) {
       this.erase(e);
       return;

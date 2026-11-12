@@ -373,6 +373,7 @@ export function studyGrid(o: StudyGridOptions) {
       splitRight: !!tab && insertTab(g, spec()!, paneId, "right") !== null,
       splitDown: !!tab && insertTab(g, spec()!, paneId, "bottom") !== null,
       bibles: !!menu.bibles && folded(ui?.tools),
+      ink: menu.ink ? { writing: menu.ink.writing(), shown: menu.ink.shown() } : undefined,
     });
     const run: Record<string, () => void> = {
       search: later(() => menu.search?.(anchor)),
@@ -382,6 +383,8 @@ export function studyGrid(o: StudyGridOptions) {
         if (l) void navigator.clipboard.writeText(`${location.origin}${location.pathname}${l}`).then(() => flash("Link copied."), () => flash("The clipboard is not available here."));
       },
       bibles: later(() => menu.bibles?.(anchor)),
+      "ink-write": () => menu.ink?.toggleWriting(),
+      "ink-show": () => menu.ink?.toggleShown(),
       "split-right": () => { const sp = spec(); if (sp) setGrid(insertTab(g, sp, paneId, "right")); },
       "split-down": () => { const sp = spec(); if (sp) setGrid(insertTab(g, sp, paneId, "bottom")); },
       move: later(() => moveDialog(paneId, anchor)),

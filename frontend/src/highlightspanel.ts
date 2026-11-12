@@ -146,6 +146,7 @@ export function highlightsPanel(o: HighlightsOptions) {
       return;
     }
     clear(list, [...notes.map(drawNote), ...rows.map((r) => {
+      if (r.style === "ink") return drawInk(r);
       const s = parseStyle(r.style);
       const words = (r.text ?? "").trim();
       const go = h("button", { type: "button", class: "hl-row-main", title: "Go there" },
@@ -164,6 +165,35 @@ export function highlightsPanel(o: HighlightsOptions) {
       });
       return li;
     })]);
+  }
+
+  // A page of ink on a PDF: "Ink · page N" that goes to the page; deleting it can be undone.
+  function drawInk(r: HighlightRow) {
+    const go = h("button", { type: "button", class: "hl-row-main", title: "Go there" },
+      h("span", { class: "hl-text" }, r.text || `Ink · page ${r.locator?.page ?? ""}`),
+      h("span", { class: "hl-where" }, [r.item_title || "A book", r.locator?.page ? `page ${r.locator.page}` : ""].filter(Boolean).join(" · ")));
+    go.addEventListener("click", () => void jump(r));
+    const x = button("", () => void removeInk(r), { class: "ghost-btn hl-x", "aria-label": `Delete the ink on page ${r.locator?.page ?? ""}`, title: "Delete this ink" });
+    x.append(icon("close"));
+    return h("li", { class: "hl-row hl-ink" }, h("span", { class: "hl-bar bar-note", "aria-hidden": "true" }), go, x);
+  }
+
+  async function removeInk(r: HighlightRow) {
+    const page = r.locator?.page;
+    if (!r.item_id || !page) return;
+    const had = await msg.attempt(() => run<{ ink: { aspect: number; strokes: unknown[] } }>("ink.page.get", { item_id: r.item_id, page }));
+    if (!had || await msg.attempt(() => run("highlight.delete", { id: r.id })) === undefined) return;
+    rows = rows.filter((x) => x.id !== r.id);
+    draw();
+    clear(msg.el, "Ink deleted. ", button("Undo", async () => {
+      if (await msg.attempt(() => run("ink.page.set", { item_id: r.item_id, page, aspect: had.ink.aspect, strokes: had.ink.strokes })) !== undefined) {
+        msg.clear();
+        void refresh();
+        document.dispatchEvent(new Event("xegesis:marks-changed"));
+      }
+    }, { class: "link" }));
+    msg.el.className = "msg ok";
+    document.dispatchEvent(new Event("xegesis:marks-changed"));
   }
 
   async function jump(r: HighlightRow) {

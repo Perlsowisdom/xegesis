@@ -9,6 +9,7 @@ import { DocHost } from "./view";
 import type { BookInfo, BookNote, Highlight } from "./bookinfo";
 import { loadPrefs } from "./bookinfo";
 import { buildPlace } from "./bookwhere";
+import { InkCtl, newInk } from "./bookink";
 
 export interface BookCtx {
   host: DocHost;
@@ -45,6 +46,8 @@ export interface BookCtx {
   resizeTimer: number;
   unwirePaging: () => void;
   unwireMarks: () => void;
+  ink: InkCtl; // ink on PDF pages (bookink.ts)
+  unwireInk: () => void;
   byline: HTMLElement;
   prev: HTMLButtonElement;
   next: HTMLButtonElement;
@@ -80,7 +83,7 @@ export function newCtx(host: DocHost): BookCtx {
     store: new Map(), layout: currentLayout(), growing: false, syncFrame: 0,
     slots: new Map(), drawn: new Map(), pending: new Set(), near: new Set(), observer: null, planTimer: 0, pdfSeq: 0,
     back: [], saveTimer: 0, loadSeq: 0, alive: true, tocAt: -1, typing: false, passCopy: false, announcing: false,
-    lastWidth: 0, resizeTimer: 0, unwirePaging: () => {}, unwireMarks: () => {},
+    lastWidth: 0, resizeTimer: 0, unwirePaging: () => {}, unwireMarks: () => {}, ink: newInk(), unwireInk: () => {},
     byline, text, pdfBox, body, attribution, editor, picker, reader, el,
   } as unknown as BookCtx;
   buildPlace(c);

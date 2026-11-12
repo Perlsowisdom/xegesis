@@ -139,6 +139,20 @@ open was dropped, duplicates were merged, and the dates of the original notes ar
   whole strokes and uses the saved points, not the outline. [T37]
 - Exported HTML grows with the outline (about 2 to 3 path points per page unit of a stroke's length);
   simplifying the polygon would shrink it. [T37]
+- PDF ink (stage 2): one annotation per page (a highlight row of style "ink", strokes in `anchors.locator_json`),
+  so a page of ink is saved whole on every stroke; a very full page (thousands of strokes) saves slowly
+  and a limit of 5,000 strokes and 200,000 points applies. Per-stroke rows would need a migration. [T37]
+- PDF ink: the pointer, live-stroke and eraser code in `document/pdfink.ts` is a second copy of the one in
+  `editor/inknode.ts` (the pen, palm rejection, trail and shape are shared through `editor/inkpen.ts`).
+  Merge the two into one surface class when either changes again. [T37]
+- PDF ink: the Hide ink choice is kept per book on this device (localStorage), not in the library. Undo and
+  redo cover what was written in this pane since the book opened; another pane's changes reload the page's
+  ink and keep the history. Two panes writing on the same page at once: the last save wins. [T37]
+- PDF ink is not shown over a printed or exported page of the book's own text; export adds each inked
+  page's ink as a drawing under "Ink · page N" (HTML SVG, PDF outline, Markdown ink block; not Word).
+  A page whose text is cut by a licence limit gets its ink with the last part. [T37]
+- PDF ink: a finger or the mouse wheel cannot scroll while writing (the layer takes touch); press Done to
+  scroll by touch. Ink on pages that are rotated by the PDF (/Rotate) is not tested. [T37]
 
 ### Tests
 
