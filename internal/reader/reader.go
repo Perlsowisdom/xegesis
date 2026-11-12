@@ -38,6 +38,8 @@ func register(r *command.Registry, s *service) {
 		command.Define("highlight.list", "List highlights: in a book, on Bible verses, in a book of the Bible or everywhere, by colour or words.", false, s.highlightList),
 		command.Define("highlight.update", "Change a highlight's colour, whether it underlines, or the exact words of a Bible highlight.", true, s.highlightUpdate),
 		command.Define("highlight.delete", "Delete a highlight. It can be restored from its history.", true, s.highlightDelete),
+		command.Define("ink.page.get", "Read the ink on a PDF page: its strokes, pinned to the page so they line up at any zoom.", false, s.inkGet),
+		command.Define("ink.page.set", "Replace the ink on a PDF page with these strokes (none clears it). The book file never changes; the ink is listed with highlights as \"Ink · page N\".", true, s.inkSet),
 	)
 }
 

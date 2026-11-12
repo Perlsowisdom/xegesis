@@ -25,6 +25,7 @@ type Anchor struct {
 	Page      int          `json:"page,omitempty" desc:"PDF: 1-based page"`
 	Rects     [][4]float64 `json:"rects,omitempty" desc:"PDF: [x, y, width, height] boxes as fractions of the page size"`
 	Text      string       `json:"text,omitempty" desc:"The passage's text, to find it again if the book changes"`
+	Ink       *PageInk     `json:"ink,omitempty" desc:"PDF: the strokes of an ink annotation (see ink.page.set)"`
 }
 
 func (a Anchor) valid() bool {
@@ -99,6 +100,9 @@ type Highlight struct {
 
 func (s *service) highlightCreate(ctx context.Context, env *command.Env, p HighlightCreateParams) (Highlight, error) {
 	anchor := store.Row{"id": store.NewID()}
+	if p.Locator != nil && p.Locator.Ink != nil {
+		return Highlight{}, command.Errorf("bad_params", "highlight.create: ink goes through ink.page.set")
+	}
 	r, haveVerses, err := passage.Resolve("highlight.create", p.Ref, p.Start, p.End, p.Versification)
 	if err != nil {
 		return Highlight{}, err
@@ -332,6 +336,9 @@ func (s *service) highlightUpdate(ctx context.Context, env *command.Env, p Highl
 		if cur["deleted_at"] != nil {
 			return command.Errorf("not_found", "highlight %s is deleted", p.ID)
 		}
+		if cur["style"] == inkStyle {
+			return command.Errorf("bad_params", "highlight.update: ink is changed with ink.page.set")
+		}
 		if p.Range != nil {
 			anchorID, _ := cur["anchor_id"].(string)
 			a, err := tx.Get("anchors", store.ByID(anchorID))
@@ -387,7 +394,7 @@ func queryHighlights(ctx context.Context, st *store.Store, where string, args ..
 		where += ` ORDER BY h.created_at, h.id`
 	}
 	rows, err := st.Query(ctx, `SELECT h.id, h.style, h.created_at, a.item_id, a.locator_json, a.verse_start, a.verse_end, COALESCE(i.title, '')
-		FROM highlights h JOIN anchors a ON a.id = h.anchor_id LEFT JOIN items i ON i.id = a.item_id WHERE h.deleted_at IS NULL`+where, args...)
+		FROM highlights h JOIN anchors a ON a.id = h.anchor_id LEFT JOIN items i ON i.id = a.item_id WHERE h.deleted_at IS NULL AND (h.style != 'ink' OR json_array_length(json_extract(a.locator_json, '$.ink.strokes')) > 0)`+where, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -411,6 +418,9 @@ func queryHighlights(ctx context.Context, st *store.Store, where string, args ..
 			if json.Unmarshal([]byte(loc.String), &a) == nil {
 				h.Locator = &a
 				h.Text = a.Text
+				if a.Ink != nil {
+					a.Ink = &PageInk{Aspect: a.Ink.Aspect, Count: len(a.Ink.Strokes)}
+				}
 			}
 		}
 		if start.Valid && end.Valid {
