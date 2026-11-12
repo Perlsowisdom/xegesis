@@ -8,6 +8,13 @@ import { addBooks, closeBooks, openFromLibrary } from "./book.e2e.mjs";
 
 // The book helpers use t.page, which is replaced by a restart.
 const T = (t) => ({ ...t, page: t.app.page });
+// openAtPageOne opens a test PDF at its first page, whatever other checks left as its place.
+async function openAtPageOne(t, title, button = "Read") {
+  const books = await addBooks(T(t));
+  const it = title === "e2e-test-pages" ? books.pdf : books.scrollPdf;
+  await t.app.run("book.set_position", { item_id: it.id, section: 1, para: 0 });
+  await openFromLibrary(T(t), title, button);
+}
 const visibleBook = (t) => t.app.page.locator(".doc-book:visible").first();
 const near = (t, a, b, tol, what) => t.assert.ok(Math.abs(a - b) <= tol, `${what}: ${a} is not within ${tol} of ${b}`);
 
@@ -31,7 +38,8 @@ async function zoom(t, label, times = 1) {
 
 async function paneMenu(t, item) {
   const page = t.app.page;
-  await page.locator("[aria-label='Pane menu']:visible").first().click();
+  // the menu of the pane that shows the book (Study mode may have other panes)
+  await page.locator(".grid-pane:has(.doc-book:visible)").first().locator("[aria-label='Pane menu']").click();
   await page.locator(".menu-item:visible", { hasText: item }).first().click();
   await page.waitForTimeout(150);
 }
@@ -81,8 +89,10 @@ const checks = [
       const page = t.app.page;
       const books = await addBooks(T(t));
       shared.pdf = books.pdf;
+      await closeBooks(T(t));
+      await page.evaluate(() => localStorage.removeItem("xegesis.book.prefs")); // 100% zoom, whatever earlier checks chose
       await chooseLayout(t, "Pages");
-      await openFromLibrary(T(t), "e2e-test-pages", "Read");
+      await openAtPageOne(t, "e2e-test-pages");
       await onPage(t).waitFor({ timeout: 20000 });
       await visibleBook(t).locator(".pdf-box .textLayer span", { hasText: "Page one" }).first().waitFor({ timeout: 20000 });
       t.assert.equal(await visibleBook(t).locator(".pdf-ink-bar:visible").count(), 0, "no tool strip before writing");
@@ -143,7 +153,7 @@ const checks = [
       const books = await addBooks(T(t));
       await closeBooks(T(t));
       await chooseLayout(t, "Scroll");
-      await openFromLibrary(T(t), "e2e-scroll-pages", "Read");
+      await openAtPageOne(t, "e2e-scroll-pages");
       await visibleBook(t).locator(".pdf-slot[data-page='1'] canvas").waitFor({ timeout: 20000 });
       await paneMenu(t, "Write on this PDF");
       await draw(t, stroke, 0);
@@ -194,7 +204,7 @@ const checks = [
       const page = t.app.page;
       await closeBooks(T(t));
       await chooseLayout(t, "Pages");
-      await openFromLibrary(T(t), "e2e-test-pages", "Read");
+      await openAtPageOne(t, "e2e-test-pages");
       await onPage(t).waitFor({ timeout: 20000 });
       await visibleBook(t).locator(".pdf-ink-svg path").first().waitFor({ timeout: 10000 });
       t.assert.equal((await inkBox(t)).strokes, 2, "the saved ink is drawn when the PDF is opened");
@@ -246,7 +256,7 @@ const checks = [
       await t.app.restart();
       const page = t.app.page;
       await page.waitForTimeout(500);
-      await openFromLibrary(T(t), "e2e-test-pages", "Read");
+      await openAtPageOne(t, "e2e-test-pages");
       await onPage(t).waitFor({ timeout: 20000 });
       await visibleBook(t).locator(".pdf-box .textLayer span", { hasText: "Page one" }).first().waitFor({ timeout: 20000 });
       t.assert.equal(await visibleBook(t).locator(".pdf-ink:visible").count(), 0, "still hidden after the restart");
@@ -291,7 +301,7 @@ const checks = [
     async run(t) {
       const page = t.app.page;
       await closeBooks(T(t));
-      await openFromLibrary(T(t), "e2e-test-pages", "Open in Study");
+      await openAtPageOne(t, "e2e-test-pages", "Open in Study");
       await page.waitForFunction(() => document.querySelector(".doc-book .pdf-page"), null, { timeout: 20000 });
       await visibleBook(t).locator(".pdf-ink-svg path").first().waitFor({ timeout: 10000 });
       const b = await inkBox(t);
@@ -312,7 +322,7 @@ const checks = [
       const page = t.app.page;
       await closeBooks(T(t));
       await chooseLayout(t, "Pages");
-      await openFromLibrary(T(t), "e2e-test-pages", "Read");
+      await openAtPageOne(t, "e2e-test-pages");
       await onPage(t).waitFor({ timeout: 20000 });
       await visibleBook(t).locator(".pdf-ink-svg path").first().waitFor({ timeout: 10000 });
       await paneMenu(t, "Print or export");
@@ -345,7 +355,7 @@ export default checks.map((c) => ({ ...c, async run(t) {
   } finally {
     if (c === checks[checks.length - 1]) {
       await closeBooks(T(t));
-      await t.app.page.evaluate(() => localStorage.removeItem("xegesis.book.layout"));
+      await t.app.page.evaluate(() => { localStorage.removeItem("xegesis.book.layout"); localStorage.removeItem("xegesis.book.prefs"); });
     }
   }
 } }));
