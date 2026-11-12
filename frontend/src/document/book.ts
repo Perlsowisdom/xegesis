@@ -9,6 +9,7 @@ import { DocHost, DocView } from "./view";
 import { newCtx } from "./bookctx";
 import { destroy, open, wirePaging } from "./bookpaging";
 import { wireMarks } from "./bookmarks";
+import { wireInk } from "./bookink";
 import { wireLinks } from "./booklinks";
 import { bookMenu, choose } from "./bookmenu";
 
@@ -19,6 +20,7 @@ export function bookDoc(host: DocHost): DocView {
     wirePaging(c);
     wireLinks(c);
     wireMarks(c);
+    wireInk(c);
   const menu = bookMenu(c);
 
 const t = host.tab();
@@ -31,6 +33,7 @@ if (t.locator || t.anchor) queueMicrotask(() => host.update({ locator: undefined
     markScope: () => (c.book ? { kind: "item", itemId: c.book.item_id, title: c.book.title || "this book", section: c.section, unit: c.book.reflowable ? "section" : "page" } : null),
     destroy() {
       c.unwireMarks();
+      c.unwireInk();
       destroy(c);
     },
   };

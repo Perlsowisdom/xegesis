@@ -12,6 +12,7 @@ import { hlClasses, styleOf } from "../markingwords";
 import type { BookCtx } from "./bookctx";
 import type { Anchor, BookNote, Highlight } from "./bookinfo";
 import { scrolling } from "./bookpaging";
+import { isPdf, loadInk } from "./bookink";
 import { pointAt, posOf, secEl, secOf, textNodes } from "./bookpos";
 
 // Highlights and notes ----------------------------------------------------------------------------
@@ -25,8 +26,9 @@ export async function loadMarksFor(c: BookCtx, n: number) {
     c.msg.attempt(() => run<BookNote[]>("note.list", { ...p, limit: 200 })),
   ]);
   if (!c.book || !c.alive) return;
-  c.store.set(n, { hs: hs ?? [], ns: ns ?? [] });
+  c.store.set(n, { hs: (hs ?? []).filter((x) => x.style !== "ink"), ns: ns ?? [] });
   paintMarks(c, n);
+  if (isPdf(c)) await loadInk(c, n);
 }
 
 export async function loadMarks(c: BookCtx) {

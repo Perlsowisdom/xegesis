@@ -9,6 +9,7 @@ import type { BookInfo, OpenRequest, SectionData, Target } from "./bookinfo";
 import { buildSlots, stopPdfScroll, syncScroll } from "./bookscroll";
 import { header } from "./bookwhere";
 import { loadMarksFor } from "./bookmarks";
+import { attachInk, dropInk, inkOpened } from "./bookink";
 import { linkPdfRefs } from "./booklinks";
 import { pointAt, secEl } from "./bookpos";
 
@@ -39,6 +40,7 @@ export async function open(c: BookCtx, r: OpenRequest) {
   if (b.format === "pdf") {
     if (!(await loadPdf(c, b))) return;
   }
+  inkOpened(c);
   let target: Target = {};
   let start = r.section ?? b.position?.section ?? 1;
   if (r.locator) {
@@ -144,7 +146,9 @@ export async function drawPage(c: BookCtx, n: number) {
   });
   if (!r) return;
   c.page = r;
+  dropInk(c);
   clear(c.pdfBox, r.page);
+  attachInk(c, n, r);
   c.body.scrollTop = 0;
   linkPdfRefs(r.page);
 }

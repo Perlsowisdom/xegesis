@@ -28,6 +28,7 @@ export function openPdf(data: Uint8Array): Promise<PdfDoc> {
 export interface RenderedPage {
   page: HTMLElement; // holds the canvas, the highlight layer and the text layer
   marks: HTMLElement;
+  aspect: number; // the page's height over its width, for ink pinned to it
   cancel(): void;
 }
 
@@ -71,7 +72,7 @@ export async function renderPage(doc: PdfDoc, n: number, width: number, zoom: nu
   } finally {
     done = true;
   }
-  return { page, marks, cancel };
+  return { page, marks, aspect: base.height / base.width, cancel };
 }
 
 // outline reads the PDF's bookmarks as contents entries with page numbers.

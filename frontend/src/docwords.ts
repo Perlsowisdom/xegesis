@@ -64,6 +64,7 @@ export interface PaneMenuState {
   splitRight: boolean; // there is room beside it
   splitDown: boolean; // there is room under it
   bibles?: boolean; // the Bibles button is folded away in a narrow pane
+  ink?: { writing: boolean; shown: boolean }; // a PDF: writing on its pages, and whether its ink is shown
 }
 
 // paneMenu is the ⋯ menu of a pane, grouped: what this pane shows, then the layout.
@@ -74,6 +75,7 @@ export function paneMenu(s: PaneMenuState): MenuGroup[] {
     { id: "copylink", label: "Copy link to this place", disabled: !s.link },
   ];
   if (s.bibles) pane.push({ id: "bibles", label: "Bibles to show…" });
+  if (s.ink) pane.push({ id: "ink-write", label: s.ink.writing ? "Stop writing" : "Write on this PDF" }, { id: "ink-show", label: s.ink.shown ? "Hide ink" : "Show ink" });
   return [
     { head: "This pane", items: pane },
     { head: "Layout", items: [

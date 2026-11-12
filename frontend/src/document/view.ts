@@ -28,6 +28,7 @@ export interface DocMenu {
   find?(query: string, anchor: HTMLElement): void | Promise<void>; // the Reader bar's "search in what is open"
   print?(): void;
   bibles?(anchor: HTMLElement): void; // the Bibles picker, offered in ⋯ when the pane is too narrow for its button
+  ink?: { writing(): boolean; shown(): boolean; toggleWriting(): void; toggleShown(): void } | null; // a PDF: ink on its pages
 }
 
 export interface DocView {

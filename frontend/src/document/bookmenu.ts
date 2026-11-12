@@ -11,6 +11,7 @@ import { contentsPopover } from "./contentspop";
 import type { BookCtx } from "./bookctx";
 import { go, jump, open } from "./bookpaging";
 import { selection } from "./bookmarks";
+import { inkMenu, isPdf } from "./bookink";
 
 // Choosing a book ---------------------------------------------------------------------------------
 
@@ -88,6 +89,9 @@ export function bookMenu(c: BookCtx) {
     },
     link: () => (c.book ? `#book/${encodeURIComponent(c.book.item_id)}?file=${encodeURIComponent(c.book.file_id)}${c.book.reflowable ? "" : `&page=${c.section}`}` : null),
     print: () => print(c),
+    get ink() {
+      return isPdf(c) ? inkMenu(c) : null;
+    },
     search(anchor: HTMLElement) {
       const q = h("input", { type: "search", "aria-label": "Search in this book", placeholder: "Words to find", autocomplete: "off" });
       const form = h("form", { class: "pop-body", role: "search" }, h("h2", { class: "pop-title" }, "Search in this"), q);
