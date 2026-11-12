@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Perlsowisdom/xegesis/internal/command/core"
 )
 
 func TestRunAndServe(t *testing.T) {
@@ -48,5 +50,15 @@ func TestCommandsList(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), `"id": "note.create"`) {
 		t.Fatal("note.create not listed")
+	}
+}
+
+func TestVersion(t *testing.T) {
+	var out bytes.Buffer
+	if err := run([]string{"version"}, nil, &out); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.TrimSpace(out.String()); got != core.Version || got == "" {
+		t.Fatalf("version = %q, want %q", got, core.Version)
 	}
 }

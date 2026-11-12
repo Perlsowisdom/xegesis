@@ -27,6 +27,26 @@ for its files: STEPBible's from `https://raw.githubusercontent.com/STEPBible/STE
 (GitHub), OpenBible.info's `https://a.openbible.info/data/cross-references.zip`. Their entries appear
 only while the catalogues are on.
 
+## Updates (T23, direct download only)
+
+Off until you turn it on: the first time Xegesis starts, it asks once whether to check for updates, and
+"No thanks" leaves it off. Turn it on or off later in Settings → Updates (`update.settings.set`).
+The Microsoft Store build has no updater at all; the Store installs its updates.
+
+Every request is an HTTPS `GET` with the header `User-Agent: Xegesis`, and nothing else: no cookies,
+account, identifier or information about your library or this computer. GitHub sees your IP address and
+which file you ask for, as with any download.
+
+| When | Requests |
+| --- | --- |
+| Once a day while Xegesis is open and updates are on, or when you press Check for updates (`update.auto`, `update.check`) | `https://github.com/Perlsowisdom/xegesis/releases/latest/download/latest.json`: version, installer address, SHA-256 and signature of the newest published release |
+| You press Restart to update (`update.install`) | The installer named in `latest.json`, from the same release (GitHub forwards the download to its own file servers) |
+
+Before anything runs, the installer's SHA-256 must match `latest.json` and its Ed25519 signature must
+verify against the public key built into the app (`internal/update/pubkey.txt`). The setup is not
+code-signed, so this signature is what keeps updates safe: a file that fails either check is deleted and
+never run. The setup then installs over the old version and starts it again; your library is not touched.
+
 ## AI assistant (T36a)
 
 Off until you choose a provider in Settings → Assistant → Model (`assistant.config.set`). Choosing one

@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Xegesis MSIX manifest template. scripts/package-msix.ps1 fills the double-brace fields (the comment names them without braces):
+    IDENTITY_NAME      Package/Identity/Name from Partner Center (Product identity)
+    PUBLISHER          Package/Identity/Publisher from Partner Center, e.g. CN=XXXXXXXX-XXXX-...
+    PUBLISHER_DISPLAY  Publisher display name from Partner Center
+    VERSION            four-part version, the last part 0 (the Store reserves it)
+  Until the user reserves the name and sets these (docs/store/partner-center-checklist.md), the
+  package carries clearly marked placeholders and installs only after a test signing.
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap rescap">
+
+  <Identity Name="{{IDENTITY_NAME}}" Publisher="{{PUBLISHER}}" Version="{{VERSION}}" ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>Xegesis</DisplayName>
+    <PublisherDisplayName>{{PUBLISHER_DISPLAY}}</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+    <Description>A free, open-source Bible study app that works offline.</Description>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="en-us" />
+  </Resources>
+
+  <Applications>
+    <Application Id="Xegesis" Executable="Xegesis.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="Xegesis"
+        Description="A free, open-source Bible study app that works offline."
+        BackgroundColor="#1f3a5f"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png">
+        <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" Square71x71Logo="Assets\SmallTile.png" Square310x310Logo="Assets\LargeTile.png" />
+        <uap:SplashScreen Image="Assets\SplashScreen.png" />
+      </uap:VisualElements>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <!-- A desktop (Win32) app runs with the user's rights; the Store requires this declaration. -->
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+</Package>

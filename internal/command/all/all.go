@@ -23,6 +23,7 @@ import (
 	"github.com/Perlsowisdom/xegesis/internal/reader"
 	"github.com/Perlsowisdom/xegesis/internal/report"
 	"github.com/Perlsowisdom/xegesis/internal/search"
+	"github.com/Perlsowisdom/xegesis/internal/update"
 )
 
 // Registry returns every command. dataDir is the folder holding library.db; Bible modules live in
@@ -47,5 +48,6 @@ func Registry(dataDir string, s secrets.Store) *command.Registry {
 	document.Register(r)
 	folder.Register(r)
 	assistant.Register(r, s)
+	update.Register(r) // nothing in the Store build
 	return r
 }

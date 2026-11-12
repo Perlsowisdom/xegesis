@@ -1,0 +1,5 @@
+# PLACEHOLDER public key for Xegesis updates. Its private half was thrown away, so no real update
+# can verify against it: updating is safely inert until this is replaced. Replace it with your own
+# (docs/releasing.md, "Make the signing key"): run `xegesis-sign keygen` and put the public key below.
+# Lines starting with # are ignored.
+9EmvdCSyZyyshL3mucxz5MIzhAa+OpOU8vS+/0OvCJk=

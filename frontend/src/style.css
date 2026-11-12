@@ -1697,3 +1697,8 @@ button.danger-link { color: var(--bad); margin-top: 8px; display: block; }
 .pdf-box.ink-writing .pdf-ink { pointer-events: auto; touch-action: none; cursor: crosshair; user-select: none; -webkit-user-select: none; }
 .pdf-ink-bar { flex: none; }
 .ink-text-btn { padding: 2px 10px; height: 28px; font-size: .85rem; }
+
+/* Updates (updates.ts): the first-run question and the "ready" notice, over the bottom corner. */
+.update-banner { position: fixed; right: 16px; bottom: 16px; z-index: 40; max-width: 380px; padding: 12px 14px; background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 6px 24px rgb(0 0 0 / .22); }
+.update-banner p { margin: 0 0 8px; }
+.update-banner .row { gap: 8px; flex-wrap: wrap; }

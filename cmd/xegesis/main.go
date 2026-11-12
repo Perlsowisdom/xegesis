@@ -4,6 +4,7 @@
 //	xegesis help [id]            list commands, or describe one: text on a terminal, JSON otherwise
 //	xegesis describe <id>        describe one command
 //	xegesis run <id> [params]    run a command; params is JSON, - to read JSON from stdin, or key=value pairs
+//	xegesis version              print the version (set at build time from the git tag)
 //	xegesis serve                read one JSON request per line on stdin, write one response per line
 //	xegesis mcp                  serve the commands to an MCP client over stdio
 //	xegesis mcp-assistant        serve only the AI assistant's read-only tools over stdio
@@ -30,7 +31,7 @@ import (
 	"github.com/Perlsowisdom/xegesis/internal/store"
 )
 
-const usage = "usage: xegesis [-library path] [-format auto|text|json] commands | help [id] | describe <id> | run <id> [params | key=value ...] | serve | mcp | mcp-assistant"
+const usage = "usage: xegesis [-library path] [-format auto|text|json] commands | help [id] | describe <id> | run <id> [params | key=value ...] | serve | mcp | mcp-assistant | version"
 
 func main() {
 	if err := run(os.Args[1:], os.Stdin, os.Stdout); err != nil {
@@ -49,6 +50,10 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	args = fs.Args()
 	if len(args) == 0 {
 		return errors.New(usage)
+	}
+	if args[0] == "version" {
+		_, err := fmt.Fprintln(stdout, core.Version)
+		return err
 	}
 	text, err := wantText(*format, stdout)
 	if err != nil {

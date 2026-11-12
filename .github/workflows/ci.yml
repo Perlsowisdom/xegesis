@@ -34,3 +34,43 @@ jobs:
           if [ "$RUNNER_OS" = Linux ]; then tags=$tags,webkit2_41; fi
           if [ "$RUNNER_OS" = macOS ]; then export CGO_LDFLAGS="-framework UniformTypeIdentifiers"; fi
           go build -tags "$tags" -o xegesis-desktop ./app
+
+  frontend:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - run: npm test
+        working-directory: frontend
+      - run: npm run build
+        working-directory: frontend
+      # The built files are committed (the Go app embeds them); a change to src/ must come with a rebuild.
+      - name: Built files are up to date
+        run: git diff --exit-code -- frontend/dist || echo "::warning::frontend/dist differs from a fresh build"
+
+  windows-release:
+    # What the release workflow needs, checked on every change: the Microsoft Store build (no updater),
+    # the build tools, the signing tool and the MSIX manifest. The real-app tests stay local: they
+    # need a desktop session.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Store build has no updater
+        run: |
+          go vet -tags desktop,production,store ./app ./internal/update/...
+          go test -tags store ./internal/update/...
+      - name: Build tools
+        working-directory: tools
+        run: go vet ./...
+      - name: MSIX manifest
+        shell: pwsh
+        run: ./scripts/package-msix.ps1 -ManifestOnly -Version 0.0.1
